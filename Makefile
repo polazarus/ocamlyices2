@@ -38,6 +38,7 @@ $(PACKAGE_NAME).cmxa: yices2_stubs.o yices2.cmx
 # (Un)Install ##################################################################
 install: build
 	$(OF_INSTALL) $(PACKAGE_NAME) $(PACKAGE_NAME).cma $(PACKAGE_NAME).cmxa \
+		lib$(PACKAGE_NAME).a $(PACKAGE_NAME).a \
 		yices2.cmi META -dll dll$(PACKAGE_NAME).so
 uninstall:
 	$(OF_REMOVE) $(PACKAGE_NAME)
@@ -45,3 +46,5 @@ uninstall:
 # Clean up #####################################################################
 clean:
 	rm -f *.[ao] *.cm[aoxi] *.so a.out .depend
+
+.PHONY: all build install uninstall clean

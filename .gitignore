@@ -4,5 +4,7 @@
 *.cmxa
 *.so
 *.dll
+*.byte
+*.opt
 a.out
 .depend
