@@ -5,6 +5,19 @@ val build_date : string
 
 type typ
 type term
+type config
+type context
+type params
+type model
+
+type status =
+| STATUS_IDLE
+| STATUS_SEARCHING
+| STATUS_UNKNOWN
+| STATUS_SAT
+| STATUS_UNSAT
+| STATUS_INTERRUPTED
+| STATUS_ERROR
 
 type error_report = {
   code : int;
@@ -89,6 +102,9 @@ external sub : term -> term -> term = "ocamlyices_sub"
 external neg : term -> term = "ocamlyices_neg"
 external mul : term -> term -> term = "ocamlyices_mul"
 external square : term -> term = "ocamlyices_square"
+
+external power : term -> int -> term = "ocamlyices_power"
+external power32 : term -> int32 -> term = "ocamlyices_power32"
 
 external poly_int : int array -> term array -> term = "ocamlyices_poly_int"
 external poly_int32 : int32 array -> term array -> term = "ocamlyices_poly_int32"
@@ -200,3 +216,42 @@ external term_is_function : term -> bool = "ocamlyices_term_is_function"
 external term_is_scalar : term -> bool = "ocamlyices_term_is_scalar"
 external term_bitsize : term -> int = "ocamlyices_term_bitsize"
 
+external new_config : unit -> config = "ocamlyices_new_config"
+external free_config : config -> unit = "ocamlyices_free_config"
+external set_config : config -> string -> string -> unit = "ocamlyices_set_config"
+external default_config_for_logic : config -> string -> unit
+  = "ocamlyices_default_config_for_logic"
+
+external new_context : config -> context = "ocamlyices_new_context"
+external free_context : context -> unit = "ocamlyices_free_context"
+
+external context_status : context -> status = "ocamlyices_context_status"
+external reset_context : context -> unit = "ocamlyices_reset_context"
+external push : context -> unit = "ocamlyices_push"
+external pop : context -> unit = "ocamlyices_pop"
+external context_enable_option : context -> string -> unit
+  = "ocamlyices_context_enable_option"
+external context_disable_option : context -> string -> unit
+  = "ocamlyices_context_disable_option"
+
+external assert_formula : context -> term -> unit
+  = "ocamlyices_assert_formula"
+external assert_formulas : context -> term array -> unit
+  = "ocamlyices_assert_formulas"
+
+external check : ?params:params -> context -> status = "ocamlyices_check"
+
+external assert_blocking_clause : context -> unit
+  = "ocamlyices_assert_blocking_clause"
+
+external new_params : unit -> params = "ocamlyices_new_param_record"
+external set_param : params -> string -> string -> unit = "ocamlyices_set_param"
+external free_params : params -> unit = "ocamlyices_free_param_record"
+
+external get_model : ?keepsubst:bool -> context -> model = "ocamlyices_get_model"
+external free_model : model -> unit = "ocamlyices_free_model"
+external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
+external get_int_value : model -> term -> int = "ocamlyices_get_int_value"
+external get_int32_value : model -> term -> int32 = "ocamlyices_get_int32_value"
+external get_int64_value : model -> term -> int64 = "ocamlyices_get_int64_value"
+external get_bv_value : model -> term -> bool array = "ocamlyices_get_bv_value"

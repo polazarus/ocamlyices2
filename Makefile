@@ -14,7 +14,7 @@ build: $(PACKAGE_NAME).cma $(PACKAGE_NAME).cmxa
 # Generic compilation rules ####################################################
 
 %.o: %.c
-	$(OCAMLC) $<
+	$(OCAMLC) $<  -ccopt -Wall
 %.cmi: %.mli
 	$(OCAMLC) -c $<
 %.cmo: %.ml
@@ -30,9 +30,11 @@ build: $(PACKAGE_NAME).cma $(PACKAGE_NAME).cmxa
 
 # Library compilation ##########################################################
 
-$(PACKAGE_NAME).cma: yices2_stubs.o yices2.cmo
+SOURCES=yices2_contexts.c yices2_models.c yices2_types.c yices2_terms.c yices2_utils.c yices2_misc.c
+
+$(PACKAGE_NAME).cma: $(SOURCES:.c=.o) yices2.cmo
 	$(OCAMLMKLIB) -o $(PACKAGE_NAME) $^ -lyices
-$(PACKAGE_NAME).cmxa: yices2_stubs.o yices2.cmx
+$(PACKAGE_NAME).cmxa: $(SOURCES:.c=.o) yices2.cmx
 	$(OCAMLMKLIB) -o $(PACKAGE_NAME) $^ -lyices
 
 # (Un)Install ##################################################################
@@ -47,4 +49,13 @@ uninstall:
 clean:
 	rm -f *.[ao] *.cm[aoxi] *.so a.out .depend
 
-.PHONY: all build install uninstall clean
+.PHONY: all build install uninstall clean test
+
+test: 
+	@cd tests; for testfile in *.ml; do\
+		if ocaml -I .. ocamlyices2.cma $$testfile ; then\
+			echo "test '$${testfile%.ml}' passed";\
+		else\
+			echo "test '$${testfile%.ml}' failed";\
+		fi;\
+	done

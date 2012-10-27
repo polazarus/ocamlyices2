@@ -1,72 +1,5 @@
 /* TYPES */
 
-#define OCAMLYICES_NULLARY_TYPE(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value unit) { \
-    CAMLparam1(unit);\
-    type_t res = yices_ ## nameIn ();\
-  \
-    if (res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-  
-#define OCAMLYICES_NARY_TYPE(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut(value tau) {\
-    CAMLparam1(tau);\
-    type_t raw_res;\
-    type_t* raw_tau;\
-    size_t n, i;\
-  \
-    n = Wosize_val(tau);\
-    raw_tau = (type_t*) calloc(n, sizeof(type_t*));\
-    for (i=0; i < n; i++) {\
-      raw_tau[i] = Int_val(Field(tau, i));\
-    }\
-    NOT_NEEDED_VALUE(tau);\
-  \
-    raw_res = yices_ ## nameIn (n, raw_tau);\
-    free(raw_tau);\
-    if (raw_res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(raw_res));\
-  }
-
-#define OCAMLYICES_TYPE_FROM_TYPEs_TYPE(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value dom, value range) {\
-    CAMLparam2(dom, range);\
-    type_t raw_res, raw_range;\
-    type_t* raw_dom;\
-    size_t n, i;\
-  \
-    raw_range = Int_val(range);\
-    n = Wosize_val(dom);\
-    raw_dom = (type_t*) calloc(n, sizeof(type_t*));\
-    for ( i = 0; i < n; i++) {\
-      raw_dom[i] = Int_val(Field(dom, i));\
-    }\
-    NOT_NEEDED_VALUE(dom);\
-  \
-    raw_res = yices_function_type(n, raw_dom, raw_range);\
-    free(raw_dom);\
-    if (raw_res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(raw_res));\
-  }
-
-#define OCAMLYICES_TYPE_FROM_INT(nameIn, nameOut) \
-  value ocamlyices_ ## nameIn (value v_arg) {\
-    CAMLparam1(v_arg);\
-    type_t res;\
-    uint32_t arg;\
-  \
-    arg = (uint32_t)Int_val(v_arg);\
-  \
-    res = yices_ ## nameOut (arg);\
-    if (res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-  
 #define OCAMLYICES_TYPE_FROM_STRING(nameIn, nameOut) \
   value ocamlyices_ ## nameOut (value v_str) {\
     CAMLparam1(v_str);\
@@ -76,19 +9,19 @@
     res = yices_ ## nameIn (str);\
     if (res == NULL_TYPE) ocamlyices_failure();\
   \
-    CAMLreturn(res);\
+    CAMLreturn(Val_long(res));\
   }
 
 #define OCAMLYICES_TYPE_FROM_TERM(nameIn, nameOut) \
   value ocamlyices_ ## nameOut (value v_t) {\
     CAMLparam1(v_t);\
     type_t res;\
-    term_t t = Int_val(v_t);\
+    term_t t = (term_t)Long_val(v_t);\
   \
     res = yices_ ## nameIn(t);\
     if (res == NULL_TYPE) ocamlyices_failure();\
   \
-    CAMLreturn(res);\
+    CAMLreturn(Val_long(res));\
   }
 
 /* TERMS */
@@ -244,106 +177,21 @@
     CAMLreturn(Val_int(res)); \
   }
 
-#define OCAMLYICES_TERM_FROM_Xs_TERMs(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_as, value v_ts) {\
-    CAMLparam2(v_as, v_ts);\
-    term_t *ts, res;\
-    X_t * as;\
-    size_t n, i ;\
-  \
-    n = Wosize_val(v_as);\
-    if (n != Wosize_val(v_ts)) caml_invalid_argument("arrays with different sizes");\
-    as = (X_t*) calloc(n, sizeof(X_t*));\
-    for (i = 0; i < n; i++) {\
-      as[i] = X_val(Field(v_as, i));\
-    }\
-    NOT_NEEDED_VALUE(v_as);\
-    ts = (term_t*) calloc(n, sizeof(term_t*));\
-    for (i = 0; i < n; i++) {\
-      ts[i] = Int_val(Field(v_ts, i));\
-    }\
-    NOT_NEEDED_VALUE(v_ts);\
-  \
-    res = yices_ ## nameIn (n, as, ts);\
-    free(as); free(ts);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-
-#define OCAMLYICES_TERM_FROM_Xs_Xs_TERMs(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_as, value v_bs, value v_ts) {\
-    CAMLparam3(v_as, v_bs, v_ts);\
-    term_t *ts, res;\
-    X_t *as, *bs;\
-    size_t n, i ;\
-  \
-    n = Wosize_val(v_as);\
-    if (n != Wosize_val(v_bs) || n!= Wosize_val(v_ts)) caml_invalid_argument("arrays with different sizes");\
-    as = (X_t*) calloc(n, sizeof(X_t*));\
-    for (i = 0; i < n; i++) {\
-      as[i] = X_val(Field(v_as, i));\
-    }\
-    NOT_NEEDED_VALUE(v_as);\
-    bs = (X_t*) calloc(n, sizeof(X_t*));\
-    for (i = 0; i < n; i++) {\
-      bs[i] = X_val(Field(v_bs, i));\
-    }\
-    NOT_NEEDED_VALUE(v_bs);\
-    ts = (term_t*) calloc(n, sizeof(term_t*));\
-    for (i = 0; i < n; i++) {\
-      ts[i] = Int_val(Field(v_ts, i));\
-    }\
-    NOT_NEEDED_VALUE(v_ts);\
-  \
-    res = yices_ ## nameIn (n,as,bs,ts);\
-    free(as); free(bs); free(ts);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-
 #define OCAMLYICES_TERM_FROM_TERM_TERMs(nameIn, nameOut) \
   value ocamlyices_ ## nameOut (value v_fun, value v_args) {\
     CAMLparam2(v_fun, v_args);\
-    term_t* args;\
-    term_t fun, res;\
-    size_t n, i;\
+    term_t fun, res, *args;\
+    size_t n;\
   \
     fun = Int_val(v_fun);\
-    n = Wosize_val(v_args);\
-    args = (term_t*) calloc(n, sizeof(term_t*));\
-    for (i = 0; i < n; i++) {\
-      args[i] = Int_val(Field(v_args, i));\
-    }\
-    NOT_NEEDED_VALUE(v_args);\
   \
-    res = yices_ ## nameOut (fun, n, args);\
+    ML2C_COPY_ARRAY(v_args, n, args, term_t, Term_val);\
+    NOT_NEEDED_VALUE(v_args);\
+    if (args == (void*)0) ocamlyices_allocation_error();\
+  \
+    res = yices_ ## nameIn (fun, n, args);\
     free(args);\
   \
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-#define OCAMLYICES_TERM_FROM_TERM_TERMs_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut(value v_fun, value v_args, value v_newv) {\
-    CAMLparam3(v_fun, v_args, v_newv);\
-    term_t fun, newv, res;\
-    term_t* args;\
-    size_t n, i ;\
-  \
-    fun = Int_val(v_fun);\
-    newv = Int_val(v_newv);\
-  \
-    n = Wosize_val(v_args);\
-    args = (term_t*) calloc(n, sizeof(term_t*));\
-    for (i=0; i < n; i++) {\
-      args[i] = Int_val(Field(v_args, i));\
-    }\
-    NOT_NEEDED_VALUE(v_args);\
-  \
-    res = yices_update(fun, n, args, newv);\
-    free(args);\
     if (res == NULL_TERM) ocamlyices_failure();\
   \
     CAMLreturn(Val_int(res));\
@@ -373,29 +221,44 @@
     CAMLreturn(Val_int(res));\
   }
 
-static struct custom_operations ocamlyices_context_ops = {
-  "ocamlyices.context",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
+#define OCAMLYICES_ERRVOID_FROM_X(nameIn, nameOut, X_t, X_val) \
+  value ocamlyices_ ## nameOut (value v_arg) {\
+    CAMLparam1(v_arg);\
+    X_t arg = X_val(v_arg);\
+    NOT_NEEDED_VALUE(v_arg);\
+    int32_t res = yices_ ## nameIn (arg);\
+    if (res != 0) ocamlyices_failure();\
+    CAMLreturn(Val_int(0));\
+  }
 
-#define caml_alloc_context_term() caml_alloc_custom(&ocamlyices_context_ops, sizeof (context_t*), 0, 1)
-#define Store_ocamlyices_context_val(v, raw) do { *(context_t**)Data_custom_val(v) = raw; } while (0)
-#define Ocamlyices_context_val(v) *(context_t**)Data_custom_val(v);
+#define OCAMLYICES_ERRVOID_FROM_X_STRING(nameIn, nameOut, X_t, X_val) \
+  value ocamlyices_ ## nameOut (value v_tau, value v_name) {\
+    CAMLparam2(v_tau, v_name);\
+    X_t tau = X_val(v_tau);\
+    const char* name = String_val(v_name);\
+    int32_t res = yices_ ## nameIn (tau, name);\
+    if (res != 0) ocamlyices_failure();\
+    CAMLreturn(Val_int(0));\
+  }
+#define OCAMLYICES_VOID_FROM_STRING(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut (value v_name) {\
+    CAMLparam1(v_name);\
+    const char* name = String_val(v_name);\
+    yices_ ## nameIn (name);\
+    CAMLreturn(Val_int(0));\
+  }
+#define OCAMLYICES_ERRVOID_FROM_STRING(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut (value v_name) {\
+    CAMLparam1(v_name);\
+    const char* name = String_val(v_name);\
+    int32_t res = yices_ ## nameIn (name);\
+    if (res != 0) ocamlyices_failure();\
+    CAMLreturn(Val_int(0));\
+  }
 
-
-static struct custom_operations ocamlyices_ctx_config_ops = {
-  "ocamlyices.ctx_config",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
-
-#define caml_alloc_ctx_config_term() caml_alloc_custom(&ocamlyices_ctx_config_ops, sizeof (ctx_config_t*), 0, 1)
-#define Store_ocamlyices_ctx_config_val(v, raw) do { *(ctx_config_t**)Data_custom_val(v) = raw; } while (0)
-#define Ocamlyices_ctx_config_val(v) *(ctx_config_t**)Data_custom_val(v); 
+#define OCAMLYICES_VOID_FROM_CONTEXT(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut (value v_context) {\
+    CAMLparam1(v_context);\
+    yices_ ## nameIn (Ocamlyices_context_val(v_context));\
+    CAMLreturn(Val_int(0));\
+  }
