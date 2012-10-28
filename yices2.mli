@@ -88,6 +88,7 @@ external update : term -> term array -> term -> term = "ocamlyices_update"
 external distinct : term array -> term = "ocamlyices_distinct"
 external forall : term array -> term -> term = "ocamlyices_forall"
 external exists : term array -> term -> term = "ocamlyices_exists"
+
 external zero : unit -> term = "ocamlyices_zero"
 external int_ : int -> term = "ocamlyices_int"
 external int32_ : int32 -> term = "ocamlyices_int32"
@@ -203,6 +204,18 @@ external parse_term : string -> term = "ocamlyices_parse_term"
 
 (******************************************************************************)
 
+external set_type_name : typ -> string -> unit = "ocamlyices_set_type_name"
+external remove_type_name : string -> unit = "ocamlyices_remove_type_name"
+external get_type_by_name : string -> typ = "ocamlyices_get_type_by_name"
+external clear_type_name : string -> unit = "ocamlyices_clear_type_name"
+
+external set_term_name : term -> string -> unit = "ocamlyices_set_term_name"
+external remove_term_name : string -> unit = "ocamlyices_remove_term_name"
+external get_term_by_name : string -> term = "ocamlyices_get_term_by_name"
+external clear_term_name : string -> unit = "ocamlyices_clear_term_name"
+
+(******************************************************************************)
+
 (* Term info *)
 
 external type_of_term : term -> typ = "ocamlyices_type_of_term"
@@ -250,8 +263,14 @@ external free_params : params -> unit = "ocamlyices_free_param_record"
 
 external get_model : ?keepsubst:bool -> context -> model = "ocamlyices_get_model"
 external free_model : model -> unit = "ocamlyices_free_model"
+external model_as_string : model -> string = "ocamlyices_model_as_string"
+
 external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
 external get_int_value : model -> term -> int = "ocamlyices_get_int_value"
 external get_int32_value : model -> term -> int32 = "ocamlyices_get_int32_value"
 external get_int64_value : model -> term -> int64 = "ocamlyices_get_int64_value"
+external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
+external get_rational_value_as_string : model -> term -> string
+  = "ocamlyices_get_rational_value_as_string"
+
 external get_bv_value : model -> term -> bool array = "ocamlyices_get_bv_value"

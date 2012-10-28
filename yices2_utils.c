@@ -53,7 +53,7 @@ value term_option(term_t t) {
     res = Val_int(0);
   } else {
     res = caml_alloc(1, 0);
-    Store_field(res, 1, Val_int(t));
+    Store_field(res, 0, Val_term(t));
   }
   CAMLreturn(res);
 }
@@ -61,11 +61,11 @@ value term_option(term_t t) {
 value type_option(type_t t) {
   CAMLparam0();
   CAMLlocal1(res);
-  if (t == NULL_TERM) {
+  if (t == NULL_TYPE) {
     res = Val_int(0);
   } else {
     res = caml_alloc(1, 0);
-    Store_field(res, 1, Val_int(t));
+    Store_field(res, 0, Val_type(t));
   }
   CAMLreturn(res);
 }
@@ -74,7 +74,7 @@ value option_some(value v) {
   CAMLparam0();
   CAMLlocal1(res);
   res = caml_alloc(1, 0);
-  Store_field(res, 1, v);
+  Store_field(res, 0, v);
   CAMLreturn(res);
 }
 
