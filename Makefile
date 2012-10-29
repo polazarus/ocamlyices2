@@ -1,3 +1,5 @@
+# -*- indent-tabs-mode: true -*-
+
 PACKAGE_NAME=ocamlyices2
 
 OCAMLC=ocamlfind c
@@ -5,7 +7,16 @@ OCAMLOPT=ocamlfind opt
 OCAMLMKLIB=ocamlmklib
 OF_INSTALL=ocamlfind install
 OF_REMOVE=ocamlfind remove
+CFLAGS=-Wall -O2 -fPIC
 
+C_STUBS= ocamlyices2_all.c
+
+#	ocamlyices2_contexts.c \
+#	ocamlyices2_models.c \
+#	ocamlyices2_types.c \
+#	ocamlyices2_terms.c \
+#	ocamlyices2_utils.c \
+#	ocamlyices2_misc.c
 
 all: build
 
@@ -14,7 +25,8 @@ build: $(PACKAGE_NAME).cma $(PACKAGE_NAME).cmxa
 # Generic compilation rules ####################################################
 
 %.o: %.c
-	$(OCAMLC) $<  -ccopt -Wall
+	$(OCAMLC) $< $(CFLAGS:%=-ccopt %)
+	objcopy -w -L ocamlyices_internal* -X $@
 %.cmi: %.mli
 	$(OCAMLC) -c $<
 %.cmo: %.ml
@@ -26,15 +38,11 @@ build: $(PACKAGE_NAME).cma $(PACKAGE_NAME).cmxa
 .depend:
 	ocamlfind dep *.ml *.mli > $@
 
--include .depend
-
 # Library compilation ##########################################################
 
-SOURCES=yices2_contexts.c yices2_models.c yices2_types.c yices2_terms.c yices2_utils.c yices2_misc.c
-
-$(PACKAGE_NAME).cma: $(SOURCES:.c=.o) yices2.cmo
+$(PACKAGE_NAME).cma: $(C_STUBS:.c=.o) yices2.cmo
 	$(OCAMLMKLIB) -o $(PACKAGE_NAME) $^ -lyices
-$(PACKAGE_NAME).cmxa: $(SOURCES:.c=.o) yices2.cmx
+$(PACKAGE_NAME).cmxa: $(C_STUBS:.c=.o) yices2.cmx
 	$(OCAMLMKLIB) -o $(PACKAGE_NAME) $^ -lyices
 
 # (Un)Install ##################################################################
@@ -47,7 +55,7 @@ uninstall:
 
 # Clean up #####################################################################
 clean:
-	rm -f *.[ao] *.cm[aoxi] *.so a.out .depend
+	rm -f *.[aos] *.cm[aoxi] *.so a.out .depend
 
 .PHONY: all build install uninstall clean test
 
@@ -59,3 +67,13 @@ test:
 			echo "test '$${testfile%.ml}' failed";\
 		fi;\
 	done
+
+
+-include .depend
+
+ocamlyices2_all.o: ocamlyices2_contexts.c ocamlyices2_terms.c ocamlyices2_models.c ocamlyices2_types.c ocamlyices2_misc.c
+ocamlyices2_all.o ocamlyices2_contexts.o ocamlyices2_terms.o ocamlyices2_models.o ocamlyices2_types.o ocamlyices2_misc.o: ocamlyices2.h
+ocamlyices2_all.o ocamlyices2_terms.o: ocamlyices2_terms_macros.h
+
+
+# vim:noet:

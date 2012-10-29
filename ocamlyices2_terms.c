@@ -1,13 +1,5 @@
-#include <yices.h>
-#include <caml/mlvalues.h>
-#include <caml/memory.h>
-#include <caml/alloc.h>
-#include <caml/threads.h>
-#include <caml/custom.h>
-#include <stdio.h>
-
-#include "yices2.h"
-#include "yices2_macros.h"
+#include "ocamlyices2.h"
+#include "ocamlyices2_terms_macros.h"
 
 OCAMLYICES_NULLARY_TERM(true, true)
 OCAMLYICES_NULLARY_TERM(false, false)
@@ -61,9 +53,45 @@ value ocamlyices_update(value v_fun, value v_args, value v_newv) {
 
 OCAMLYICES_NARY_TERM(distinct, distinct)
 
-OCAMLYICES_ARGSNBODY_TERM(forall, forall)
-OCAMLYICES_ARGSNBODY_TERM(exists, exists)
-OCAMLYICES_ARGSNBODY_TERM(lambda, lambda)
+#define OCAMLYICES_ARGNBODY_TERM(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut (value v_arg, value v_body) { \
+    CAMLparam2(v_arg, v_body); \
+    term_t arg, body, res; \
+  \
+    arg = Term_val(v_arg); \
+    body = Term_val(v_body); \
+  \
+    res = yices_ ## nameIn (1, &arg, body); \
+    if (res == NULL_TERM) ocamlyices_failure(); \
+  \
+    CAMLreturn(Val_term(res)); \
+  }
+
+OCAMLYICES_ARGNBODY_TERM(forall, forall)
+OCAMLYICES_ARGNBODY_TERM(exists, exists)
+OCAMLYICES_ARGNBODY_TERM(lambda, lambda)
+
+#define OCAMLYICES_ARGSNBODY_TERM(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut (value v_args, value v_body) { \
+    CAMLparam2(v_args, v_body);\
+    term_t* args;\
+    term_t body, res;\
+    size_t n;\
+  \
+    body = Term_val(v_body);\
+    ML2C_COPY_ARRAY(v_args, n, args, term_t, Term_val);\
+    NOT_NEEDED_VALUE(v_args);\
+  \
+    res = yices_ ## nameIn (n, args, body);\
+    free(args);\
+    if (res == NULL_TERM) ocamlyices_failure();\
+  \
+    CAMLreturn(Val_term(res));\
+  }
+
+OCAMLYICES_ARGSNBODY_TERM(forall, foralln)
+OCAMLYICES_ARGSNBODY_TERM(exists, existsn)
+OCAMLYICES_ARGSNBODY_TERM(lambda, lambdan)
 
 OCAMLYICES_NULLARY_TERM(zero, zero)
 
@@ -262,7 +290,7 @@ value ocamlyices_poly_rational (value v_as, value v_bs, value v_ts) {
     NOT_NEEDED_VALUE(v_ts);
 
     if (as == (void*)0 || bs == (void*)0 || ts == (void*)0) {
-      free(as); free(ts);
+      free(as); free(bs); free(ts);
       ocamlyices_allocation_error();
     }
     if (n != m || n != p) {
@@ -284,7 +312,7 @@ value ocamlyices_poly_rational (value v_as, value v_bs, value v_ts) {
     NOT_NEEDED_VALUE(v_ts);
 
     if (as == (void*)0 || bs == (void*)0 || ts == (void*)0) {
-      free(as); free(ts);
+      free(as); free(bs); free(ts);
       ocamlyices_allocation_error();
     }
     if (n != m || n != p) {
@@ -315,7 +343,7 @@ value ocamlyices_poly_rational32 (value v_as, value v_bs, value v_ts) {
   NOT_NEEDED_VALUE(v_ts);
 
   if (as == (void*)0 || bs == (void*)0 || ts == (void*)0) {
-    free(as); free(ts);
+    free(as); free(bs); free(ts);
     ocamlyices_allocation_error();
   }
   if (n != m || n != p) {
@@ -323,7 +351,7 @@ value ocamlyices_poly_rational32 (value v_as, value v_bs, value v_ts) {
     ocamlyices_bad_array_sizes_error();
   }
 
-  res = yices_poly_rational32 (n,as,bs,ts);
+  res = yices_poly_rational32 (n, as, bs, ts);
   free(as); free(bs); free(ts);
   if (res == NULL_TERM) ocamlyices_failure();
 
@@ -344,7 +372,7 @@ value ocamlyices_poly_rational64 (value v_as, value v_bs, value v_ts) {
   NOT_NEEDED_VALUE(v_ts);
 
   if (as == (void*)0 || bs == (void*)0 || ts == (void*)0) {
-    free(as); free(ts);
+    free(as); free(bs); free(ts);
     ocamlyices_allocation_error();
   }
   if (n != m || n != p) {
@@ -352,7 +380,7 @@ value ocamlyices_poly_rational64 (value v_as, value v_bs, value v_ts) {
     ocamlyices_bad_array_sizes_error();
   }
 
-  res = yices_poly_rational64 (n,as,bs,ts);
+  res = yices_poly_rational64 (n, as, bs, ts);
   free(as); free(bs); free(ts);
   if (res == NULL_TERM) ocamlyices_failure();
 
@@ -373,13 +401,77 @@ OCAMLYICES_UNARY_TERM(arith_leq0_atom, arith_leq0)
 OCAMLYICES_UNARY_TERM(arith_gt0_atom, arith_gt0)
 OCAMLYICES_UNARY_TERM(arith_lt0_atom, arith_lt0)
 
-OCAMLYICES_TERM_FROM_UINT_X(bvconst_uint32, bvconst_int, uint32_t, Int_val)
-OCAMLYICES_TERM_FROM_UINT_X(bvconst_uint32, bvconst_int32, uint32_t, Int32_val)
-OCAMLYICES_TERM_FROM_UINT_X(bvconst_uint64, bvconst_int64, uint64_t, Int64_val)
+value ocamlyices_bvconst_int(value vn, value vval) {
+  CAMLparam2(vn, vval);
+  intnat n = Long_val(vn);
+  intnat val = Long_val(vval);
+  term_t res;
 
-OCAMLYICES_TERM_FROM_INT(bvconst_zero, bvconst_zero)
-OCAMLYICES_TERM_FROM_INT(bvconst_one, bvconst_one)
-OCAMLYICES_TERM_FROM_INT(bvconst_minus_one, bvconst_minus_one)
+  if (sizeof(intnat) > 2 && (n < 0 || n > UINT32_MAX))
+    ocamlyices_invalid_argument("Number of bits expected should be between 0 and UINT32_MAX");
+
+  if (sizeof(intnat) <= 2) {
+    res = yices_bvconst_uint32((uint32_t)n, (uint32_t)val);
+  }  else {
+    res = yices_bvconst_uint64((uint32_t)n, (uint64_t)val);
+  }
+  if (res == NULL_TERM)
+    ocamlyices_failure();
+
+  CAMLreturn(Val_term(res));
+}
+
+value ocamlyices_bvconst_int32(value vn, value vval) {
+  CAMLparam2(vn, vval);
+  intnat n = Long_val(vn);
+  int32_t val = Int32_val(vval);
+  term_t res;
+
+  if (sizeof(intnat) > 2 && (n < 0 || n > UINT32_MAX))
+    ocamlyices_invalid_argument("Number of bits expected should be between 0 and UINT32_MAX");
+
+  res = yices_bvconst_uint32((uint32_t)n, (uint32_t)val);
+  if (res == NULL_TERM)
+    ocamlyices_failure();
+
+  CAMLreturn(Val_term(res));
+}
+
+value ocamlyices_bvconst_int64(value vn, value vval) {
+  CAMLparam2(vn, vval);
+  intnat n = Long_val(vn);
+  int64_t val = Int64_val(vval);
+  term_t res;
+
+  if (sizeof(intnat) > 2 && (n < 0 || n > UINT32_MAX))
+    ocamlyices_invalid_argument("Number of bits expected should be between 0 and UINT32_MAX");
+
+  res = yices_bvconst_uint32((uint32_t)n, (uint64_t)val);
+  if (res == NULL_TERM)
+    ocamlyices_failure();
+
+  CAMLreturn(Val_term(res));
+}
+
+#define OCAMLYICES_BVCONST_FROM_BITSIZE(nameIn, nameOut) \
+  value ocamlyices_ ## nameOut(value vn) {\
+    CAMLparam1(vn);\
+    intnat n = Long_val(vn);\
+    term_t res;\
+  \
+    if (sizeof(intnat) > 2 && (n < 0 || n > UINT32_MAX))\
+      ocamlyices_invalid_argument("Number of bits expected should be between 0 and UINT32_MAX");\
+  \
+    res = yices_ ## nameIn((uint32_t)n);\
+    if (res == NULL_TERM)\
+      ocamlyices_failure();\
+  \
+    CAMLreturn(Val_term(res));\
+  }
+
+OCAMLYICES_BVCONST_FROM_BITSIZE(bvconst_zero, bvconst_zero)
+OCAMLYICES_BVCONST_FROM_BITSIZE(bvconst_one, bvconst_one)
+OCAMLYICES_BVCONST_FROM_BITSIZE(bvconst_minus_one, bvconst_minus_one)
 
 OCAMLYICES_TERM_FROM_INTs(bvconst_from_array, bvconst_from_array)
 OCAMLYICES_TERM_FROM_STRING(parse_bvbin, parse_bvbin)
@@ -445,4 +537,67 @@ OCAMLYICES_BINARY_TERM(bvsgt_atom, bvsgt)
 OCAMLYICES_BINARY_TERM(bvsle_atom, bvsle)
 OCAMLYICES_BINARY_TERM(bvslt_atom, bvslt)
 
-OCAMLYICES_TERM_FROM_STRING(parse_term, parse_term)
+value ocamlyices_subst_term(value v_vars, value v_repls, value v_t) {
+  CAMLparam3(v_vars, v_repls, v_t);
+  term_t res, t;
+  term_t *repls, *vars;
+  size_t n, m;
+  
+  ML2C_COPY_ARRAY(v_vars, n, vars, term_t, Term_val);
+  NOT_NEEDED_VALUE(v_vars);
+  ML2C_COPY_ARRAY(v_repls, m, repls, term_t, Term_val);
+  NOT_NEEDED_VALUE(v_repls);
+
+  if (n != m) {
+    free(vars); free(repls);
+    ocamlyices_bad_array_sizes_error();
+  }
+
+  if (vars == (void*)0 || repls == (void*)0) {
+    free(vars); free(repls);
+    ocamlyices_allocation_error();
+  }
+
+  t = Term_val(v_t);
+
+  res = yices_subst_term(n, vars, repls, t);
+  free(vars);
+  free(repls);
+  if (res == NULL_TERM) ocamlyices_failure();
+
+  CAMLreturn(Val_int(res));
+}
+
+value ocamlyices_subst_term_array(value v_vars, value v_repls, value v_ts) {
+  CAMLparam3(v_vars, v_repls, v_ts);
+  term_t res;
+  term_t *repls, *vars, *ts;
+  size_t n, m, p;
+  
+  ML2C_COPY_ARRAY(v_vars, n, vars, term_t, Term_val);
+  NOT_NEEDED_VALUE(v_vars);
+
+  ML2C_COPY_ARRAY(v_repls, m, repls, term_t, Term_val);
+  NOT_NEEDED_VALUE(v_repls);
+
+  if (n != m) {
+    free(vars); free(repls);
+    ocamlyices_bad_array_sizes_error();
+  }
+
+  ML2C_COPY_ARRAY(v_ts, p, ts, term_t, Term_val);
+  NOT_NEEDED_VALUE(v_ts);
+
+  if (vars == (void*)0 || repls == (void*)0 || ts == (void*) 0) {
+    free(vars); free(repls); free(ts);
+    ocamlyices_allocation_error();
+  }
+
+  res = yices_subst_term_array(n, vars, repls, p, ts);
+  free(vars);
+  free(repls);
+  free(ts);
+  if (res == NULL_TERM) ocamlyices_failure();
+
+  CAMLreturn(Val_int(res));
+}

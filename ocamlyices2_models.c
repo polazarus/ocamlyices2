@@ -1,14 +1,4 @@
-#include <caml/callback.h>
-#include <caml/mlvalues.h>
-#include <caml/memory.h>
-#include <caml/alloc.h>
-#include <caml/threads.h>
-#include <caml/custom.h>
-#include <stdio.h>
-
-#include "yices2.h"
-
-
+#include "ocamlyices2.h"
 
 value ocamlyices_get_model(value v_keepsubst, value v_context) {
   CAMLparam2(v_keepsubst, v_context);

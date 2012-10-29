@@ -1,10 +1,14 @@
-#include <caml/callback.h>
+#ifndef __OCAMLYICES2_H__
+#define __OCAMLYICES2_H__
+
 #include <caml/mlvalues.h>
+#include <caml/callback.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/threads.h>
 #include <caml/custom.h>
-#include <stdio.h>
+#include <caml/fail.h>
+
 #include <gmp.h>
 #define __GMP_H__
 #define __GMP_H
@@ -27,6 +31,7 @@
 #define MTFLAG_CHECK 1
 #define MTFLAG_GET_MODEL 1
 #define MTFLAG_FREE_MODEL 1
+#define MTFLAG_NAMING 0
 
 #define caml_alloc_context() caml_alloc_custom(&ocamlyices_context_ops, sizeof (context_t*), 0, 1)
 #define Store_context_val(v, raw) do { *(context_t**)Data_custom_val(v) = raw; } while (0)
@@ -60,23 +65,37 @@
     }\
   } while (0)
 
-extern struct custom_operations ocamlyices_context_ops,
-  ocamlyices_ctx_config_ops,
-  ocamlyices_param_ops,
-  ocamlyices_model_ops;
+#define ocamlyices_context_ops ocamlyices_internal_context_ops
+#define ocamlyices_ctx_config_ops ocamlyices_internal_ctx_config_ops
+#define ocamlyices_param_ops ocamlyices_internal_model_ops
+
+#define ocamlyices_check_failure ocamlyices_internal_check_failure
+#define ocamlyices_failure ocamlyices_internal_failure
+#define ocamlyices_eval_binding_overflow ocamlyices_internal_eval_binding_overflow
+#define ocamlyices_already_freed_model ocamlyices_internal_already_freed_model
+#define ocamlyices_already_freed_config ocamlyices_internal_already_freed_config
+#define ocamlyices_already_freed_context ocamlyices_internal_already_freed_context
+#define ocamlyices_allocation_error ocamlyices_internal_allocation_error
+#define ocamlyices_bad_array_sizes_error ocamlyices_internal_bad_array_sizes_error
+#define ocamlyices_invalid_argument ocamlyices_internal_invalid_argument
 
 
-value term_option(term_t t);
-value type_option(type_t t);
-value option_some(value v);
-value option_none();
-void ocamlyices_check_failure();
-void ocamlyices_failure();
-void ocamlyices_eval_binding_overflow();
-void ocamlyices_already_freed_model();
-void ocamlyices_already_freed_config();
-void ocamlyices_already_freed_context();
-void ocamlyices_allocation_error();
-void ocamlyices_bad_array_sizes_error();
+struct custom_operations
+  ocamlyices_context_ops __attribute__ ((visibility ("hidden"))),
+  ocamlyices_ctx_config_ops __attribute__ ((visibility ("hidden"))),
+  ocamlyices_param_ops __attribute__ ((visibility ("hidden"))),
+  ocamlyices_model_ops __attribute__ ((visibility ("hidden")));
+
+__attribute__ ((visibility ("hidden"))) void ocamlyices_check_failure();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_failure();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_eval_binding_overflow();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_model();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_config();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_context();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_allocation_error();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_bad_array_sizes_error();
+__attribute__ ((visibility ("hidden"))) void ocamlyices_invalid_argument(const char*);
 
 
+
+#endif

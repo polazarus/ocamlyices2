@@ -14,6 +14,15 @@ type status =
 | STATUS_INTERRUPTED
 | STATUS_ERROR
 
+let string_of_status = function
+| STATUS_IDLE -> "idle"
+| STATUS_SEARCHING -> "searching"
+| STATUS_UNKNOWN -> "unknown"
+| STATUS_SAT -> "sat"
+| STATUS_UNSAT -> "unsat"
+| STATUS_INTERRUPTED -> "interrupted"
+| STATUS_ERROR -> "error"
+
 type error_report = {
   code : int;
   line : int;
@@ -52,8 +61,6 @@ external tuple_type : typ array -> typ = "ocamlyices_tuple_type"
 external function_type : typ array -> typ -> typ = "ocamlyices_function_type"
 external parse_type : string -> term = "ocamlyices_parse_type"
 
-
-
 external true_ : unit -> term = "ocamlyices_true"
 external false_ : unit -> term = "ocamlyices_true"
 external constant : typ -> int -> term = "ocamlyices_constant"
@@ -65,15 +72,15 @@ external eq : term -> term -> term = "ocamlyices_eq"
 external neq : term -> term -> term = "ocamlyices_neq"
 external not : term -> term = "ocamlyices_not"
 
-external andn : term array -> term = "ocamlyices_and"
-external orn : term array -> term = "ocamlyices_or"
-external xorn : term array -> term = "ocamlyices_xor"
-external and2 : term -> term -> term = "ocamlyices_and2"
-external or2 : term -> term -> term = "ocamlyices_or2"
-external xor2 : term -> term -> term = "ocamlyices_xor2"
+external and_ : term -> term -> term = "ocamlyices_and2"
+external or_ : term -> term -> term = "ocamlyices_or2"
+external xor : term -> term -> term = "ocamlyices_xor2"
 external and3 : term -> term -> term -> term = "ocamlyices_and3"
 external or3 : term -> term -> term -> term = "ocamlyices_or3"
 external xor3 : term -> term -> term -> term = "ocamlyices_xor3"
+external andn : term array -> term = "ocamlyices_and"
+external orn : term array -> term = "ocamlyices_or"
+external xorn : term array -> term = "ocamlyices_xor"
 
 external iff : term -> term -> term = "ocamlyices_iff"
 external implies : term -> term -> term = "ocamlyices_implies"
@@ -82,8 +89,12 @@ external select : int -> term -> term = "ocamlyices_select"
 external tuple_update : term -> int -> term -> term = "ocamlyices_tuple_update"
 external update : term -> term array -> term -> term = "ocamlyices_update"
 external distinct : term array -> term = "ocamlyices_distinct"
-external forall : term array -> term -> term = "ocamlyices_forall"
-external exists : term array -> term -> term = "ocamlyices_exists"
+external forall : term -> term -> term = "ocamlyices_forall"
+external exists : term -> term -> term = "ocamlyices_exists"
+external lambda : term -> term -> term = "ocamlyices_lambda"
+external foralln : term array -> term -> term = "ocamlyices_foralln"
+external existsn : term array -> term -> term = "ocamlyices_existsn"
+external lambdan : term array-> term -> term = "ocamlyices_lambdan"
 external zero : unit -> term = "ocamlyices_zero"
 external int_ : int -> term = "ocamlyices_int"
 external int32_ : int32 -> term = "ocamlyices_int32"
@@ -224,7 +235,7 @@ external set_config : config -> string -> string -> unit = "ocamlyices_set_confi
 external default_config_for_logic : config -> string -> unit
   = "ocamlyices_default_config_for_logic"
 
-external new_context : config -> context = "ocamlyices_new_context"
+external new_context : ?config:config -> unit -> context = "ocamlyices_new_context"
 external free_context : context -> unit = "ocamlyices_free_context"
 
 external context_status : context -> status = "ocamlyices_context_status"
@@ -258,7 +269,9 @@ external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
 external get_int_value : model -> term -> int = "ocamlyices_get_int_value"
 external get_int32_value : model -> term -> int32 = "ocamlyices_get_int32_value"
 external get_int64_value : model -> term -> int64 = "ocamlyices_get_int64_value"
+external get_bv_value : model -> term -> bool array = "ocamlyices_get_bv_value"
+
 external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
 external get_rational_value_as_string : model -> term -> string
   = "ocamlyices_get_rational_value_as_string"
-external get_bv_value : model -> term -> bool array = "ocamlyices_get_bv_value"
+external get_real_value_as_float : model -> term -> float = "ocamlyices_get_double_value"

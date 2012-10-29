@@ -1,29 +1,3 @@
-/* TYPES */
-
-#define OCAMLYICES_TYPE_FROM_STRING(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_str) {\
-    CAMLparam1(v_str);\
-    type_t res;\
-    const char* str = String_val(v_str); /*should not early-release v_str*/\
-  \
-    res = yices_ ## nameIn (str);\
-    if (res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_long(res));\
-  }
-
-#define OCAMLYICES_TYPE_FROM_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_t) {\
-    CAMLparam1(v_t);\
-    type_t res;\
-    term_t t = (term_t)Long_val(v_t);\
-  \
-    res = yices_ ## nameIn(t);\
-    if (res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_long(res));\
-  }
-
 /* TERMS */
 
 #define OCAMLYICES_NULLARY_TERM(nameIn, nameOut) \
@@ -46,8 +20,6 @@
 
 #define OCAMLYICES_TERM_FROM_TYPE(nameIn, nameOut) \
   OCAMLYICES_TERM_FROM_X(nameIn, nameOut, type_t, Int_val)
-#define OCAMLYICES_TERM_FROM_INT(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X(nameIn, nameOut, int32_t, Int_val)
 #define OCAMLYICES_TERM_FROM_INT32(nameIn, nameOut) \
   OCAMLYICES_TERM_FROM_X(nameIn, nameOut, int32_t, Int32_val)
 #define OCAMLYICES_TERM_FROM_INT64(nameIn, nameOut) \
@@ -69,8 +41,6 @@
 #define OCAMLYICES_TERM_FROM_TERM_INT_INT(nameIn, nameOut) \
   OCAMLYICES_TERM_FROM_X_Y_Z(nameIn, nameOut, term_t, Int_val, uint32_t, Int_val, uint32_t, Int_val)
 
-#define OCAMLYICES_TERM_FROM_UINT_X(nameIn, nameOut, X_t, X_val) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, uint32_t, Int_val, X_t, X_val)
 #define OCAMLYICES_TERM_FROM_X_X(nameIn, nameOut, X_t, X_val) \
   OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, X_t, X_val, X_t, X_val)
 
@@ -141,30 +111,6 @@
     CAMLreturn(Val_int(res)); \
   }
 
-#define OCAMLYICES_ARGSNBODY_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_args, value v_body) { \
-    CAMLparam2(v_args, v_body); \
-    term_t* args; \
-    term_t body, res; \
-    size_t n, i; \
-   \
-    body = Int_val(v_body); \
-    NOT_NEEDED_VALUE(v_body); \
-    n = Wosize_val(v_args); \
-    args = (type_t*) calloc(n, sizeof(term_t*)); \
-   \
-    for (i = 0; i < n; i++) { \
-      args[i] = Int_val(Field(v_args, i)); \
-    } \
-    NOT_NEEDED_VALUE(v_args); \
-   \
-    res = yices_ ## nameOut(n, args, body); \
-    free(args);\
-    if (res == NULL_TERM) ocamlyices_failure(); \
-   \
-    CAMLreturn(Val_int(res)); \
-  }
-
 #define OCAMLYICES_TERM_FROM_STRING(nameIn, nameOut) \
   value ocamlyices_ ## nameOut (value v_arg) { \
     CAMLparam1(v_arg); \
@@ -198,38 +144,6 @@
   }
 
 /* Around terms */
-
-#define OCAMLYICES_BOOL_FROM_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_t) {\
-    CAMLparam1(v_t);\
-    term_t t = Int_val(v_t);\
-  \
-    int32_t res = yices_ ## nameIn (t);\
-    if (res == -1) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res != 0));\
-  }
-
-#define OCAMLYICES_INT_FROM_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_t) {\
-    CAMLparam1(v_t);\
-    term_t t = Int_val(v_t);\
-  \
-    int32_t res = yices_ ## nameIn(t);\
-    if (res == 0) ocamlyices_check_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-
-#define OCAMLYICES_ERRVOID_FROM_X(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_arg) {\
-    CAMLparam1(v_arg);\
-    X_t arg = X_val(v_arg);\
-    NOT_NEEDED_VALUE(v_arg);\
-    int32_t res = yices_ ## nameIn (arg);\
-    if (res != 0) ocamlyices_failure();\
-    CAMLreturn(Val_int(0));\
-  }
 
 #define OCAMLYICES_ERRVOID_FROM_X_STRING(nameIn, nameOut, X_t, X_val) \
   value ocamlyices_ ## nameOut (value v_tau, value v_name) {\

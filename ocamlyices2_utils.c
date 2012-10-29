@@ -1,14 +1,4 @@
-#include <yices.h>
-#include <caml/callback.h>
-#include <caml/mlvalues.h>
-#include <caml/memory.h>
-#include <caml/alloc.h>
-#include <caml/threads.h>
-#include <caml/custom.h>
-#include <stdio.h>
-#include <caml/fail.h>
-
-#include "yices2.h"
+#include "ocamlyices2.h"
 
 struct custom_operations ocamlyices_context_ops = {
   "ocamlyices.context",
@@ -46,7 +36,7 @@ struct custom_operations ocamlyices_model_ops = {
   custom_deserialize_default
 };
 
-value term_option(term_t t) {
+static value term_option(term_t t) {
   CAMLparam0();
   CAMLlocal1(res);
   if (t == NULL_TERM) {
@@ -58,7 +48,7 @@ value term_option(term_t t) {
   CAMLreturn(res);
 }
 
-value type_option(type_t t) {
+static value type_option(type_t t) {
   CAMLparam0();
   CAMLlocal1(res);
   if (t == NULL_TYPE) {
@@ -68,18 +58,6 @@ value type_option(type_t t) {
     Store_field(res, 0, Val_type(t));
   }
   CAMLreturn(res);
-}
-
-value option_some(value v) {
-  CAMLparam0();
-  CAMLlocal1(res);
-  res = caml_alloc(1, 0);
-  Store_field(res, 0, v);
-  CAMLreturn(res);
-}
-
-value option_none() {
-  return Val_int(0);
 }
 
 char error_message[256];
@@ -110,26 +88,29 @@ void ocamlyices_check_failure() {
   CAMLreturn0;
 }
 
-void ocamlyices_failure() {
+void ocamlyices_internal_failure() {
   ocamlyices_check_failure();
   caml_failwith("Unknown error");
 }
 
-void ocamlyices_eval_binding_overflow() {
+void ocamlyices_internal_eval_binding_overflow() {
   caml_failwith("Term evaluation overflow Ocaml type");
 }
-void ocamlyices_already_freed_model() {
+void ocamlyices_internal_already_freed_model() {
   caml_failwith("Illegal operation on freed model");
 }
-void ocamlyices_already_freed_config() {
+void ocamlyices_internal_already_freed_config() {
   caml_failwith("Illegal operation on freed config");
 }
-void ocamlyices_already_freed_context() {
+void ocamlyices_internal_already_freed_context() {
   caml_failwith("Illegal operation on freed context");
 }
-void ocamlyices_allocation_error() {
+void ocamlyices_internal_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
-void ocamlyices_bad_array_sizes_error() {
+void ocamlyices_internal_bad_array_sizes_error() {
   caml_invalid_argument("Arrays with different sizes");
+}
+void ocamlyices_internal_invalid_argument(const char* message) {
+  caml_invalid_argument(message);
 }

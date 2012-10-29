@@ -1,14 +1,4 @@
-#include <yices.h>
-#include <caml/callback.h>
-#include <caml/mlvalues.h>
-#include <caml/memory.h>
-#include <caml/alloc.h>
-#include <caml/threads.h>
-#include <caml/custom.h>
-#include <stdio.h>
-
-#include "yices2.h"
-//#include "yices2_macros.h"
+#include "ocamlyices2.h"
 
 value ocamlyices_new_config(value unit) {
   CAMLparam1(unit);
@@ -65,16 +55,21 @@ value ocamlyices_default_config_for_logic(value v_config, value v_logic) {
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_new_context(value v_config) {
-  CAMLparam1(v_config);
+value ocamlyices_new_context(value v_config_opt, value unit) {
+  CAMLparam2(v_config_opt, unit);
   CAMLlocal1(v_res);
   context_t *res;
   ctx_config_t *config;
 
-  config = Config_val(v_config);
-  NOT_NEEDED_VALUE(v_config);
+  if (Is_block(v_config_opt)) {
+    config = Config_val(Field(v_config_opt, 0));
+    NOT_NEEDED_VALUE(v_config_opt);
 
-  if (config == (void*)0) ocamlyices_already_freed_config();
+    if (config == (void*)0)
+      ocamlyices_already_freed_config();
+  } else {
+    config = (void*) 0;
+  }
 
   res = yices_new_context(config);
   if (res == (void*)0) ocamlyices_failure();

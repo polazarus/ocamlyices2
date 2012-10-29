@@ -1,8 +1,7 @@
 let () =
   Yices2.init ();
   
-  let cfg = Yices2.new_config () in
-  let ctx = Yices2.new_context cfg in
+  let ctx = Yices2.new_context () in
   let int_typ = Yices2.int_type () in
   let real_typ = Yices2.real_type () in
 
@@ -23,9 +22,9 @@ let () =
   Yices2.assert_formula ctx f1;
   Yices2.assert_formula ctx f2;
 
-  let _status = Yices2.check ctx in
+  let status = Yices2.check ctx in
+  assert (status = Yices2.STATUS_SAT);
   let model = Yices2.get_model ctx in
-  print_string (Yices2.model_as_string model);
   let () =
     try
       let m = Yices2.get_int_value_as_string model v1 in
