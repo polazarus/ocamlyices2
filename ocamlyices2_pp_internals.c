@@ -2,14 +2,14 @@
 #include <unistd.h>
 #include <pthread.h>
 
-struct pp_thread_data {
+typedef struct {
   int fd;
   int (*pp_fun)(FILE*, void*);
   void* arg;
-};
+} pp_thread_data_t;
 
 void* ocamlyices_internal_pp_thread(void* data_) {
-  struct pp_thread_data* data = data_;
+  pp_thread_data_t* data = data_;
   FILE* output = fdopen(data->fd, "w");
   int res = (*data->pp_fun)(output, data->arg);
   fclose(output);
@@ -19,7 +19,7 @@ void* ocamlyices_internal_pp_thread(void* data_) {
 int ocamlyices_internal_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg) {
   int pipefd[2], pipe_res, ptc_res;
   pthread_t thread;
-  struct pp_thread_data data;
+  pp_thread_data_t data;
   char buffer[256];
   size_t nread;
 

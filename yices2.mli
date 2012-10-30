@@ -225,7 +225,12 @@ external clear_term_name : string -> unit = "ocamlyices_clear_term_name"
 
 (******************************************************************************)
 
-external pp_term : ?width:int -> ?height:int -> ?offset:int -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
+external pp_term : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
+external pp_type : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> typ -> unit = "ocamlyices_pp_type"
+external pp_model : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> model -> unit = "ocamlyices_pp_model"
 
 (******************************************************************************)
 
@@ -269,6 +274,7 @@ external check : ?params:params -> context -> status = "ocamlyices_check"
 
 external assert_blocking_clause : context -> unit
   = "ocamlyices_assert_blocking_clause"
+external stop_search : context -> unit = "ocamlyices_stop_search"
 
 external new_params : unit -> params = "ocamlyices_new_param_record"
 external set_param : params -> string -> string -> unit = "ocamlyices_set_param"
@@ -276,7 +282,6 @@ external free_params : params -> unit = "ocamlyices_free_param_record"
 
 external get_model : ?keepsubst:bool -> context -> model = "ocamlyices_get_model"
 external free_model : model -> unit = "ocamlyices_free_model"
-external model_as_string : model -> string = "ocamlyices_model_as_string"
 
 external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
 external get_int_value : model -> term -> int = "ocamlyices_get_int_value"

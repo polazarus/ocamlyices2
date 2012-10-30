@@ -1,5 +1,5 @@
-Ocamlyices2: Yices 2 binding for OCaml
-======================================
+Ocamlyices2: Yices 2 SMT solver binding for OCaml
+=================================================
 Mickaël Delahaye, 2012
 
 BEWARE: highly unstable API.
@@ -9,7 +9,7 @@ Requirements
 
 * Yices 2 (installed)
 * GMP Header (libgmp-dev)
-* OCaml
+* OCaml 3.12 or later
 * Findlib
 
 
@@ -22,7 +22,9 @@ Build and install
 TODO
 ----
 
-* Pretty printing using something like fopencookie
+* Mechanism to select working implementation of pretty-printing functions
+  (fopencookie or pthread-based), autoconf seems a bit heavy-handed just for a
+  single variable
 * Cleanup API name convention
 * Split into modules?
 * Add some examples

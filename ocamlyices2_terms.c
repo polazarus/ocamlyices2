@@ -573,7 +573,7 @@ value ocamlyices_subst_term_array(value v_vars, value v_repls, value v_ts) {
   term_t res;
   term_t *repls, *vars, *ts;
   size_t n, m, p;
-  
+
   ML2C_COPY_ARRAY(v_vars, n, vars, term_t, Term_val);
   NOT_NEEDED_VALUE(v_vars);
 

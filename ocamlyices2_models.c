@@ -37,32 +37,6 @@ value ocamlyices_free_model(value v_model) {
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_model_as_string(value v_mdl) {
-  CAMLparam1(v_mdl);
-  CAMLlocal1(v_res);
-  model_t * mdl = Model_val(v_mdl);
-
-  if (mdl == (void*)0) ocamlyices_already_freed_model();
-
-  char* buf;
-  size_t loc;
-  FILE* memfile = open_memstream(&buf, &loc);
-  if (memfile == (void*)0) ocamlyices_allocation_error();
-
-  //COND_MT_START(MTFLAG_FREE_MODEL);
-  // yices_print_model(memfile, mdl);
-  yices_pp_model(memfile, mdl, 80, 2, 0);
-  //COND_MT_END(MTFLAG_FREE_MODEL);
-
-  fclose(memfile);
-  v_res = caml_copy_string(buf);
-  free(buf);
-
-  CAMLreturn(v_res);
-}
-//print_model
-//pp_model
-
 value ocamlyices_get_bool_value(value v_mdl, value v_t) {
   CAMLparam2(v_mdl, v_t);
   model_t *mdl;

@@ -59,11 +59,9 @@
     size_t i;\
     n = Wosize_val(v_arr);\
     arr = (X_t*) calloc(n, sizeof(X_t));\
-    if (arr != (void*)0) {\
-      for (i = 0; i < n; i++) {\
+    if (arr != (void*)0)\
+      for (i = 0; i < n; i++)\
         arr[i] = X_val(Field(v_arr, i));\
-      }\
-    }\
   } while (0)
 
 #define ocamlyices_context_ops ocamlyices_internal_context_ops
@@ -79,7 +77,7 @@
 #define ocamlyices_allocation_error ocamlyices_internal_allocation_error
 #define ocamlyices_bad_array_sizes_error ocamlyices_internal_bad_array_sizes_error
 #define ocamlyices_invalid_argument ocamlyices_internal_invalid_argument
-
+#define ocamlyices_pp_with_callback ocamlyices_internal_pp_with_callback
 
 struct custom_operations
   ocamlyices_context_ops __attribute__ ((visibility ("hidden"))),
@@ -97,6 +95,6 @@ __attribute__ ((visibility ("hidden"))) void ocamlyices_allocation_error();
 __attribute__ ((visibility ("hidden"))) void ocamlyices_bad_array_sizes_error();
 __attribute__ ((visibility ("hidden"))) void ocamlyices_invalid_argument(const char*);
 
-int ocamlyices_internal_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
+__attribute__ ((visibility ("hidden"))) int ocamlyices_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
 
 #endif
