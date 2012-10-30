@@ -7,7 +7,7 @@ OCAMLOPT=ocamlfind opt
 OCAMLMKLIB=ocamlmklib
 OF_INSTALL=ocamlfind install
 OF_REMOVE=ocamlfind remove
-CFLAGS=-Wall -O2 -fPIC
+CFLAGS=-Wall -O2
 
 C_STUBS= ocamlyices2_all.c
 

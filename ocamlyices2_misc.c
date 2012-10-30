@@ -114,6 +114,28 @@ value ocamlyices_clear_term_name (value v_arg) {
 
 // pp
 
+struct pp_term_arg {
+  term_t t;
+  uint32_t width, height, offset;
+};
+
+int ocamlyices_internal_pp_term(FILE* output, void* arg_) {
+  struct pp_term_arg* arg = arg_;
+  return yices_pp_term(output, arg->t, arg->width, arg->height, arg->offset);
+}
+
+value ocamlyices_pp_term(value v_width_opt, value v_height_opt, value v_offset_opt, value v_cb, value v_t) {
+  CAMLparam5(v_width_opt, v_height_opt, v_offset_opt, v_cb, v_t);
+  term_t t = Term_val(v_t);
+  uint32_t width = Is_block(v_width_opt) ? (uint32_t)Long_val(Field(v_width_opt, 0)) : 80;
+  uint32_t height = Is_block(v_height_opt) ? (uint32_t)Long_val(Field(v_height_opt, 0)) : 1;
+  uint32_t offset = Is_block(v_offset_opt) ? (uint32_t)Long_val(Field(v_offset_opt, 0)) : 0;
+  struct pp_term_arg arg = { t, width, height, offset };
+  int res = ocamlyices_internal_pp_with_callback(v_cb, &ocamlyices_internal_pp_term, &arg);
+  if (res != 0) ocamlyices_failure();
+  CAMLreturn(Val_unit);
+}
+
 /* TYPES */
 
 #define OCAMLYICES_TYPE_FROM_TERM(nameIn, nameOut) \

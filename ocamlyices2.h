@@ -32,6 +32,7 @@
 #define MTFLAG_GET_MODEL 1
 #define MTFLAG_FREE_MODEL 1
 #define MTFLAG_NAMING 0
+#define MTFLAG_PP 1
 
 #define caml_alloc_context() caml_alloc_custom(&ocamlyices_context_ops, sizeof (context_t*), 0, 1)
 #define Store_context_val(v, raw) do { *(context_t**)Data_custom_val(v) = raw; } while (0)
@@ -96,6 +97,6 @@ __attribute__ ((visibility ("hidden"))) void ocamlyices_allocation_error();
 __attribute__ ((visibility ("hidden"))) void ocamlyices_bad_array_sizes_error();
 __attribute__ ((visibility ("hidden"))) void ocamlyices_invalid_argument(const char*);
 
-
+int ocamlyices_internal_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
 
 #endif

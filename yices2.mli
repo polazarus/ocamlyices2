@@ -63,7 +63,7 @@ external parse_type : string -> term = "ocamlyices_parse_type"
 (******************************************************************************)
 
 external true_ : unit -> term = "ocamlyices_true"
-external false_ : unit -> term = "ocamlyices_true"
+external false_ : unit -> term = "ocamlyices_false"
 external constant : typ -> int -> term = "ocamlyices_constant"
 external new_uninterpreted_term : typ -> term = "ocamlyices_new_uninterpreted_term"
 external new_variable : typ -> term = "ocamlyices_new_variable"
@@ -222,6 +222,10 @@ external set_term_name : term -> string -> unit = "ocamlyices_set_term_name"
 external remove_term_name : string -> unit = "ocamlyices_remove_term_name"
 external get_term_by_name : string -> term = "ocamlyices_get_term_by_name"
 external clear_term_name : string -> unit = "ocamlyices_clear_term_name"
+
+(******************************************************************************)
+
+external pp_term : ?width:int -> ?height:int -> ?offset:int -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
 
 (******************************************************************************)
 

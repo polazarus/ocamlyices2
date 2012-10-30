@@ -62,7 +62,7 @@ external function_type : typ array -> typ -> typ = "ocamlyices_function_type"
 external parse_type : string -> term = "ocamlyices_parse_type"
 
 external true_ : unit -> term = "ocamlyices_true"
-external false_ : unit -> term = "ocamlyices_true"
+external false_ : unit -> term = "ocamlyices_false"
 external constant : typ -> int -> term = "ocamlyices_constant"
 external new_uninterpreted_term : typ -> term = "ocamlyices_new_uninterpreted_term"
 external new_variable : typ -> term = "ocamlyices_new_variable"
@@ -228,6 +228,9 @@ external term_is_tuple : term -> bool = "ocamlyices_term_is_tuple"
 external term_is_function : term -> bool = "ocamlyices_term_is_function"
 external term_is_scalar : term -> bool = "ocamlyices_term_is_scalar"
 external term_bitsize : term -> int = "ocamlyices_term_bitsize"
+
+external pp_term : ?width:int -> ?height:int -> ?offset:int -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
+
 
 external new_config : unit -> config = "ocamlyices_new_config"
 external free_config : config -> unit = "ocamlyices_free_config"
