@@ -1,5 +1,43 @@
 #include "ocamlyices2.h"
 
+static struct custom_operations ocamlyices_context_ops = {
+  "ocamlyices.context",
+  custom_finalize_default,
+  custom_compare_default,
+  custom_hash_default,
+  custom_serialize_default,
+  custom_deserialize_default
+};
+
+static struct custom_operations ocamlyices_ctx_config_ops = {
+  "ocamlyices.config",
+  custom_finalize_default,
+  custom_compare_default,
+  custom_hash_default,
+  custom_serialize_default,
+  custom_deserialize_default
+};
+
+static struct custom_operations ocamlyices_param_ops = {
+  "ocamlyices.param",
+  custom_finalize_default,
+  custom_compare_default,
+  custom_hash_default,
+  custom_serialize_default,
+  custom_deserialize_default
+};
+
+#define caml_alloc_context() caml_alloc_custom(&ocamlyices_context_ops, sizeof (context_t*), 0, 1)
+#define Store_context_val(v, raw) do { *(context_t**)Data_custom_val(v) = raw; } while (0)
+
+#define caml_alloc_config() caml_alloc_custom(&ocamlyices_ctx_config_ops, sizeof (ctx_config_t*), 0, 1)
+#define Store_config_val(v, raw) do { *(ctx_config_t**)Data_custom_val(v) = raw; } while (0)
+#define Config_val(v) *(ctx_config_t**)Data_custom_val(v)
+
+#define caml_alloc_param() caml_alloc_custom(&ocamlyices_param_ops, sizeof (param_t*), 0, 1)
+#define Store_param_val(v, raw) do { *(param_t**)Data_custom_val(v) = raw; } while (0)
+#define Param_val(v) *(param_t**)Data_custom_val(v)
+
 value ocamlyices_new_config(value unit) {
   CAMLparam1(unit);
   CAMLlocal1(v_res);
@@ -191,8 +229,7 @@ value ocamlyices_check(value v_param_opt, value v_context) {
   CAMLparam2(v_param_opt, v_context);
   smt_status_t res;
   context_t *context = Context_val(v_context);
-  param_t *param = (Is_block(v_param_opt) ?
-    *(param_t**)Data_custom_val(Field(v_param_opt, 0)) : (void*)0);
+  param_t *param = (Is_block(v_param_opt) ? Param_val(Field(v_param_opt, 0)) : (void*)0);
   NOT_NEEDED_VALUE(v_context);
   NOT_NEEDED_VALUE(v_param_opt);
 
@@ -236,15 +273,15 @@ value ocamlyices_new_param_record(value unit) {
   param_t *res = yices_new_param_record();
   if (res == (void*)0) ocamlyices_failure();
 
-  v_res = caml_alloc_custom(&ocamlyices_param_ops, sizeof (param_t*), 0, 1);
-  *(param_t**)Data_custom_val(v_res) = res;
+  v_res = caml_alloc_param();
+  Store_param_val(v_res, res);
 
   CAMLreturn(Val_int(v_res));
 }
 
 value ocamlyices_set_param(value v_param, value v_name, value v_value) {
   CAMLparam3(v_param, v_name, v_value);
-  param_t * param = *(param_t**)Data_custom_val(v_param);
+  param_t * param = Param_val(v_param);
   const char* name = String_val(v_name);
   const char* value_ = String_val(v_value);
   int32_t res;
@@ -259,7 +296,7 @@ value ocamlyices_set_param(value v_param, value v_name, value v_value) {
 
 value ocamlyices_free_param_record(value v_param) {
   CAMLparam1(v_param);
-  param_t *param = *(param_t**)Data_custom_val(v_param);
+  param_t *param = Param_val(v_param);
   NOT_NEEDED_VALUE(v_param);
 
   yices_free_param_record(param);

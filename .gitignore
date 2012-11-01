@@ -8,3 +8,12 @@
 *.opt
 a.out
 .depend
+
+# configure
+autom4te.cache
+src/config.h
+Makefile
+
+build
+config.log
+config.status

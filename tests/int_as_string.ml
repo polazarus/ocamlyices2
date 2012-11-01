@@ -23,7 +23,7 @@ let () =
   Yices2.assert_formula ctx f2;
 
   let status = Yices2.check ctx in
-  assert (status = Yices2.STATUS_SAT);
+  assert (status = Yices2.SAT);
   let model = Yices2.get_model ctx in
   let () =
     try

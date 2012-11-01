@@ -1,4 +1,4 @@
-#include "ocamlyices2_pp_internals_linux.c"
+#include "ocamlyices2_pp_internals.c"
 
 #include "ocamlyices2_types.c"
 #include "ocamlyices2_terms.c"
