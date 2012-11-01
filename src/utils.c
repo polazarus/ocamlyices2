@@ -1,4 +1,8 @@
+#include "config.h"
 #include "ocamlyices2.h"
+
+#include <caml/callback.h>
+#include <caml/fail.h>
 
 static value term_option(term_t t) {
   CAMLparam0();

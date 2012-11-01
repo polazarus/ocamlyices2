@@ -1,5 +1,6 @@
+#include "config.h"
 #include "ocamlyices2.h"
-#include "ocamlyices2_terms_macros.h"
+#include "terms_macros.h"
 
 OCAMLYICES_NULLARY_TERM(true, true)
 OCAMLYICES_NULLARY_TERM(false, false)

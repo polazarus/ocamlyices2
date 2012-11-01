@@ -1,3 +1,4 @@
+#include "config.h"
 #include "ocamlyices2.h"
 
 value ocamlyices_info(value unit) {

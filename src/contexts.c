@@ -1,4 +1,6 @@
+#include "config.h"
 #include "ocamlyices2.h"
+#include <caml/custom.h>
 
 static struct custom_operations ocamlyices_context_ops = {
   "ocamlyices.context",

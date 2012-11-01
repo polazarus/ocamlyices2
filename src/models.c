@@ -1,4 +1,14 @@
+#include "config.h"
+
+#ifdef HAVE_GMP_H
+#include <gmp.h>
+#define __GMP_H__
+#define __GMP_H
+#endif
+
 #include "ocamlyices2.h"
+#include <caml/custom.h>
+
 
 #define caml_alloc_model() caml_alloc_custom(&ocamlyices_model_ops, sizeof (model_t*), 0, 1)
 #define Store_model_val(v, raw) do { *(model_t**)Data_custom_val(v) = raw; } while (0)

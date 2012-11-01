@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ocamlyices2.h"
+#include <caml/callback.h>
 
 /*
 FILE *fopencookie(void *cookie, const char *mode,
@@ -45,6 +46,7 @@ int ocamlyices_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* a
 #include <unistd.h>
 #include <pthread.h>
 #include "ocamlyices2.h"
+#include <caml/callback.h>
 
 typedef struct {
   int fd;

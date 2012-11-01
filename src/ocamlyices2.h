@@ -3,19 +3,9 @@
 
 #include <stdlib.h>
 #include <caml/mlvalues.h>
-#include <caml/callback.h>
 #include <caml/memory.h>
-#include <caml/alloc.h>
 #include <caml/threads.h>
-#include <caml/custom.h>
-#include <caml/fail.h>
-
-#ifdef HAVE_GMP_H
-#include <gmp.h>
-#define __GMP_H__
-#define __GMP_H
-#endif
-
+#include <caml/alloc.h>
 #include <yices.h>
 
 #define CAML_MAX_INT ((1L << (8 * sizeof(value) - 2)) - 1)

@@ -1,4 +1,0 @@
-version = "0.0.1"
-description = "Ocamlyices2: Yices 2 SMT solver binding for OCaml"
-archive(byte) = "ocamlyices2.cma"
-archive(native) = "ocamlyices2.cmxa"

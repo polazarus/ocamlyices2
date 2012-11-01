@@ -9,11 +9,16 @@
 a.out
 .depend
 
-# configure
+# autoconf
 autom4te.cache
-src/config.h
-Makefile
+#configure
 
-build
+# configure
+/src/config.h
+Makefile
+META
 config.log
 config.status
+
+#build
+/build/
