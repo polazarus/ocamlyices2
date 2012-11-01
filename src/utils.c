@@ -76,6 +76,10 @@ void ocamlyices_internal_already_freed_context() {
 void ocamlyices_internal_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
+void ocamlyices_unsupported_error() {
+  caml_failwith("Unsupported operation");
+}
+
 void ocamlyices_internal_bad_array_sizes_error() {
   caml_invalid_argument("Arrays with different sizes");
 }

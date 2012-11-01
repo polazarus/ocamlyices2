@@ -57,16 +57,17 @@
 #define ocamlyices_invalid_argument ocamlyices_internal_invalid_argument
 #define ocamlyices_pp_with_callback ocamlyices_internal_pp_with_callback
 
-__attribute__ ((visibility ("hidden"))) void ocamlyices_check_failure();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_failure();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_eval_binding_overflow();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_model();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_config();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_already_freed_context();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_allocation_error();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_bad_array_sizes_error();
-__attribute__ ((visibility ("hidden"))) void ocamlyices_invalid_argument(const char*);
+void ocamlyices_check_failure();
+void ocamlyices_failure();
+void ocamlyices_eval_binding_overflow();
+void ocamlyices_already_freed_model();
+void ocamlyices_already_freed_config();
+void ocamlyices_already_freed_context();
+void ocamlyices_allocation_error();
+void ocamlyices_bad_array_sizes_error();
+void ocamlyices_invalid_argument(const char*);
+void ocamlyices_unsupported_error();
 
-__attribute__ ((visibility ("hidden"))) int ocamlyices_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
+int ocamlyices_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
 
 #endif

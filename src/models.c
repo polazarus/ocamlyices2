@@ -320,6 +320,17 @@ value ocamlyices_get_rational_value_as_string(value v_mdl, value v_t) {
   CAMLreturn(v_res);
 
 }
+
+#else
+value ocamlyices_get_int_value_as_string(value v_mdl, value v_t) {
+  ocamlyices_unsupported_error();
+  return Val_unit;
+}
+value ocamlyices_get_rational_value_as_string(value v_mdl, value v_t) {
+  ocamlyices_unsupported_error();
+  return Val_unit;
+}
+
 #endif
 
 

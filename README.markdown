@@ -16,6 +16,7 @@ Requirements
 Build and install
 -----------------
 
+    $ ./configure
     $ make
     $ sudo make install
 
