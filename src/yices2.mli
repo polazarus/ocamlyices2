@@ -49,11 +49,10 @@ external exit : unit -> unit = "ocamlyices_exit"
 external int_type : unit -> typ = "ocamlyices_int_type"
 external bool_type : unit -> typ = "ocamlyices_bool_type"
 external real_type : unit -> typ = "ocamlyices_real_type"
-
 external bv_type : int -> typ = "ocamlyices_bv_type"
 external new_scalar_type : int -> typ = "ocamlyices_new_scalar_type"
-
-external new_uninterpreted_type : int -> typ = "ocamlyices_new_uninterpreted_type"
+external new_uninterpreted_type : int -> typ
+  = "ocamlyices_new_uninterpreted_type"
 external tuple_type : typ array -> typ = "ocamlyices_tuple_type"
 external function_type : typ array -> typ -> typ = "ocamlyices_function_type"
 
@@ -65,7 +64,8 @@ external parse_type : string -> term = "ocamlyices_parse_type"
 external true_ : unit -> term = "ocamlyices_true"
 external false_ : unit -> term = "ocamlyices_false"
 external constant : typ -> int -> term = "ocamlyices_constant"
-external new_uninterpreted_term : typ -> term = "ocamlyices_new_uninterpreted_term"
+external new_uninterpreted_term : typ -> term
+  = "ocamlyices_new_uninterpreted_term"
 external new_variable : typ -> term = "ocamlyices_new_variable"
 external application : term -> term array -> term = "ocamlyices_application"
 
@@ -117,12 +117,17 @@ external power : term -> int -> term = "ocamlyices_power"
 external power32 : term -> int32 -> term = "ocamlyices_power32"
 
 external poly_int : int array -> term array -> term = "ocamlyices_poly_int"
-external poly_int32 : int32 array -> term array -> term = "ocamlyices_poly_int32"
-external poly_int64 : int64 array -> term array -> term = "ocamlyices_poly_int64"
+external poly_int32 : int32 array -> term array -> term
+  = "ocamlyices_poly_int32"
+external poly_int64 : int64 array -> term array -> term
+  = "ocamlyices_poly_int64"
 
-external poly_rational : int array -> int array -> term array -> term = "ocamlyices_poly_rational"
-external poly_rational32 : int32 array -> int32 array -> term array -> term = "ocamlyices_poly_rational32"
-external poly_rational64 : int64 array -> int64 array -> term array -> term = "ocamlyices_poly_rational64"
+external poly_rational : int array -> int array -> term array -> term
+  = "ocamlyices_poly_rational"
+external poly_rational32 : int32 array -> int32 array -> term array -> term
+  = "ocamlyices_poly_rational32"
+external poly_rational64 : int64 array -> int64 array -> term array -> term
+  = "ocamlyices_poly_rational64"
 
 external arith_eq : term -> term -> term = "ocamlyices_arith_eq"
 external arith_neq : term -> term -> term = "ocamlyices_arith_neq"
@@ -146,7 +151,8 @@ external bvconst_zero : int -> term = "ocamlyices_bvconst_zero"
 external bvconst_one : int -> term = "ocamlyices_bvconst_one"
 external bvconst_minus_one : int -> term = "ocamlyices_bvconst_minus_one"
 
-external bvconst_from_array : bool array -> term = "ocamlyices_bvconst_from_array"
+external bvconst_from_array : bool array -> term
+  = "ocamlyices_bvconst_from_array"
 external bvconst_from_bin : string -> term = "ocamlyices_parse_bvbin"
 external bvconst_from_hex : string -> term = "ocamlyices_parse_bvhex"
 
@@ -249,11 +255,13 @@ external term_bitsize : term -> int = "ocamlyices_term_bitsize"
 
 external new_config : unit -> config = "ocamlyices_new_config"
 external free_config : config -> unit = "ocamlyices_free_config"
-external set_config : config -> string -> string -> unit = "ocamlyices_set_config"
+external set_config : config -> string -> string -> unit
+  = "ocamlyices_set_config"
 external default_config_for_logic : config -> string -> unit
   = "ocamlyices_default_config_for_logic"
 
-external new_context : ?config:config -> unit -> context = "ocamlyices_new_context"
+external new_context : ?config:config -> unit -> context
+  = "ocamlyices_new_context"
 external free_context : context -> unit = "ocamlyices_free_context"
 
 external context_status : context -> status = "ocamlyices_context_status"
@@ -280,18 +288,22 @@ external new_params : unit -> params = "ocamlyices_new_param_record"
 external set_param : params -> string -> string -> unit = "ocamlyices_set_param"
 external free_params : params -> unit = "ocamlyices_free_param_record"
 
-external get_model : ?keepsubst:bool -> context -> model = "ocamlyices_get_model"
+external get_model : ?keepsubst:bool -> context -> model
+  = "ocamlyices_get_model"
 external free_model : model -> unit = "ocamlyices_free_model"
 
 external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
 external get_int_value : model -> term -> int = "ocamlyices_get_int_value"
 external get_int32_value : model -> term -> int32 = "ocamlyices_get_int32_value"
 external get_int64_value : model -> term -> int64 = "ocamlyices_get_int64_value"
-external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
+external get_int_value_as_string : model -> term -> string
+  = "ocamlyices_get_int_value_as_string"
 external get_rational_value_as_string : model -> term -> string
   = "ocamlyices_get_rational_value_as_string"
 
-external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
+external get_int_value_as_string : model -> term -> string
+  = "ocamlyices_get_int_value_as_string"
 external get_rational_value_as_string : model -> term -> string
   = "ocamlyices_get_rational_value_as_string"
-external get_real_value_as_float : model -> term -> float = "ocamlyices_get_double_value"
+external get_real_value_as_float : model -> term -> float
+  = "ocamlyices_get_double_value"
