@@ -97,7 +97,7 @@
     size_t n, i; \
    \
     n = Wosize_val(v_args); \
-    args = (X_t*) calloc(n, sizeof(X_t*)); \
+    args = (X_t*) malloc(sizeof(X_t[n])); \
    \
     for (i = 0; i < n; i++) { \
       args[i] = X_val(Field(v_args, i)); \

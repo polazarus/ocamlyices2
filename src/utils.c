@@ -1,46 +1,14 @@
+#include "config.h"
 #include "ocamlyices2.h"
 
-struct custom_operations ocamlyices_context_ops = {
-  "ocamlyices.context",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
-
-struct custom_operations ocamlyices_ctx_config_ops = {
-  "ocamlyices.ctx_config",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
-
-struct custom_operations ocamlyices_param_ops = {
-  "ocamlyices.param",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
-
-struct custom_operations ocamlyices_model_ops = {
-  "ocamlyices.model",
-  custom_finalize_default,
-  custom_compare_default,
-  custom_hash_default,
-  custom_serialize_default,
-  custom_deserialize_default
-};
+#include <caml/callback.h>
+#include <caml/fail.h>
 
 static value term_option(term_t t) {
   CAMLparam0();
   CAMLlocal1(res);
   if (t == NULL_TERM) {
-    res = Val_int(0);
+    res = Atom(0);
   } else {
     res = caml_alloc(1, 0);
     Store_field(res, 0, Val_term(t));
@@ -52,7 +20,7 @@ static value type_option(type_t t) {
   CAMLparam0();
   CAMLlocal1(res);
   if (t == NULL_TYPE) {
-    res = Val_int(0);
+    res = Atom(0);
   } else {
     res = caml_alloc(1, 0);
     Store_field(res, 0, Val_type(t));
@@ -108,6 +76,10 @@ void ocamlyices_internal_already_freed_context() {
 void ocamlyices_internal_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
+void ocamlyices_unsupported_error() {
+  caml_failwith("Unsupported operation");
+}
+
 void ocamlyices_internal_bad_array_sizes_error() {
   caml_invalid_argument("Arrays with different sizes");
 }

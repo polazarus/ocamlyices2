@@ -1,3 +1,8 @@
+val version : string
+val build_arch : string
+val build_mode : string
+val build_date : string
+
 type typ
 type term
 type config
@@ -6,22 +11,15 @@ type params
 type model
 
 type status =
-| STATUS_IDLE
-| STATUS_SEARCHING
-| STATUS_UNKNOWN
-| STATUS_SAT
-| STATUS_UNSAT
-| STATUS_INTERRUPTED
-| STATUS_ERROR
+| IDLE
+| SEARCHING
+| UNKNOWN
+| SAT
+| UNSAT
+| INTERRUPTED
+| ERROR
 
-let string_of_status = function
-| STATUS_IDLE -> "idle"
-| STATUS_SEARCHING -> "searching"
-| STATUS_UNKNOWN -> "unknown"
-| STATUS_SAT -> "sat"
-| STATUS_UNSAT -> "unsat"
-| STATUS_INTERRUPTED -> "interrupted"
-| STATUS_ERROR -> "error"
+val string_of_status : status -> string
 
 type error_report = {
   code : int;
@@ -35,31 +33,34 @@ type error_report = {
 }
 
 exception YicesError of string * error_report
-let _ = Callback.register_exception "ocamlyices.exception" (YicesError ("", { code= 1; line= 0; column= 0; term1= None; type1= None; term2= None; type2= None; badval= 0L}))
 
 
-
-external info : unit -> string*string*string*string = "ocamlyices_info"
-let version, build_arch, build_mode, build_date =
-  info ()
-
-
+(** Initialize Yices *)
 external init : unit -> unit = "ocamlyices_init"
+
+(** Reset Yices *)
 external reset : unit -> unit = "ocamlyices_reset"
+
+(** Exit Yices *)
 external exit : unit -> unit = "ocamlyices_exit"
 
-
-
+(******************************************************************************)
 
 external int_type : unit -> typ = "ocamlyices_int_type"
 external bool_type : unit -> typ = "ocamlyices_bool_type"
 external real_type : unit -> typ = "ocamlyices_real_type"
+
 external bv_type : int -> typ = "ocamlyices_bv_type"
 external new_scalar_type : int -> typ = "ocamlyices_new_scalar_type"
+
 external new_uninterpreted_type : int -> typ = "ocamlyices_new_uninterpreted_type"
 external tuple_type : typ array -> typ = "ocamlyices_tuple_type"
 external function_type : typ array -> typ -> typ = "ocamlyices_function_type"
+
 external parse_type : string -> term = "ocamlyices_parse_type"
+
+
+(******************************************************************************)
 
 external true_ : unit -> term = "ocamlyices_true"
 external false_ : unit -> term = "ocamlyices_false"
@@ -89,12 +90,14 @@ external select : int -> term -> term = "ocamlyices_select"
 external tuple_update : term -> int -> term -> term = "ocamlyices_tuple_update"
 external update : term -> term array -> term -> term = "ocamlyices_update"
 external distinct : term array -> term = "ocamlyices_distinct"
+
 external forall : term -> term -> term = "ocamlyices_forall"
 external exists : term -> term -> term = "ocamlyices_exists"
 external lambda : term -> term -> term = "ocamlyices_lambda"
 external foralln : term array -> term -> term = "ocamlyices_foralln"
 external existsn : term array -> term -> term = "ocamlyices_existsn"
 external lambdan : term array-> term -> term = "ocamlyices_lambdan"
+
 external zero : unit -> term = "ocamlyices_zero"
 external int_ : int -> term = "ocamlyices_int"
 external int32_ : int32 -> term = "ocamlyices_int32"
@@ -208,6 +211,8 @@ external bvslt : term -> term -> term = "ocamlyices_bvslt"
 
 external parse_term : string -> term = "ocamlyices_parse_term"
 
+(******************************************************************************)
+
 external set_type_name : typ -> string -> unit = "ocamlyices_set_type_name"
 external remove_type_name : string -> unit = "ocamlyices_remove_type_name"
 external get_type_by_name : string -> typ = "ocamlyices_get_type_by_name"
@@ -217,6 +222,19 @@ external set_term_name : term -> string -> unit = "ocamlyices_set_term_name"
 external remove_term_name : string -> unit = "ocamlyices_remove_term_name"
 external get_term_by_name : string -> term = "ocamlyices_get_term_by_name"
 external clear_term_name : string -> unit = "ocamlyices_clear_term_name"
+
+(******************************************************************************)
+
+external pp_term : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
+external pp_type : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> typ -> unit = "ocamlyices_pp_type"
+external pp_model : ?width:int -> ?height:int -> ?offset:int
+  -> (string -> unit) -> model -> unit = "ocamlyices_pp_model"
+
+(******************************************************************************)
+
+(* Term info *)
 
 external type_of_term : term -> typ = "ocamlyices_type_of_term"
 external term_is_bool : term -> bool = "ocamlyices_term_is_bool"
@@ -228,13 +246,6 @@ external term_is_tuple : term -> bool = "ocamlyices_term_is_tuple"
 external term_is_function : term -> bool = "ocamlyices_term_is_function"
 external term_is_scalar : term -> bool = "ocamlyices_term_is_scalar"
 external term_bitsize : term -> int = "ocamlyices_term_bitsize"
-
-external pp_term : ?width:int -> ?height:int -> ?offset:int
-  -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
-external pp_type : ?width:int -> ?height:int -> ?offset:int
-  -> (string -> unit) -> typ -> unit = "ocamlyices_pp_type"
-external pp_model : ?width:int -> ?height:int -> ?offset:int
-  -> (string -> unit) -> model -> unit = "ocamlyices_pp_model"
 
 external new_config : unit -> config = "ocamlyices_new_config"
 external free_config : config -> unit = "ocamlyices_free_config"
@@ -276,7 +287,9 @@ external get_bool_value : model -> term -> bool = "ocamlyices_get_bool_value"
 external get_int_value : model -> term -> int = "ocamlyices_get_int_value"
 external get_int32_value : model -> term -> int32 = "ocamlyices_get_int32_value"
 external get_int64_value : model -> term -> int64 = "ocamlyices_get_int64_value"
-external get_bv_value : model -> term -> bool array = "ocamlyices_get_bv_value"
+external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
+external get_rational_value_as_string : model -> term -> string
+  = "ocamlyices_get_rational_value_as_string"
 
 external get_int_value_as_string : model -> term -> string = "ocamlyices_get_int_value_as_string"
 external get_rational_value_as_string : model -> term -> string

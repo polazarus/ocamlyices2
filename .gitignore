@@ -8,3 +8,17 @@
 *.opt
 a.out
 .depend
+
+# autoconf
+autom4te.cache
+#configure
+
+# configure
+/src/config.h
+Makefile
+META
+config.log
+config.status
+
+#build
+/build/

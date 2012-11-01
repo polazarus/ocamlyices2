@@ -1,4 +1,26 @@
+#include "config.h"
+
+#ifdef HAVE_GMP_H
+#include <gmp.h>
+#define __GMP_H__
+#define __GMP_H
+#endif
+
 #include "ocamlyices2.h"
+#include <caml/custom.h>
+
+
+#define caml_alloc_model() caml_alloc_custom(&ocamlyices_model_ops, sizeof (model_t*), 0, 1)
+#define Store_model_val(v, raw) do { *(model_t**)Data_custom_val(v) = raw; } while (0)
+
+static struct custom_operations ocamlyices_model_ops = {
+  "ocamlyices.model",
+  custom_finalize_default,
+  custom_compare_default,
+  custom_hash_default,
+  custom_serialize_default,
+  custom_deserialize_default
+};
 
 value ocamlyices_get_model(value v_keepsubst, value v_context) {
   CAMLparam2(v_keepsubst, v_context);
@@ -17,7 +39,7 @@ value ocamlyices_get_model(value v_keepsubst, value v_context) {
   COND_MT_END(MTFLAG_GET_MODEL);
   if (res == (void*)0) ocamlyices_failure();
 
-  v_res = caml_alloc_custom(&ocamlyices_model_ops, sizeof (model_t*), 0, 1);
+  v_res = caml_alloc_model();
   Store_model_val(v_res, res);
 
   CAMLreturn(v_res);
@@ -236,15 +258,17 @@ value ocamlyices_get_double_value(value v_mdl, value v_t) {
   CAMLreturn(caml_copy_double(val));
 }
 
-#ifdef __GMP_H__
-
+#ifdef HAVE_GMP_H
 value ocamlyices_get_int_value_as_string(value v_mdl, value v_t) {
-  CAMLparam2(v_mdl, v_t);
-  CAMLlocal1(v_res);
   model_t *mdl;
   term_t t;
   int32_t res;
   mpz_t val;
+  size_t buf_size;
+  char* buf;
+  CAMLparam2(v_mdl, v_t);
+  CAMLlocal1(v_res);
+
   mpz_init (val);
 
   mdl = Model_val(v_mdl);
@@ -255,18 +279,15 @@ value ocamlyices_get_int_value_as_string(value v_mdl, value v_t) {
 
   res = yices_get_mpz_value(mdl, t, val);
   if (res != 0) ocamlyices_failure();
-  
-  {
-    size_t buf_size = mpz_sizeinbase (val, 10) + 2;
-    char* buf = malloc(sizeof(char[buf_size]));
-    if (buf == (void*)0) ocamlyices_allocation_error();
-    mpz_get_str(buf, 10, val);
-    v_res = caml_copy_string(buf);
-    free(buf);
-  }
+
+  buf_size = mpz_sizeinbase (val, 10) + 2;
+  buf = malloc(sizeof(char[buf_size]));
+  if (buf == (void*)0) ocamlyices_allocation_error();
+  mpz_get_str(buf, 10, val);
+  v_res = caml_copy_string(buf);
+  free(buf);
 
   CAMLreturn(v_res);
-
 }
 
 value ocamlyices_get_rational_value_as_string(value v_mdl, value v_t) {
@@ -300,6 +321,16 @@ value ocamlyices_get_rational_value_as_string(value v_mdl, value v_t) {
 
 }
 
+#else
+value ocamlyices_get_int_value_as_string(value v_mdl, value v_t) {
+  ocamlyices_unsupported_error();
+  return Val_unit;
+}
+value ocamlyices_get_rational_value_as_string(value v_mdl, value v_t) {
+  ocamlyices_unsupported_error();
+  return Val_unit;
+}
+
 #endif
 
 
@@ -320,7 +351,7 @@ value ocamlyices_get_bv_value(value v_mdl, value v_t) {
   n = yices_term_bitsize(t);
   if (n <= 0) ocamlyices_failure();
 
-  bv = calloc(n, sizeof(int32_t));
+  bv = malloc(sizeof(int32_t[n]));
   if (bv == (void*)0) {
     ocamlyices_allocation_error();
   }

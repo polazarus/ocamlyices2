@@ -1,3 +1,4 @@
+#include "config.h"
 #include "ocamlyices2.h"
 
 #define OCAMLYICES_NULLARY_TYPE(nameIn, nameOut) \
