@@ -1,0 +1,10 @@
+*~
+*.[oa]
+*.cm[oaix]
+*.cmxa
+*.so
+*.dll
+*.byte
+*.opt
+a.out
+.depend
