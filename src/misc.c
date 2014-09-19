@@ -1,7 +1,23 @@
 #include "config.h"
+
+#if defined(HAVE_FOPENCOOKIE) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#include <caml/callback.h>
+#include <caml/memory.h> // CAMLparam & co
+
 #include "ocamlyices2.h"
 
-value ocamlyices_info(value unit) {
+/* include automatically generated file */
+#include "errors.h"
+
+static _Bool _oy_initialized = 0;
+
+
+CAMLprim value ocamlyices_info(value unit) {
   CAMLparam1 (unit);
   CAMLlocal1 (tuple);
   tuple = caml_alloc_tuple(5);
@@ -12,108 +28,148 @@ value ocamlyices_info(value unit) {
   CAMLreturn (tuple);
 }
 
-value ocamlyices_init(value unit) {
-  CAMLparam1 (unit);
-  COND_MT_START(MTFLAG_INIT);
-  yices_init();
-  COND_MT_END(MTFLAG_INIT);
-  CAMLreturn (unit);
+void _oy_check_init () {
+  if (!_oy_initialized) {
+    yices_init();
+    _oy_initialized = 1;
+  }
 }
 
-value ocamlyices_exit(value unit) {
-  CAMLparam1 (unit);
-  COND_MT_START(MTFLAG_EXIT);
-  yices_exit();
-  COND_MT_END(MTFLAG_EXIT);
-  CAMLreturn (unit);
+/*
+ * yices_init, yices_exit, yices_reset does not make a lot of sense in the OCaml context
+ *
+ * so automatic initialization
+ * and minimal support for reset
+ */
+
+CAMLprim value ocamlyices_reset (UNUSED value unit) {
+  if (_oy_initialized) {
+    yices_exit();
+    _oy_initialized = 0;
+  } else {
+    yices_init();
+    _oy_initialized = 1;
+  }
+  return Val_unit;
 }
 
-value ocamlyices_reset(value unit) {
-  CAMLparam1 (unit);
-  COND_MT_START(MTFLAG_RESET);
-  yices_reset();
-  COND_MT_END(MTFLAG_RESET);
-  CAMLreturn (unit);
+// check failure
+
+/* precondition: val should be non-reclaimable (i.e. not a block) */
+static inline value caml_alloc_set1(tag_t tag, value val) {
+  value res = caml_alloc_small(1, tag);
+  Field((res), 0) = val;
+  return res;
 }
 
-/* Term and type naming */
-
-// Set name of
-value ocamlyices_set_type_name (value v_t, value v_name) {
-  CAMLparam2(v_t, v_name);
-  int32_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_set_type_name(Type_val(v_t), String_val(v_name));
-  COND_MT_END(MTFLAG_NAMING);
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_unit);
-}
-value ocamlyices_set_term_name (value v_t, value v_name) {
-  CAMLparam2(v_t, v_name);
-  int32_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_set_term_name(Term_val(v_t), String_val(v_name));
-  COND_MT_END(MTFLAG_NAMING);
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_unit);
-}
-// Remove name
-value ocamlyices_remove_type_name (value v_name) {
-  CAMLparam1(v_name);
-  COND_MT_START(MTFLAG_NAMING);
-  yices_remove_type_name(String_val(v_name));
-  COND_MT_END(MTFLAG_NAMING);
-  CAMLreturn(Val_unit);
-}
-value ocamlyices_remove_term_name (value v_name) {
-  CAMLparam1(v_name);
-  COND_MT_START(MTFLAG_NAMING);
-  yices_remove_term_name(String_val(v_name));
-  COND_MT_END(MTFLAG_NAMING);
-  CAMLreturn(Val_unit);
-}
-// Get by name
-value ocamlyices_get_type_by_name(value v_str) {
-  CAMLparam1(v_str);
-  const char* str = String_val(v_str); /*should not early-release v_str*/
-  type_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_get_type_by_name(str);
-  COND_MT_END(MTFLAG_NAMING);
-  if (res == NULL_TYPE) ocamlyices_failure();
-  CAMLreturn(Val_type(res));
-}
-value ocamlyices_get_term_by_name(value v_str) {
-  CAMLparam1(v_str);
-  const char* str = String_val(v_str); /*should not early-release v_str*/
-  term_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_get_term_by_name(str);
-  COND_MT_END(MTFLAG_NAMING);
-  if (res == NULL_TYPE) ocamlyices_failure();
-  CAMLreturn(Val_type(res));
-}
-// Clear name of
-value ocamlyices_clear_type_name (value v_arg) {
-  CAMLparam1(v_arg);
-  int32_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_clear_type_name(Type_val(v_arg));
-  COND_MT_END(MTFLAG_NAMING);
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_unit);
-}
-value ocamlyices_clear_term_name (value v_arg) {
-  CAMLparam1(v_arg);
-  int32_t res;
-  COND_MT_START(MTFLAG_NAMING);
-  res = yices_clear_term_name(Term_val(v_arg));
-  COND_MT_END(MTFLAG_NAMING);
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_unit);
+static inline value term_option(term_t t) {
+  return (t == NULL_TERM) ? Val_long(0) : caml_alloc_set1(0, Val_term(t));
 }
 
-// pp
+static inline value type_option(type_t t) {
+  return (t == NULL_TYPE) ? Val_long(0) : caml_alloc_set1(0, Val_type(t));
+}
+
+static value _oy__error_args[2];
+
+void _oy__check_error() {
+  error_code_t ec = yices_error_code();
+  if (ec == NO_ERROR) {
+    return;
+  }
+  DEBUG_PRINT("error %d\n", (int)ec);
+  CAMLparam0();
+  CAMLlocal1(temp);
+  intnat lec = _oy__linear_error_code(ec);
+  error_report_t *report = yices_error_report();
+  DEBUG_PRINT("error %s (linear code %d))\n",_oy__linear_error_code_names[lec], lec);
+  temp = caml_alloc_tuple(8);
+  Store_field(temp, 0, caml_copy_string(_oy__linear_error_code_names[lec]));
+  Store_field(temp, 1, Val_long(report->column));
+  Store_field(temp, 2, Val_long(report->line));
+  Store_field(temp, 3, term_option(report->term1));
+  Store_field(temp, 4, type_option(report->type1));
+  Store_field(temp, 5, term_option(report->term2));
+  Store_field(temp, 6, type_option(report->type2));
+  Store_field(temp, 7, caml_copy_int64(report->badval));
+  _oy__error_args[0] = Val_long(lec);
+  _oy__error_args[1] = temp;
+  value* exc = caml_named_value("ocamlyices2.exception");
+  if (exc == NULL) caml_failwith("cannot find exception");
+  caml_raise_with_args(*exc, 2, _oy__error_args);
+  CAMLreturn0;
+}
+
+#if defined(HAVE_FOPENCOOKIE)
+
+static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, const char*, size_t)) {
+  cookie_io_functions_t iofuns = { NULL, write, NULL, NULL };
+  return fopencookie(cookie, "w", iofuns);
+}
+
+#elif defined(HAVE_FUNOPEN)
+
+/* WARNING: from the manpages of FreeBSD and Apple, funopen is badled typed
+ * (with ints everywhere instead of appropriate size_t and ssize_t)
+ */
+
+typedef struct {
+  void *true_cookie;
+  ssize_t (*true_write)(void*, const char*, size_t);
+} cookie_wrap_t;
+
+static int fopen_write_callback__write(void *cookie, const char *buf, int size) {
+  cookie_wrap_t *cookie_wrap = (cookie_wrap_t*)cookie;
+  return (int)cookie_wrap->true_write(cookie_wrap->true_cookie, buf, (size_t)size);
+}
+
+static int fopen_write_callback__close(void *cookie_wrap) {
+  free(cookie_wrap);
+  return 0;
+}
+
+static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, const char*, size_t)) {
+  cookie_wrap_t* wrap = malloc(sizeof(cookie_wrap_t));
+  wrap->true_cookie = cookie;
+  wrap->true_write = write;
+  return funopen((void*)wrap, NULL, fopen_write_callback__write, NULL, fopen_write_callback__close);
+}
+
+#else
+
+#warning "Pretty printing not supported (missing fopencookie/funopen)"
+static inline FILE* fopen_write_callback(UNUSED void* cookie, ssize_t (*UNUSED write)(void*, const char*, size_t)) NORETURN {
+  return _oy__unsupported();
+}
+
+#endif
+
+static value caml_copy_stringn(size_t size, const char *buf) {
+  value v_buf = caml_alloc_string(size);
+  memcpy(&Byte(v_buf, 0), buf, size);
+  return v_buf;
+}
+
+static ssize_t _oy_pp_write (void *cookie, const char *buf, size_t size) {
+  value *v_cb = (value *)cookie;
+  value v_buf = caml_copy_stringn(size, buf);
+  DEBUG_PRINT("call caml write with %d bytes", size);
+  caml_callback(*v_cb, v_buf); // ignore output
+  return (ssize_t)size;
+}
+
+// Precondition: the callback should be a root
+int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *),
+                                void *arg) {
+  FILE *output = fopen_write_callback((void*)&v_cb, &_oy_pp_write);
+  if (output == NULL) {
+    _oy__error();  // FIXME meaningfull error
+  }
+  DEBUG_PRINT("print with callback initialized\n");
+  int res = printfn(output, arg);
+  fclose(output);
+  return res;
+}
 
 struct pp_term_arg {
   term_t t;
@@ -124,105 +180,73 @@ struct pp_type_arg {
   uint32_t width, height, offset;
 };
 struct pp_model_arg {
-  model_t* mdl;
+  model_t *mdl;
   uint32_t width, height, offset;
 };
 
+static inline intnat Long_option_val(value val, intnat def) {
+  return Is_block(val) ? Long_val(Field(val, 0)) : def;
+}
 
-int ocamlyices_internal_pp_term(FILE* output, void* arg_) {
-  struct pp_term_arg* arg = arg_;
+static int _oy_pp_term(FILE *output, void *arg_) {
+  struct pp_term_arg *arg = (struct pp_term_arg *)arg_;
   return yices_pp_term(output, arg->t, arg->width, arg->height, arg->offset);
 }
-int ocamlyices_internal_pp_type(FILE* output, void* arg_) {
-  struct pp_type_arg* arg = arg_;
+static int _oy_pp_type(FILE *output, void *arg_) {
+  struct pp_type_arg *arg = (struct pp_type_arg *)arg_;
   return yices_pp_type(output, arg->t, arg->width, arg->height, arg->offset);
 }
-int ocamlyices_internal_pp_model(FILE* output, void* arg_) {
-  struct pp_model_arg* arg = arg_;
+static int _oy_pp_model(FILE *output, void *arg_) {
+  struct pp_model_arg *arg = (struct pp_model_arg *)arg_;
   return yices_pp_model(output, arg->mdl, arg->width, arg->height, arg->offset);
 }
 
-value ocamlyices_pp_term(value v_width_opt, value v_height_opt,
-    value v_offset_opt, value v_cb, value v_t) {
-  CAMLparam5(v_width_opt, v_height_opt, v_offset_opt, v_cb, v_t);
+CAMLprim value ocamlyices_pp_term(value v_width_opt, value v_height_opt,
+                         value v_offset_opt, value v_cb, value v_t) {
+  CAMLparam1(v_cb);
   term_t t = Term_val(v_t);
-  uint32_t width = Is_block(v_width_opt) ? (uint32_t)Long_val(Field(v_width_opt, 0)) : 80;
-  uint32_t height = Is_block(v_height_opt) ? (uint32_t)Long_val(Field(v_height_opt, 0)) : 1;
-  uint32_t offset = Is_block(v_offset_opt) ? (uint32_t)Long_val(Field(v_offset_opt, 0)) : 0;
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
+  DEBUG_PRINT("pp_term %ld %ld %ld\n", width, height, offset);
   struct pp_term_arg arg = { t, width, height, offset };
-  int res = ocamlyices_internal_pp_with_callback(v_cb, &ocamlyices_internal_pp_term, &arg);
-  if (res != 0) ocamlyices_failure();
+  int res = _oy_callback_print(v_cb,
+            &_oy_pp_term, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_pp_type(value v_width_opt, value v_height_opt,
-    value v_offset_opt, value v_cb, value v_t) {
-  CAMLparam5(v_width_opt, v_height_opt, v_offset_opt, v_cb, v_t);
+CAMLprim value ocamlyices_pp_type(value v_width_opt, value v_height_opt,
+                         value v_offset_opt, value v_cb, value v_t) {
+  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
   type_t t = Type_val(v_t);
-  uint32_t width = Is_block(v_width_opt) ? (uint32_t)Long_val(Field(v_width_opt, 0)) : 80;
-  uint32_t height = Is_block(v_height_opt) ? (uint32_t)Long_val(Field(v_height_opt, 0)) : 1;
-  uint32_t offset = Is_block(v_offset_opt) ? (uint32_t)Long_val(Field(v_offset_opt, 0)) : 0;
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
   struct pp_type_arg arg = { t, width, height, offset };
-  int res = ocamlyices_internal_pp_with_callback(v_cb, &ocamlyices_internal_pp_type, &arg);
-  if (res != 0) ocamlyices_failure();
+  int res = _oy_callback_print(v_cb,
+            &_oy_pp_type, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_pp_model(value v_width_opt, value v_height_opt,
-    value v_offset_opt, value v_cb, value v_mdl) {
-  CAMLparam5(v_width_opt, v_height_opt, v_offset_opt, v_cb, v_mdl);
-  model_t* mdl = Model_val(v_mdl);
-  uint32_t width = Is_block(v_width_opt) ? (uint32_t)Long_val(Field(v_width_opt, 0)) : 80;
-  uint32_t height = Is_block(v_height_opt) ? (uint32_t)Long_val(Field(v_height_opt, 0)) : 1;
-  uint32_t offset = Is_block(v_offset_opt) ? (uint32_t)Long_val(Field(v_offset_opt, 0)) : 0;
+CAMLprim value ocamlyices_pp_model(value v_width_opt, value v_height_opt,
+                          value v_offset_opt, value v_cb, value v_mdl) {
+  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
+  model_t *mdl = Model_val(v_mdl);
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
   struct pp_model_arg arg = { mdl, width, height, offset };
-  int res = ocamlyices_internal_pp_with_callback(v_cb, &ocamlyices_internal_pp_model, &arg);
-  if (res != 0) ocamlyices_failure();
+  int res = _oy_callback_print(v_cb,
+            &_oy_pp_model, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
   CAMLreturn(Val_unit);
 }
 
-/* TYPES */
-
-#define OCAMLYICES_TYPE_FROM_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_t) {\
-    CAMLparam1(v_t);\
-    type_t res;\
-    term_t t = Term_val(v_t);\
-  \
-    res = yices_ ## nameIn(t);\
-    if (res == NULL_TYPE) ocamlyices_failure();\
-  \
-    CAMLreturn(Type_val(res));\
-  }
-
-OCAMLYICES_TYPE_FROM_TERM(type_of_term, type_of_term)
-
-#define OCAMLYICES_BOOL_FROM_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_t) {\
-    CAMLparam1(v_t);\
-    term_t t = Term_val(v_t);\
-  \
-    int32_t res = yices_ ## nameIn (t);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_bool(res));\
-  }
-
-OCAMLYICES_BOOL_FROM_TERM(term_is_bool, term_is_bool)
-OCAMLYICES_BOOL_FROM_TERM(term_is_int, term_is_int)
-OCAMLYICES_BOOL_FROM_TERM(term_is_real, term_is_real)
-OCAMLYICES_BOOL_FROM_TERM(term_is_arithmetic, term_is_arithmetic)
-OCAMLYICES_BOOL_FROM_TERM(term_is_bitvector, term_is_bitvector)
-OCAMLYICES_BOOL_FROM_TERM(term_is_tuple, term_is_tuple)
-OCAMLYICES_BOOL_FROM_TERM(term_is_function, term_is_function)
-OCAMLYICES_BOOL_FROM_TERM(term_is_scalar, term_is_scalar)
-
-value ocamlyices_term_bitsize(value v_t) {
-  CAMLparam1(v_t);
-  term_t t = Term_val(v_t);
-
-  int32_t res = yices_term_bitsize(t);
-  if (res == 0) ocamlyices_check_failure();
-
-  CAMLreturn(Val_long(res));
-}

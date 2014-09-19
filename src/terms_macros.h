@@ -1,178 +1,266 @@
 /* TERMS */
 
-#define OCAMLYICES_NULLARY_TERM(nameIn, nameOut) \
-  value ocamlyices_ ## nameIn (value unit) { \
-    CAMLparam1(unit); \
-    term_t raw_res; \
-    raw_res = yices_ ## nameOut (); \
-    if (raw_res == NULL_TERM) ocamlyices_failure();\
-    CAMLreturn(Val_int(raw_res)); \
+
+static inline value _oy__bitvector_const(term_t (*f)(uint32_t), value v_n) {
+  intnat n = Long_val(v_n);
+  term_t res;
+  if (n < 0) {
+    _oy__invalid_argument("negative integer");
+  }
+  if (sizeof(intnat) > sizeof(int32_t) && n > UINT32_MAX) {
+    _oy__invalid_argument("integer too large");
+  }
+  res = (*f)((uint32_t)n);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline value _oy__nullary(term_t (*f)()) {
+  term_t res = (*f)();
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline value _oy__unary(term_t (*f)(term_t), value v_arg) {
+  term_t res = (*f)(Term_val(v_arg));
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline value _oy__binary(term_t (*f)(term_t, term_t), value v_arg1,
+                                value v_arg2) {
+  term_t res = (*f)(Term_val(v_arg1), Term_val(v_arg2));
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline value _oy__ternary(term_t (*f)(term_t, term_t, term_t),
+                                 value v_arg1, value v_arg2, value v_arg3) {
+  term_t res = (*f)(Term_val(v_arg1), Term_val(v_arg2), Term_val(v_arg3));
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline intnat *_oy__nativeints_from_int_values(value v_arr, uint32_t n) {
+  intnat *arr;
+  uint32_t i;
+
+  arr = (intnat *) malloc(sizeof(intnat[n]));
+  if (arr) {
+    for (i = 0; i < n; i++) {
+      arr[i] = Long_val(Field(v_arr, i));
+    }
   }
 
-#define OCAMLYICES_UNARY_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X(nameIn, nameOut, term_t, Int_val)
-#define OCAMLYICES_BINARY_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, term_t, Int_val, term_t, Int_val)
-#define OCAMLYICES_TERNARY_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y_Z(nameIn, nameOut, term_t, Int_val, term_t, Int_val, term_t, Int_val)
-#define OCAMLYICES_NARY_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_Xs(nameIn, nameOut, term_t, Int_val)
+  return arr;
+}
 
-#define OCAMLYICES_TERM_FROM_TYPE(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X(nameIn, nameOut, type_t, Int_val)
-#define OCAMLYICES_TERM_FROM_INT32(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X(nameIn, nameOut, int32_t, Int32_val)
-#define OCAMLYICES_TERM_FROM_INT64(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X(nameIn, nameOut, int32_t, Int64_val)
-#define OCAMLYICES_TERM_FROM_INTs(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_Xs(nameIn, nameOut, int32_t, Int_val)
+static inline intnat *_oy__nativeints_from_nativeint_values(value v_arr,
+    uint32_t n) {
+  intnat *arr;
+  uint32_t i;
 
-#define OCAMLYICES_TERM_FROM_UINT_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, uint32_t, Int_val, term_t, Int_val)
-#define OCAMLYICES_TERM_FROM_TYPE_INT(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, type_t, Int_val, int32_t, Int_val)
-#define OCAMLYICES_TERM_FROM_TERM_UINT(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, term_t, Int_val, uint32_t, Int_val)
-#define OCAMLYICES_TERM_FROM_TERM_UINT32(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, term_t, Int_val, uint32_t, Int32_val)
-
-#define OCAMLYICES_TERM_FROM_TERM_UINT_TERM(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y_Z(nameIn, nameOut, term_t, Int_val, uint32_t, Int_val, term_t, Int_val)
-#define OCAMLYICES_TERM_FROM_TERM_INT_INT(nameIn, nameOut) \
-  OCAMLYICES_TERM_FROM_X_Y_Z(nameIn, nameOut, term_t, Int_val, uint32_t, Int_val, uint32_t, Int_val)
-
-#define OCAMLYICES_TERM_FROM_X_X(nameIn, nameOut, X_t, X_val) \
-  OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, X_t, X_val, X_t, X_val)
-
-#define OCAMLYICES_TERM_FROM_X(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_val) {\
-    CAMLparam1(v_val);\
-    term_t res;\
-  \
-    X_t val = X_val(v_val);\
-    NOT_NEEDED_VALUE(v_val);\
-  \
-    res = yices_ ## nameIn (val);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-#define OCAMLYICES_TERM_FROM_X_Y(nameIn, nameOut, X_t, X_val, Y_t, Y_val) \
-  value ocamlyices_ ## nameOut (value v_x, value v_y) {\
-    CAMLparam2(v_x, v_y);\
-    term_t res;\
-  \
-    X_t x = X_val(v_x);\
-    Y_t y = Y_val(v_y);\
-    NOT_NEEDED_VALUE(v_x);\
-    NOT_NEEDED_VALUE(v_y);\
-  \
-    res = yices_ ## nameIn (x, y);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-#define OCAMLYICES_TERM_FROM_X_Y_Z(nameIn, nameOut, X_t, X_val, Y_t, Y_val, Z_t, Z_val) \
-  value ocamlyices_ ## nameOut (value v_arg1, value v_arg2, value v_arg3) { \
-    CAMLparam3(v_arg1, v_arg2, v_arg3);\
-    X_t arg1; Y_t arg2; Z_t arg3; term_t res;\
-  \
-    arg1 = X_val(v_arg1);\
-    arg2 = Y_val(v_arg2);\
-    arg3 = Z_val(v_arg3);\
-    NOT_NEEDED_VALUE(v_arg1);\
-    NOT_NEEDED_VALUE(v_arg2);\
-    NOT_NEEDED_VALUE(v_arg3);\
-  \
-    res = yices_ ## nameIn (arg1, arg2, arg3);\
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
-  }
-#define OCAMLYICES_TERM_FROM_Xs(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_args) { \
-    CAMLparam1(v_args); \
-    X_t* args; \
-    term_t res; \
-    size_t n, i; \
-   \
-    n = Wosize_val(v_args); \
-    args = (X_t*) malloc(sizeof(X_t[n])); \
-   \
-    for (i = 0; i < n; i++) { \
-      args[i] = X_val(Field(v_args, i)); \
-    } \
-    NOT_NEEDED_VALUE(v_args); \
-   \
-    res = yices_ ## nameIn(n, args); \
-    free(args);\
-    if (res == NULL_TERM) ocamlyices_failure(); \
-   \
-    CAMLreturn(Val_int(res)); \
+  arr = (intnat *) malloc(sizeof(intnat[n]));
+  if (arr) {
+    for (i = 0; i < n; i++) {
+      arr[i] = Nativeint_val(Field(v_arr, i));
+    }
   }
 
-#define OCAMLYICES_TERM_FROM_STRING(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_arg) { \
-    CAMLparam1(v_arg); \
-    term_t res;\
-    const char* arg = String_val(v_arg); /* no early-releasing of v_arg*/\
-   \
-    res = yices_ ## nameIn (arg); \
-    if (res == NULL_TERM) ocamlyices_failure(); \
-   \
-    CAMLreturn(Val_int(res)); \
+  return arr;
+}
+
+static inline int32_t *_oy__int32s_from_int32_values(value v_arr, uint32_t n) {
+  int32_t *arr;
+  uint32_t i;
+
+  arr = (int32_t *) malloc(sizeof(int32_t[n]));
+  if (arr) {
+    for (i = 0; i < n; i++) {
+      arr[i] = Int32_val(Field(v_arr, i));
+    }
   }
 
-#define OCAMLYICES_TERM_FROM_TERM_TERMs(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_fun, value v_args) {\
-    CAMLparam2(v_fun, v_args);\
-    term_t fun, res, *args;\
-    size_t n;\
-  \
-    fun = Int_val(v_fun);\
-  \
-    ML2C_COPY_ARRAY(v_args, n, args, term_t, Term_val);\
-    NOT_NEEDED_VALUE(v_args);\
-    if (args == (void*)0) ocamlyices_allocation_error();\
-  \
-    res = yices_ ## nameIn (fun, n, args);\
-    free(args);\
-  \
-    if (res == NULL_TERM) ocamlyices_failure();\
-  \
-    CAMLreturn(Val_int(res));\
+  return arr;
+}
+
+static inline int64_t *_oy__int64s_from_int64_values(value v_arr, uint32_t n) {
+  int64_t *arr;
+  uint32_t i;
+
+  arr = (int64_t *) malloc(sizeof(int64_t[n]));
+  if (arr) {
+    for (i = 0; i < n; i++) {
+      arr[i] = Int64_val(Field(v_arr, i));
+    }
   }
 
-/* Around terms */
+  return arr;
+}
 
-#define OCAMLYICES_ERRVOID_FROM_X_STRING(nameIn, nameOut, X_t, X_val) \
-  value ocamlyices_ ## nameOut (value v_tau, value v_name) {\
-    CAMLparam2(v_tau, v_name);\
-    X_t tau = X_val(v_tau);\
-    const char* name = String_val(v_name);\
-    int32_t res = yices_ ## nameIn (tau, name);\
-    if (res != 0) ocamlyices_failure();\
-    CAMLreturn(Val_int(0));\
-  }
-#define OCAMLYICES_VOID_FROM_STRING(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_name) {\
-    CAMLparam1(v_name);\
-    const char* name = String_val(v_name);\
-    yices_ ## nameIn (name);\
-    CAMLreturn(Val_int(0));\
-  }
-#define OCAMLYICES_ERRVOID_FROM_STRING(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_name) {\
-    CAMLparam1(v_name);\
-    const char* name = String_val(v_name);\
-    int32_t res = yices_ ## nameIn (name);\
-    if (res != 0) ocamlyices_failure();\
-    CAMLreturn(Val_int(0));\
+
+static inline value _oy__nary_const(term_t (*f)(uint32_t, const term_t *),
+                                    value v_args) {
+  CAMLparam1(v_args);
+  term_t *args;
+  term_t res;
+
+  uint32_t n = check_Wosize_val(v_args);
+  args = _oy__terms_from_values(v_args, n);
+  if (args == NULL) {
+    _oy__allocation_error();
   }
 
-#define OCAMLYICES_VOID_FROM_CONTEXT(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_context) {\
-    CAMLparam1(v_context);\
-    yices_ ## nameIn (Ocamlyices_context_val(v_context));\
-    CAMLreturn(Val_int(0));\
+  res = (*f)(n, args);
+  free(args);
+  if (res == NULL_TERM) {
+    _oy__error();
   }
+  CAMLreturn(Val_term(res));
+}
+
+static inline value _oy__nary(term_t (*f)(uint32_t, term_t *), value v_args) {
+  CAMLparam1(v_args);
+  term_t *args;
+  term_t res;
+
+  uint32_t n = check_Wosize_val(v_args);
+  args = _oy__terms_from_values(v_args, n);
+  if (args == NULL) {
+    _oy__allocation_error();
+  }
+
+  res = (*f)(n, args);
+  free(args);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  CAMLreturn(Val_term(res));
+}
+
+
+static inline value _oy__unary_quantifier(term_t (*q) (uint32_t n, term_t *,
+    term_t), value v_arg, value v_body) {
+  term_t arg = Term_val(v_arg);
+  term_t res = (*q)(1, &arg, Term_val(v_body));
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  return Val_term(res);
+}
+
+static inline value _oy__nary_quantifier(term_t (*q) (uint32_t n, term_t *,
+    term_t),
+    value v_args, value v_body) {
+  CAMLparam1(v_args);
+  term_t res, *args;
+
+  uint32_t n = check_Wosize_val(v_args);
+  args = _oy__terms_from_values(v_args, n);
+  if (args == NULL) {
+    _oy__allocation_error();
+  }
+
+  res = (*q)(n, args, Term_val(v_body));
+  free(args);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+  CAMLreturn(Val_term(res));
+}
+
+static inline value _oy__parser(term_t (*f) (const char *), value v_arg) {
+  CAMLparam1(v_arg);
+  term_t res;
+  const char *arg = String_val(v_arg);
+  _oy_check_init();
+
+  res = (*f)(arg);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+
+  CAMLreturn(Val_term(res));
+}
+
+static inline value _oy_term_of_term_MLintCuint32(term_t (*f)(term_t, uint32_t),
+    value v_t, value v_d,
+    const char *negative, const char *toolarge) {
+  term_t res;
+
+  intnat d = Long_val(v_d);
+
+  if (d < 0) {
+    _oy__invalid_argument(negative);
+  }
+  if (sizeof(intnat) > sizeof(uint32_t) && d > UINT32_MAX) {
+    _oy__invalid_argument(toolarge);
+  }
+
+  res = (*f)(Term_val(v_t), (uint32_t)d);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+
+  return Val_term(res);
+}
+
+static inline value _oy_term_of_term_degree(term_t (*f)(term_t, uint32_t),
+    value v_t, value v_d) {
+  return _oy_term_of_term_MLintCuint32(f, v_t, v_d, "negative degree",
+                                       "degree too large");
+}
+
+static inline value _oy_term_of_term_degree64(term_t (*f)(term_t, uint32_t),
+    value v_t, value v_d) {
+  CAMLparam1(v_d);
+  term_t res;
+
+  int64_t d = Int64_val(v_d);
+
+  if (d < 0) {
+    _oy__invalid_argument("negative degree");
+  }
+  if (d > UINT32_MAX) {
+    _oy__invalid_argument("degree too large");
+  }
+
+  res = (*f)(Term_val(v_t), (uint32_t) d);
+  if (res == NULL_TERM) {
+    _oy__error();
+  }
+
+  CAMLreturn(Val_term(res));
+}
+
+static inline value _oy_term_of_term_shift(term_t (*f)(term_t, uint32_t),
+    value v_t, value v_d) {
+  return _oy_term_of_term_MLintCuint32(f, v_t, v_d, "negative shift",
+                                       "shift too large");
+}
+
+static inline value _oy_term_of_term_index(term_t (*f)(term_t, uint32_t),
+    value v_t, value v_d) {
+  return _oy_term_of_term_MLintCuint32(f, v_t, v_d, "negative index",
+                                       "index too large");
+}
+
+
+static inline value _oy_bool_of_term(int32_t (*f)(term_t), value v_t) {
+  int32_t res = (*f)(Term_val(v_t));
+  if (res == 0) {
+    _oy__check_error();
+  }
+  return Val_bool(res);
+}
+

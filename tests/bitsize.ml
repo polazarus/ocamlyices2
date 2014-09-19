@@ -1,17 +1,30 @@
-let () =
-  Yices2.init ();
+open Yices2;;
 
-  let bv1 = Yices2.bvconst_zero 5 in
-  let i64 = Yices2.int64_ 64L in
-  assert (Yices2.term_is_bitvector bv1);
-  assert (Pervasives.not (Yices2.term_is_bitvector i64));
-  
-  assert (5 = (Yices2.term_bitsize bv1));
-  (
+let () =
+  let bv1 = Term.Bitvector.zero 5 in
+  let i64 = Term.Arith.of_int64 64L in
+
+  assert (Term.is_bitvector bv1);
+  assert (not (Term.is_bitvector i64));
+
+  assert (5 = (Term.bitsize bv1));
+  assert (5 = (Type.bitsize (Type.of_term bv1)));
+
+  begin
     try
-      let _ = Yices2.term_bitsize i64 in
+      let _ = Term.bitsize i64 in
       assert false
-    with Yices2.YicesError (msg, r) ->
-      assert (r.Yices2.code == 24)
-  );
-  Yices2.exit ()
+    with YicesError (Error.BITVECTOR_REQUIRED, _) ->
+      ()
+    |  YicesError (_, r) ->
+      prerr_endline r.Error.name;
+      assert false
+  end;
+
+   begin
+    try
+      let _ = Type.bitsize (Type.of_term i64) in
+      assert false
+    with YicesError (code, r) ->
+      assert (r.Error.name = "BVTYPE_REQUIRED")
+  end

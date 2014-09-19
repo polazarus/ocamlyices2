@@ -1,15 +1,21 @@
 #ifndef __OCAMLYICES2_H__
 #define __OCAMLYICES2_H__
 
-#include <stdlib.h>
-#include <caml/mlvalues.h>
-#include <caml/memory.h>
-#include <caml/threads.h>
-#include <caml/alloc.h>
 #include <yices.h>
+#include <caml/mlvalues.h>
+#include <caml/custom.h> // for custom blocks
+#include <caml/threads.h> // for caml_release/acquire_runtime_system
+#include <caml/alloc.h> // caml_alloc, copy_string, etc.
+#include <caml/fail.h> // calml_failwith
 
-#define CAML_MAX_INT ((1L << (8 * sizeof(value) - 2)) - 1)
-#define CAML_MIN_INT (-(1L << (8 * sizeof(value) - 2)))
+#include <stdlib.h> // for malloc, free
+#include <stdint.h> // for (u)int32_t etc.
+
+
+#ifdef __cplusplus
+#undef CAMLprim
+#define CAMLprim extern "C"
+#endif
 
 #define COND_MT_START(cond) do { if (cond) caml_release_runtime_system(); } while (0)
 #define COND_MT_END(cond) do { if (cond) caml_acquire_runtime_system(); } while (0)
@@ -28,46 +34,91 @@
 #define MTFLAG_NAMING 0
 #define MTFLAG_PP 1
 
-#define Context_val(v) (*(context_t**)Data_custom_val(v))
-#define Model_val(v) (*(model_t**)Data_custom_val(v))
+static inline context_t *Context_val(value v) {
+  return (*((context_t **)Data_custom_val(v)));
+}
+static inline model_t *Model_val(value v) {
+  return (*((model_t **)Data_custom_val(v)));
+}
+static inline model_t *Mdlctx_val_model(value v) {
+  return Model_val(Field(v,0));
+}
+static inline context_t *Mdlctx_val_context(value v) {
+  return Context_val(Field(v,1));
+}
 
-#define Term_val(v) ((term_t) Long_val(v))
-#define Val_term(v) Val_long(v)
-#define Type_val(v) ((type_t) Long_val(v))
-#define Val_type(v) Val_long(v)
+#define Term_val(v) (term_t)Long_val(v)
+#define Val_term(v) Val_long((intnat)v)
+#define Type_val(v) (type_t)Long_val(v)
+#define Val_type(v) Val_long((intnat)v)
 
-#define ML2C_COPY_ARRAY(v_arr, n, arr, X_t, X_val) \
-  do {\
-    size_t i;\
-    n = Wosize_val(v_arr);\
-    arr = (X_t*) malloc(sizeof(X_t[n]));\
-    if (arr != (void*)0)\
-      for (i = 0; i < n; i++)\
-        arr[i] = X_val(Field(v_arr, i));\
-  } while (0)
+#ifdef __GNUC__
+#define UNUSED __attribute__((unused))
+#define NORETURN __attribute__((noreturn))
+#else
+#define UNUSED
+#define NORETURN
+#endif
 
-#define ocamlyices_check_failure ocamlyices_internal_check_failure
-#define ocamlyices_failure ocamlyices_internal_failure
-#define ocamlyices_eval_binding_overflow ocamlyices_internal_eval_binding_overflow
-#define ocamlyices_already_freed_model ocamlyices_internal_already_freed_model
-#define ocamlyices_already_freed_config ocamlyices_internal_already_freed_config
-#define ocamlyices_already_freed_context ocamlyices_internal_already_freed_context
-#define ocamlyices_allocation_error ocamlyices_internal_allocation_error
-#define ocamlyices_bad_array_sizes_error ocamlyices_internal_bad_array_sizes_error
-#define ocamlyices_invalid_argument ocamlyices_internal_invalid_argument
-#define ocamlyices_pp_with_callback ocamlyices_internal_pp_with_callback
+void _oy__check_error();
 
-void ocamlyices_check_failure();
-void ocamlyices_failure();
-void ocamlyices_eval_binding_overflow();
-void ocamlyices_already_freed_model();
-void ocamlyices_already_freed_config();
-void ocamlyices_already_freed_context();
-void ocamlyices_allocation_error();
-void ocamlyices_bad_array_sizes_error();
-void ocamlyices_invalid_argument(const char*);
-void ocamlyices_unsupported_error();
+static inline NORETURN void _oy__error() {
+  _oy__check_error();
+  caml_failwith("Unknown error");
+}
+static inline NORETURN void _oy__binding_overflow_error() {
+  caml_failwith("Output overflows (due to the binding, try another variant of the function)");
+}
+static inline NORETURN void _oy__freed_model_error() {
+  caml_failwith("Illegal operation on freed model");
+}
+static inline NORETURN void _oy__freed_config_error() {
+  caml_failwith("Illegal operation on freed config");
+}
+static inline NORETURN void _oy__freed_context_error() {
+  caml_failwith("Illegal operation on freed context");
+}
+static inline NORETURN void _oy__allocation_error() {
+  caml_failwith("Illegal operation on freed model");
+}
+static inline NORETURN void _oy__unsupported() {
+  caml_failwith("Unsupported operation");
+}
+static inline NORETURN void _oy__invalid_array_sizes() {
+  caml_invalid_argument("Arrays with different sizes");
+}
+static inline NORETURN void _oy__invalid_argument(const char *message) {
+  caml_invalid_argument(message);
+}
 
-int ocamlyices_pp_with_callback(value v_cb, int (*pp_fun)(FILE*, void*), void* arg);
+#ifdef DEBUG
+#define DEBUG_PRINT(s, ...) do {fprintf(stderr, "[DEBUG] " s, ##__VA_ARGS__); fflush(stderr); } while(0);
+#else
+#define DEBUG_PRINT(...) do {} while (0)
+#endif
+
+static inline uint32_t check_Wosize_val(value val) {
+  mlsize_t n_raw = Wosize_val(val);
+  if (Max_wosize > UINT32_MAX && n_raw > UINT32_MAX) {
+    _oy__invalid_argument("array too large");
+  }
+  return (uint32_t) n_raw;
+}
+
+static inline term_t *_oy__terms_from_values(value v_arr, uint32_t n) {
+  term_t *arr;
+  uint32_t i;
+
+  arr = (term_t *) malloc(sizeof(term_t[n]));
+  if (arr) {
+    for (i = 0; i < n; i++) {
+      arr[i] = Term_val(Field(v_arr, i));
+    }
+  }
+
+  return arr;
+}
+
+void _oy_check_init();
 
 #endif

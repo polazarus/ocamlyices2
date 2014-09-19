@@ -1,152 +1,181 @@
 #include "config.h"
-#include "ocamlyices2.h"
+
+#include <stdint.h> // for (u)int32_t etc.
+
+#include <yices.h>
+#include <caml/mlvalues.h>
+#include <caml/memory.h>
+#include <caml/alloc.h>
 #include <caml/custom.h>
 
-static struct custom_operations ocamlyices_context_ops = {
-  "ocamlyices.context",
-  custom_finalize_default,
+#include "ocamlyices2.h"
+
+static void _oy__context_finalize(value v);
+static void _oy__config_finalize(value v);
+static void _oy__params_finalize(value v);
+
+static char _oy__context_id[] = "ocamlyices.context";
+static struct custom_operations _oy__context_ops = {
+  _oy__context_id,
+  &_oy__context_finalize,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
-  custom_deserialize_default
+  custom_deserialize_default,
+  custom_compare_ext_default
 };
 
-static struct custom_operations ocamlyices_ctx_config_ops = {
-  "ocamlyices.config",
-  custom_finalize_default,
+static char _oy__config_id[] = "ocamlyices.config";
+static struct custom_operations _oy__ctx_config_ops = {
+  _oy__config_id,
+  &_oy__config_finalize,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
-  custom_deserialize_default
+  custom_deserialize_default,
+  custom_compare_ext_default
 };
 
-static struct custom_operations ocamlyices_param_ops = {
-  "ocamlyices.param",
-  custom_finalize_default,
+static char _oy__params_id[] = "ocamlyices.params";
+static struct custom_operations _oy__params_ops = {
+  _oy__params_id,
+  &_oy__params_finalize,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
-  custom_deserialize_default
+  custom_deserialize_default,
+  custom_compare_ext_default
 };
 
-#define caml_alloc_context() caml_alloc_custom(&ocamlyices_context_ops, sizeof (context_t*), 0, 1)
+#define caml_alloc_context() caml_alloc_custom(&_oy__context_ops, sizeof (context_t*), 0, 1)
 #define Store_context_val(v, raw) do { *(context_t**)Data_custom_val(v) = raw; } while (0)
-
-#define caml_alloc_config() caml_alloc_custom(&ocamlyices_ctx_config_ops, sizeof (ctx_config_t*), 0, 1)
+#define caml_alloc_config() caml_alloc_custom(&_oy__ctx_config_ops, sizeof (ctx_config_t*), 0, 1)
 #define Store_config_val(v, raw) do { *(ctx_config_t**)Data_custom_val(v) = raw; } while (0)
 #define Config_val(v) *(ctx_config_t**)Data_custom_val(v)
 
-#define caml_alloc_param() caml_alloc_custom(&ocamlyices_param_ops, sizeof (param_t*), 0, 1)
-#define Store_param_val(v, raw) do { *(param_t**)Data_custom_val(v) = raw; } while (0)
-#define Param_val(v) *(param_t**)Data_custom_val(v)
+#define caml_alloc_params() caml_alloc_custom(&_oy__params_ops, sizeof (param_t*), 0, 1)
+#define Store_params_val(v, raw) do { *(param_t**)Data_custom_val(v) = raw; } while (0)
+#define Params_val(v) *(param_t**)Data_custom_val(v)
 
-value ocamlyices_new_config(value unit) {
-  CAMLparam1(unit);
+CAMLprim value ocamlyices_config_create(UNUSED value unit) {
+  CAMLparam0();
   CAMLlocal1(v_res);
-  ctx_config_t * res = yices_new_config();
+  _oy_check_init();
+  ctx_config_t *res = yices_new_config();
   v_res = caml_alloc_config();
   Store_config_val(v_res, res);
   CAMLreturn(v_res);
 }
 
-value ocamlyices_free_config(value v_config) {
-  CAMLparam1(v_config);
+static void _oy__config_finalize(value v_config) {
+  DEBUG_PRINT("finalize config\n");
   ctx_config_t *config = Config_val(v_config);
-  if (config != (void*)0) {
+  if (config != NULL) {
     yices_free_config(config);
-    Store_config_val(v_config, (void*) 0);
+    Store_config_val(v_config, NULL);
+  }
+}
+
+CAMLprim value ocamlyices_config_set(value v_config, value v_name,
+                                     value v_value) {
+  CAMLparam3(v_config, v_name, v_value);
+  int32_t res;
+  ctx_config_t *config;
+  const char *name;
+  const char *value_;
+
+  name = String_val(v_name);
+  value_ = String_val(v_value);
+  config = Config_val(v_config);
+
+  if (config == NULL) {
+    _oy__freed_config_error();
+  }
+
+  res = yices_set_config(config, name, value_);
+  if (res != 0) {
+    _oy__error();
   }
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_set_config(value v_config, value v_name, value v_value) {
-  CAMLparam3(v_config, v_name, v_value);
-  int32_t res;
-  ctx_config_t * config;
-  const char* name;
-  const char* value_;
-  
-  name = String_val(v_name);
-  value_ = String_val(v_value);
-  config = Config_val(v_config);
-  NOT_NEEDED_VALUE(v_config);
-
-  if (config == (void*)0) ocamlyices_already_freed_config();
-
-  res = yices_set_config(config, name, value_);
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_unit);
-}
-
-value ocamlyices_default_config_for_logic(value v_config, value v_logic) {
+CAMLprim value ocamlyices_config_default_for_logic(value v_config,
+    value v_logic) {
   CAMLparam2(v_config, v_logic);
   int32_t res;
-  ctx_config_t * config;
-  const char* logic;
-  
+  ctx_config_t *config;
+  const char *logic;
+
   config = Config_val(v_config);
   logic = String_val(v_logic);
-  NOT_NEEDED_VALUE(v_config);
 
-  if (config == (void*)0) ocamlyices_already_freed_config();
+  if (config == NULL) {
+    _oy__freed_config_error();
+  }
 
   res = yices_default_config_for_logic(config, logic);
-  if (res != 0) ocamlyices_failure();
+  if (res != 0) {
+    _oy__error();
+  }
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_new_context(value v_config_opt, value unit) {
-  CAMLparam2(v_config_opt, unit);
+CAMLprim value ocamlyices_context_create(value v_config_opt,
+    UNUSED value unit) {
+  CAMLparam1(v_config_opt);
   CAMLlocal1(v_res);
   context_t *res;
   ctx_config_t *config;
 
   if (Is_block(v_config_opt)) {
     config = Config_val(Field(v_config_opt, 0));
-    NOT_NEEDED_VALUE(v_config_opt);
 
-    if (config == (void*)0)
-      ocamlyices_already_freed_config();
+    if (config == NULL) {
+      _oy__freed_config_error();
+    }
   } else {
-    config = (void*) 0;
+    config = NULL;
   }
 
+  _oy_check_init();
   res = yices_new_context(config);
-  if (res == (void*)0) ocamlyices_failure();
+  if (res == NULL) {
+    _oy__error();
+  }
 
   v_res = caml_alloc_context();
   Store_context_val(v_res, res);
   CAMLreturn(v_res);
 }
 
-value ocamlyices_free_context(value v_context) {
-  CAMLparam1(v_context);
-  context_t* context = Context_val(v_context);
-  if (context != (void*)0) {
+static void _oy__context_finalize(value v_context) {
+  context_t *context = Context_val(v_context);
+  if (context != NULL) {
     yices_free_context(context);
-    Store_context_val(v_context, (void*)0);
+    Store_context_val(v_context, NULL);
   }
-  CAMLreturn(Val_unit);
 }
 
-value ocamlyices_context_status(value v_context) {
+CAMLprim value ocamlyices_context_status(value v_context) {
   CAMLparam1(v_context);
 
   context_t *context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
-  if (context == (void*)0) ocamlyices_already_freed_context();
+  if (context == NULL) {
+    _oy__freed_context_error();
+  }
 
   smt_status_t status = yices_context_status(context);
 
   CAMLreturn(Val_int((int)status));
 }
 
-value ocamlyices_reset_context(value v_context) {
+CAMLprim value ocamlyices_context_reset(value v_context) {
   CAMLparam1(v_context);
 
-  context_t* context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
-  if (context == (void*)0) ocamlyices_already_freed_context();
+  context_t *context = Context_val(v_context);
+  if (context == NULL) {
+    _oy__freed_context_error();
+  }
 
   COND_MT_START(MTFLAG_STACKOP);
   yices_reset_context(context);
@@ -155,85 +184,104 @@ value ocamlyices_reset_context(value v_context) {
   CAMLreturn(Val_unit);
 }
 
-#define OCAMLYICES_CONTEXT_STACKOP(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_context) {\
-    CAMLparam1(v_context);\
-    int32_t res;\
-    context_t* context = Context_val(v_context);\
-    NOT_NEEDED_VALUE(v_context);\
-  \
-    COND_MT_START(MTFLAG_STACKOP);\
-    res = yices_ ## nameIn (context);\
-    COND_MT_END(MTFLAG_STACKOP);\
-  \
-    if (res != 0) ocamlyices_failure();\
-    CAMLreturn(Val_unit);\
+static inline value _oy__context_stackop(int32_t (*f)(context_t *),
+    value v_context) {
+  CAMLparam1(v_context);
+  int32_t res;
+  context_t *context;
+
+  context = Context_val(v_context);
+  COND_MT_START(MTFLAG_STACKOP);
+  res = (*f)(context);
+  COND_MT_END(MTFLAG_STACKOP);
+  if (res != 0) {
+    _oy__error();
   }
 
-OCAMLYICES_CONTEXT_STACKOP(push, push)
-OCAMLYICES_CONTEXT_STACKOP(pop, pop)
+  CAMLreturn(Val_unit);
+}
 
-#define OCAMLYICES_CONTEXT_TOGGLE_OPTION(nameIn, nameOut) \
-  value ocamlyices_ ## nameOut (value v_context, value v_option) {\
-    CAMLparam2(v_context, v_option);\
-    int32_t res;\
-    context_t* context = Context_val(v_context);\
-    const char* option = String_val(v_option);\
-  \
-    res = yices_ ## nameIn (context, option);\
-  \
-    if (res != 0) ocamlyices_failure();\
-    CAMLreturn(Val_unit);\
+CAMLprim value ocamlyices_context_push(value v_ctx) {
+  return _oy__context_stackop(&yices_push, v_ctx);
+}
+
+CAMLprim value ocamlyices_context_pop(value v_ctx) {
+  return _oy__context_stackop(&yices_pop, v_ctx);
+}
+
+static inline value _oy_context_toggle_option(
+  int32_t (*f)(context_t *, const char *),
+  value v_context, value v_option
+) {
+  CAMLparam2(v_context, v_option);
+  int32_t res;
+  context_t *context = Context_val(v_context);
+  const char *option = String_val(v_option);
+
+  res = (*f)(context, option);
+  if (res != 0) {
+    _oy__error();
   }
 
-OCAMLYICES_CONTEXT_TOGGLE_OPTION(context_enable_option, context_enable_option)
-OCAMLYICES_CONTEXT_TOGGLE_OPTION(context_disable_option, context_disable_option)
+  CAMLreturn(Val_unit);
+  \
+}
 
-value ocamlyices_assert_formula(value v_context, value v_formula) {
-  CAMLparam2(v_context, v_formula);
+CAMLprim value ocamlyices_context_enable_option(value v_ctx, value v_opt) {
+  return _oy_context_toggle_option(&yices_context_enable_option, v_ctx, v_opt);
+}
+CAMLprim value ocamlyices_context_disable_option(value v_ctx, value v_opt) {
+  return _oy_context_toggle_option(&yices_context_disable_option, v_ctx, v_opt);
+}
+
+CAMLprim value ocamlyices_context_assert_formula(value v_context,
+    value v_formula) {
+  // Hyp: v_formula is a non-block value
+  CAMLparam1(v_context);
   int32_t res;
   term_t formula = Int_val(v_formula);
-  context_t* context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
+  context_t *context = Context_val(v_context);
 
   COND_MT_START(MTFLAG_ASSERT);
   res = yices_assert_formula(context, formula);
   COND_MT_END(MTFLAG_ASSERT);
 
-  if (res != 0) ocamlyices_failure();
+  if (res != 0) {
+    _oy__error();
+  }
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_assert_formulas(value v_context, value v_formulas) {
+CAMLprim value ocamlyices_context_assert_formulas(value v_context,
+    value v_formulas) {
   CAMLparam2(v_context, v_formulas);
   int32_t res;
-  context_t* context;
-  size_t n;
-  term_t* formulas;
+  uint32_t n;
+  term_t *formulas;
 
-  context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
-
-  ML2C_COPY_ARRAY(v_formulas, n, formulas, term_t, Term_val);
-  NOT_NEEDED_VALUE(v_formulas);
-  if (formulas == (void*)0) ocamlyices_allocation_error();
+  n = check_Wosize_val(v_formulas);
+  formulas = _oy__terms_from_values(v_formulas, n);
+  if (formulas == NULL) {
+    _oy__allocation_error();
+  }
 
   COND_MT_START(MTFLAG_ASSERT);
-  res = yices_assert_formulas(context, n, formulas);
-  free(formulas);
+  res = yices_assert_formulas(Context_val(v_context), n, formulas);
   COND_MT_END(MTFLAG_ASSERT);
+  free(formulas);
+  if (res != 0) {
+    _oy__error();
+  }
 
-  if (res != 0) ocamlyices_failure();
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_check(value v_param_opt, value v_context) {
+CAMLprim value ocamlyices_context_check(value v_param_opt, value v_context) {
   CAMLparam2(v_param_opt, v_context);
   smt_status_t res;
   context_t *context = Context_val(v_context);
-  param_t *param = (Is_block(v_param_opt) ? Param_val(Field(v_param_opt, 0)) : (void*)0);
-  NOT_NEEDED_VALUE(v_context);
-  NOT_NEEDED_VALUE(v_param_opt);
+  param_t *param = (Is_block(v_param_opt) ? Params_val(Field(v_param_opt,
+                    0)) : NULL);
 
   COND_MT_START(MTFLAG_CHECK);
   res = yices_check_context(context, param);
@@ -242,68 +290,70 @@ value ocamlyices_check(value v_param_opt, value v_context) {
   CAMLreturn(Val_int((int)res));
 }
 
-value ocamlyices_assert_blocking_clause(value v_context) {
+CAMLprim value ocamlyices_context_assert_blocking_clause(value v_context) {
   CAMLparam1(v_context);
   int32_t res;
   context_t *context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
 
   COND_MT_START(MTFLAG_ASSERT);
   res = yices_assert_blocking_clause(context);
   COND_MT_END(MTFLAG_ASSERT);
+  if (res != 0) {
+    _oy__error();
+  }
 
-  if (res != 0) ocamlyices_failure();
-  CAMLreturn(Val_int(0));
+  CAMLreturn(Val_unit);
 }
 
-value ocamlyices_stop_search(value v_context) {
+CAMLprim value ocamlyices_context_stop_search(value v_context) {
   CAMLparam1(v_context);
-  context_t* context = Context_val(v_context);
-  NOT_NEEDED_VALUE(v_context);
+  context_t *context = Context_val(v_context);
 
   COND_MT_START(MTFLAG_STOP_SEARCH);
   yices_stop_search(context);
   COND_MT_END(MTFLAG_STOP_SEARCH);
 
-  CAMLreturn(Val_int(0));
+  CAMLreturn(Val_unit);
 }
 
-value ocamlyices_new_param_record(value unit) {
+CAMLprim value ocamlyices_params_create(value unit) {
   CAMLparam1(unit);
   CAMLlocal1(v_res);
 
   param_t *res = yices_new_param_record();
-  if (res == (void*)0) ocamlyices_failure();
+  if (res == NULL) {
+    _oy__error();
+  }
 
-  v_res = caml_alloc_param();
-  Store_param_val(v_res, res);
+  v_res = caml_alloc_params();
+  Store_params_val(v_res, res);
 
   CAMLreturn(Val_int(v_res));
 }
 
-value ocamlyices_set_param(value v_param, value v_name, value v_value) {
-  CAMLparam3(v_param, v_name, v_value);
-  param_t * param = Param_val(v_param);
-  const char* name = String_val(v_name);
-  const char* value_ = String_val(v_value);
+CAMLprim value ocamlyices_params_set(value v_params, value v_name,
+                                     value v_value) {
+  CAMLparam3(v_params, v_name, v_value);
+  param_t *params = Params_val(v_params);
+  const char *name = String_val(v_name);
+  const char *value_ = String_val(v_value);
   int32_t res;
-  NOT_NEEDED_VALUE(v_param);
-  /* Cannot release v_name and v_value */
 
-  res = yices_set_param(param, name, value_);
-  if (res != 0) ocamlyices_failure();
+  res = yices_set_param(params, name, value_);
+  if (res != 0) {
+    _oy__error();
+  }
 
   CAMLreturn(Val_unit);
 }
 
-value ocamlyices_free_param_record(value v_param) {
-  CAMLparam1(v_param);
-  param_t *param = Param_val(v_param);
-  NOT_NEEDED_VALUE(v_param);
-
-  yices_free_param_record(param);
-
-  CAMLreturn(Val_unit);
+static void _oy__params_finalize(value v_params) {
+  param_t *params = Params_val(v_params);
+  DEBUG_PRINT("finalize params at %p\n", params);
+  if (params != 0) {
+    Store_params_val(params, NULL);
+    yices_free_param_record(params);
+  }
 }
 
 

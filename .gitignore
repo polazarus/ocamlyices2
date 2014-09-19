@@ -6,6 +6,9 @@
 *.dll
 *.byte
 *.opt
+*.annot
+*.cmt
+*.cmti
 a.out
 .depend
 
@@ -15,7 +18,7 @@ autom4te.cache
 
 # configure
 /src/config.h
-Makefile
+/Makefile.config
 META
 config.log
 config.status

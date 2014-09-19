@@ -1,0 +1,18 @@
+# -*- indent-tabs-mode: true, mode: Makefile -*-
+
+PACKAGE_NAME = @PACKAGE_NAME@
+PACKAGE_VERSION = @PACKAGE_VERSION@
+
+# Tools
+OCAMLFIND = @OCAMLFIND@
+OCAMLC = @OCAMLC@
+OCAMLOPT = @OCAMLOPT@
+OCAMLMKLIB = @OCAMLMKLIB@
+OF_INSTALL = $(OCAMLFIND) install
+OF_REMOVE = $(OCAMLFIND) remove
+
+CC = $(shell $(OCAMLC) -config | grep bytecomp_c_compiler | sed 's/^\w\+:\s\+//')
+
+# Configuration
+CFLAGS += -Wall -O2
+LIBS += -lyices

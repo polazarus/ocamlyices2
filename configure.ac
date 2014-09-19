@@ -1,4 +1,4 @@
-AC_INIT(ocamlyices2,0.0.1)
+AC_INIT(ocamlyices2,0.1.0)
 
 AC_PROG_CC
 
@@ -61,6 +61,6 @@ AS_IF([test "x$OCAMLOPT" = x], [
 
 AC_SUBST([HAVE_FUNOPEN])
 AC_CONFIG_HEADERS([src/config.h])
-AC_CONFIG_FILES([Makefile META])
+AC_CONFIG_FILES([Makefile.config META])
 
 AC_OUTPUT
