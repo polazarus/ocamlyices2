@@ -12,7 +12,6 @@
 #include "misc.h"
 #include "terms.h"
 
-#include "ocamlyices2.h"
 
 static void _oy_context_finalize(value v);
 static void _oy_config_finalize(value v);

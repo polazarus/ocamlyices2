@@ -1,3 +1,6 @@
+#ifndef __OY_TERMS_H__
+#define __OY_TERMS_H__
+
 #ifdef HAVE_GMP_H
 #include <gmp.h> // should be included before yices and zarith
 #define __GMP_H__
@@ -185,3 +188,4 @@ static inline term_t *_oy_terms_from_values(value v_arr, uint32_t n) {
   return arr;
 }
 
+#endif

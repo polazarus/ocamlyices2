@@ -1,3 +1,6 @@
+#ifndef __OY_CONTEXTS_H__
+#define __OY_CONTEXTS_H__
+
 #include <yices.h>
 #include <caml/mlvalues.h>
 
@@ -22,3 +25,5 @@ CAMLprim value ocamlyices_params_set(value, value, value);
 static inline context_t *Context_val(value v) {
   return (*((context_t **)Data_custom_val(v)));
 }
+
+#endif

@@ -1,3 +1,6 @@
+#ifndef __OY_TYPES_H__
+#define __OY_TYPES_H__
+
 #include <caml/mlvalues.h>
 
 CAMLprim value ocamlyices_type_bool(value unit);
@@ -37,3 +40,4 @@ CAMLprim value ocamlyices_type_print(value width_opt, value height_opt, value of
 #define Type_val(v) (type_t)Long_val(v)
 #define Val_type(v) Val_long((intnat)v)
 
+#endif

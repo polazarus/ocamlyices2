@@ -8,16 +8,16 @@
 
 #include <caml/callback.h>
 #include <caml/memory.h> // CAMLparam & co
+#include <caml/alloc.h> // caml_alloc and copy_string
 
 #include "misc.h"
 #include "terms.h"
 #include "types.h"
 #include "models.h"
 
-#include "ocamlyices2.h"
-
 /* include automatically generated file */
 #include "errors.h"
+
 
 static _Bool _oy_initialized = 0;
 

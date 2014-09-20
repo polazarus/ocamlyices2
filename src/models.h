@@ -1,3 +1,6 @@
+#ifndef __OY_MODELS_H__
+#define __OY_MODELS_H__
+
 #ifdef HAVE_GMP_H
 #include <gmp.h> // should be included before yices and zarith
 #define __GMP_H__
@@ -33,3 +36,5 @@ static inline model_t *Model_val(value v) {
 static inline model_t *Mdlctx_val_model(value v) {
   return Model_val(Field(v,0));
 }
+
+#endif

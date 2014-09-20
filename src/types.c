@@ -7,10 +7,11 @@
 #include <yices.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
+#include <caml/alloc.h> // copy_string
 
 #include "terms.h"
 #include "misc.h"
-#include "ocamlyices2.h"
+
 
 // Utilities
 

@@ -14,13 +14,12 @@
 #include <zarith.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
+#include <caml/alloc.h>
 
 #include "misc.h"
 #include "types.h"
 
-#include "ocamlyices2.h"
 #include "terms_macros.h"
-
 
 
 CAMLprim value ocamlyices_term_true(UNUSED value unit) {

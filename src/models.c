@@ -21,7 +21,6 @@
 #include "terms.h"
 #include "contexts.h"
 
-#include "ocamlyices2.h"
 
 static inline context_t *Mdlctx_val_context(value v) {
   return Context_val(Field(v,1));
