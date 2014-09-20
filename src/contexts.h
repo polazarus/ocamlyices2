@@ -18,3 +18,7 @@ CAMLprim value ocamlyices_context_assert_blocking_clause(value);
 CAMLprim value ocamlyices_context_stop_search(value);
 CAMLprim value ocamlyices_params_create(value);
 CAMLprim value ocamlyices_params_set(value, value, value);
+
+static inline context_t *Context_val(value v) {
+  return (*((context_t **)Data_custom_val(v)));
+}

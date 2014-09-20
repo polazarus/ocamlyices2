@@ -17,7 +17,15 @@
 #include <caml/alloc.h> // caml_alloc, _small, _tuple, caml_copy_string/int32/int64/..., etc.
 #include <zarith.h>
 
+#include "misc.h"
+#include "terms.h"
+#include "contexts.h"
+
 #include "ocamlyices2.h"
+
+static inline context_t *Mdlctx_val_context(value v) {
+  return Context_val(Field(v,1));
+}
 
 static void _oy__model_finalize(value);
 static char _oy__model_id[] = "ocamlyices.model";
@@ -71,9 +79,7 @@ static void _oy__model_finalize(value v_model) {
   model_t *model = Model_val(v_model);
 
   if (model != NULL) {
-    COND_MT_START(MTFLAG_FREE_MODEL);
     yices_free_model(model);
-    COND_MT_END(MTFLAG_FREE_MODEL);
     Store_model_val(v_model, NULL);
   }
 }
@@ -549,5 +555,31 @@ CAMLprim value ocamlyices_model_get_as_terms(value v_mdlctx, value v_ts) {
   free(outts);
 
   CAMLreturn(v_outts);
+}
+
+// Pretty printing
+
+struct pp_model_arg {
+  model_t *mdl;
+  uint32_t width, height, offset;
+};
+
+static int _oy_model_pp(FILE *output, void *arg_) {
+  struct pp_model_arg *arg = (struct pp_model_arg *)arg_;
+  return yices_pp_model(output, arg->mdl, arg->width, arg->height, arg->offset);
+}
+
+CAMLprim value ocamlyices_model_print(value v_width_opt, value v_height_opt, value v_offset_opt, value v_cb, value v_mdl) {
+  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
+  model_t *mdl = Mdlctx_val_model(v_mdl);
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
+  struct pp_model_arg arg = { mdl, width, height, offset };
+  int res = _oy_callback_print(v_cb, &_oy_model_pp, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
+  CAMLreturn(Val_unit);
 }
 

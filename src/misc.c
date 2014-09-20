@@ -9,6 +9,11 @@
 #include <caml/callback.h>
 #include <caml/memory.h> // CAMLparam & co
 
+#include "misc.h"
+#include "terms.h"
+#include "types.h"
+#include "models.h"
+
 #include "ocamlyices2.h"
 
 /* include automatically generated file */
@@ -171,82 +176,4 @@ int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *),
   return res;
 }
 
-struct pp_term_arg {
-  term_t t;
-  uint32_t width, height, offset;
-};
-struct pp_type_arg {
-  type_t t;
-  uint32_t width, height, offset;
-};
-struct pp_model_arg {
-  model_t *mdl;
-  uint32_t width, height, offset;
-};
-
-static inline intnat Long_option_val(value val, intnat def) {
-  return Is_block(val) ? Long_val(Field(val, 0)) : def;
-}
-
-static int _oy_pp_term(FILE *output, void *arg_) {
-  struct pp_term_arg *arg = (struct pp_term_arg *)arg_;
-  return yices_pp_term(output, arg->t, arg->width, arg->height, arg->offset);
-}
-static int _oy_pp_type(FILE *output, void *arg_) {
-  struct pp_type_arg *arg = (struct pp_type_arg *)arg_;
-  return yices_pp_type(output, arg->t, arg->width, arg->height, arg->offset);
-}
-static int _oy_pp_model(FILE *output, void *arg_) {
-  struct pp_model_arg *arg = (struct pp_model_arg *)arg_;
-  return yices_pp_model(output, arg->mdl, arg->width, arg->height, arg->offset);
-}
-
-CAMLprim value ocamlyices_pp_term(value v_width_opt, value v_height_opt,
-                         value v_offset_opt, value v_cb, value v_t) {
-  CAMLparam1(v_cb);
-  term_t t = Term_val(v_t);
-  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
-  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
-  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
-  DEBUG_PRINT("pp_term %ld %ld %ld\n", width, height, offset);
-  struct pp_term_arg arg = { t, width, height, offset };
-  int res = _oy_callback_print(v_cb,
-            &_oy_pp_term, &arg);
-  if (res != 0) {
-    _oy__error();
-  }
-  CAMLreturn(Val_unit);
-}
-
-CAMLprim value ocamlyices_pp_type(value v_width_opt, value v_height_opt,
-                         value v_offset_opt, value v_cb, value v_t) {
-  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
-  type_t t = Type_val(v_t);
-  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
-  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
-  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
-  struct pp_type_arg arg = { t, width, height, offset };
-  int res = _oy_callback_print(v_cb,
-            &_oy_pp_type, &arg);
-  if (res != 0) {
-    _oy__error();
-  }
-  CAMLreturn(Val_unit);
-}
-
-CAMLprim value ocamlyices_pp_model(value v_width_opt, value v_height_opt,
-                          value v_offset_opt, value v_cb, value v_mdl) {
-  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
-  model_t *mdl = Model_val(v_mdl);
-  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
-  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
-  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
-  struct pp_model_arg arg = { mdl, width, height, offset };
-  int res = _oy_callback_print(v_cb,
-            &_oy_pp_model, &arg);
-  if (res != 0) {
-    _oy__error();
-  }
-  CAMLreturn(Val_unit);
-}
 

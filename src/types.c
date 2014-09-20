@@ -1,4 +1,5 @@
 #include "config.h"
+#include "types.h"
 
 #include <stdlib.h> // for malloc, free
 #include <stdint.h> // for (u)int32_t etc.
@@ -7,6 +8,8 @@
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 
+#include "terms.h"
+#include "misc.h"
 #include "ocamlyices2.h"
 
 // Utilities
@@ -366,3 +369,31 @@ CAMLprim value ocamlyices_type_is_subtype(value v_t1, value v_t2) {
 
   CAMLreturn(Val_bool(res != 0));
 }
+
+// Pretty printing
+
+struct pp_type_arg {
+  type_t t;
+  uint32_t width, height, offset;
+};
+
+static int _oy_type_pp(FILE *output, void *arg_) {
+  struct pp_type_arg *arg = (struct pp_type_arg *)arg_;
+  return yices_pp_type(output, arg->t, arg->width, arg->height, arg->offset);
+}
+
+CAMLprim value ocamlyices_type_print(value v_width_opt, value v_height_opt,
+                         value v_offset_opt, value v_cb, value v_t) {
+  CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
+  type_t t = Type_val(v_t);
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
+  struct pp_type_arg arg = { t, width, height, offset };
+  int res = _oy_callback_print(v_cb, &_oy_type_pp, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
+  CAMLreturn(Val_unit);
+}
+

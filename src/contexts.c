@@ -9,6 +9,9 @@
 #include <caml/alloc.h>
 #include <caml/custom.h>
 
+#include "misc.h"
+#include "terms.h"
+
 #include "ocamlyices2.h"
 
 static void _oy__context_finalize(value v);

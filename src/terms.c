@@ -1,4 +1,5 @@
 #include "config.h"
+#include "terms.h"
 
 #include <stdlib.h> // for malloc, free
 #include <stdint.h> // for (u)int32_t etc.
@@ -13,6 +14,9 @@
 #include <zarith.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
+
+#include "misc.h"
+#include "types.h"
 
 #include "ocamlyices2.h"
 #include "terms_macros.h"
@@ -1519,3 +1523,30 @@ CAMLprim value ocamlyices_term_is_scalar(value v_t) {
 CAMLprim value ocamlyices_term_is_ground(value v_t) {
   return _oy_bool_of_term(&yices_term_is_ground, v_t);
 }
+
+// Pretty printing
+
+struct pp_term_arg {
+  term_t t;
+  uint32_t width, height, offset;
+};
+static int _oy_term_pp(FILE *output, void *arg_) {
+  struct pp_term_arg *arg = (struct pp_term_arg *)arg_;
+  return yices_pp_term(output, arg->t, arg->width, arg->height, arg->offset);
+}
+CAMLprim value ocamlyices_term_print(value v_width_opt, value v_height_opt,
+                         value v_offset_opt, value v_cb, value v_t) {
+  CAMLparam1(v_cb);
+  term_t t = Term_val(v_t);
+  uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);
+  uint32_t height = (uint32_t)Long_option_val(v_height_opt, 1);
+  uint32_t offset = (uint32_t)Long_option_val(v_offset_opt, 0);
+  DEBUG_PRINT("pp_term %ld %ld %ld\n", width, height, offset);
+  struct pp_term_arg arg = { t, width, height, offset };
+  int res = _oy_callback_print(v_cb, &_oy_term_pp, &arg);
+  if (res != 0) {
+    _oy__error();
+  }
+  CAMLreturn(Val_unit);
+}
+
