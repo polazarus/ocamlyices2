@@ -386,8 +386,7 @@ CAMLprim value ocamlyices_model_get_float(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_z(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
-  CAMLlocal1(v_res);
+  CAMLparam1(v_mdlctx);
   int32_t res;
   mpz_t val;
 
@@ -398,11 +397,11 @@ CAMLprim value ocamlyices_model_get_z(value v_mdlctx, value v_t) {
     _oy__error();
   }
 
-  CAMLreturn(v_res);
+  CAMLreturn(ml_z_from_mpz(val));
 }
 
 CAMLprim value ocamlyices_model_get_q(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_res);
   int32_t res;
   mpq_t val;
