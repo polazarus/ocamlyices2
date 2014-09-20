@@ -10,10 +10,11 @@ native: $(EXAMPLES:=.opt)
 
 %.byte:%.ml
 	$(OC) $< -o $@
+
 %.opt:%.ml
 	$(OO) $< -o $@
-	
+
 clean:
-	$(RM) *.byte *.opt
+	$(RM) *.byte *.opt *.cm[oxti] *.o
 
 .PHONY: all byte native clean
