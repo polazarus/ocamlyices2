@@ -90,7 +90,7 @@ uninstall:
 clean:
 	$(RM) */*.o */*.[aos] */*.cm[aoxit] */*.cmti */*.cmxa */*.annot */*.so */a.out .depend
 
-.PHONY: all build install uninstall clean test debug
+.PHONY: all build install uninstall clean test debug test.opt test.byte
 
 TESTS = $(wildcard tests/*.ml)
 
@@ -100,12 +100,23 @@ $(TESTS:%.ml=%.opt): %.opt: %.ml
 $(TESTS:%.ml=%.byte): %.byte: %.ml
 	$(OCAMLFIND) c -package zarith -linkpkg -I src src/$(PACKAGE_NAME).cma $< -o $@
 
-test: build $(TESTS:%.ml=%.opt) $(TESTS:%.ml=%.byte)
+test: build test.byte test.opt
+
+test.byte: $(TESTS:%.ml=%.opt) $(TESTS:%.ml=%.byte)
 	@cd tests; for testfile in *.opt; do\
 		if ./$$testfile ; then\
-			echo "test '$${testfile%.opt}' passed";\
+			echo "test '$${testfile}' passed";\
 		else\
-			echo "test '$${testfile%.opt}' failed";\
+			echo "test '$${testfile}' failed";\
+		fi;\
+	done
+
+test.opt: build $(TESTS:%.ml=%.opt) $(TESTS:%.ml=%.byte)
+	@cd tests; for testfile in *.opt; do\
+		if ./$$testfile ; then\
+			echo "test '$${testfile}' passed";\
+		else\
+			echo "test '$${testfile}' failed";\
 		fi;\
 	done
 
