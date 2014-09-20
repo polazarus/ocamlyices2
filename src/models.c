@@ -1,4 +1,5 @@
 #include "config.h"
+#include "models.h"
 
 #include <stdlib.h> // for malloc, free
 #include <stdint.h> // for (u)int32_t etc.
@@ -18,10 +19,6 @@
 
 #include "ocamlyices2.h"
 
-#define alloc_model_val() caml_alloc_custom(&_oy__model_ops, sizeof (model_t*), 0, 1);
-
-#define Store_model_val(v, raw) do {*((model_t**)Data_custom_val(v)) = raw;} while (0)
-
 static void _oy__model_finalize(value);
 static char _oy__model_id[] = "ocamlyices.model";
 static struct custom_operations _oy__model_ops = {
@@ -33,6 +30,14 @@ static struct custom_operations _oy__model_ops = {
   custom_deserialize_default,
   custom_compare_ext_default,
 };
+
+static inline value alloc_model_val () {
+  return caml_alloc_custom(&_oy__model_ops, sizeof (model_t*), 0, 1);
+}
+
+static inline void Store_model_val(value v, model_t* raw) {
+  *((model_t**)Data_custom_val(v)) = raw;
+}
 
 CAMLprim value ocamlyices_context_get_model(value v_keepsubst,
     value v_context) {

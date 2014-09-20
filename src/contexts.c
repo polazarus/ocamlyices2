@@ -1,4 +1,5 @@
 #include "config.h"
+#include "contexts.h"
 
 #include <stdint.h> // for (u)int32_t etc.
 
