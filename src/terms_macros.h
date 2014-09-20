@@ -34,7 +34,7 @@ static inline value _oy_unary(term_t (*f)(term_t), value v_arg) {
 }
 
 static inline value _oy_binary(term_t (*f)(term_t, term_t), value v_arg1,
-                                value v_arg2) {
+                               value v_arg2) {
   term_t res = (*f)(Term_val(v_arg1), Term_val(v_arg2));
   if (res == NULL_TERM) {
     _oy_error();
@@ -43,7 +43,7 @@ static inline value _oy_binary(term_t (*f)(term_t, term_t), value v_arg1,
 }
 
 static inline value _oy_ternary(term_t (*f)(term_t, term_t, term_t),
-                                 value v_arg1, value v_arg2, value v_arg3) {
+                                value v_arg1, value v_arg2, value v_arg3) {
   term_t res = (*f)(Term_val(v_arg1), Term_val(v_arg2), Term_val(v_arg3));
   if (res == NULL_TERM) {
     _oy_error();
@@ -110,7 +110,7 @@ static inline int64_t *_oy_int64s_from_int64_values(value v_arr, uint32_t n) {
 
 
 static inline value _oy_nary_const(term_t (*f)(uint32_t, const term_t *),
-                                    value v_args) {
+                                   value v_args) {
   CAMLparam1(v_args);
   term_t *args;
   term_t res;
@@ -160,8 +160,8 @@ static inline value _oy_unary_quantifier(term_t (*q) (uint32_t n, term_t *,
 }
 
 static inline value _oy_nary_quantifier(term_t (*q) (uint32_t n, term_t *,
-    term_t),
-    value v_args, value v_body) {
+                                        term_t),
+                                        value v_args, value v_body) {
   CAMLparam1(v_args);
   term_t res, *args;
 

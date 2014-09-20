@@ -33,7 +33,8 @@ CAMLprim value ocamlyices_term_iff (value, value);
 CAMLprim value ocamlyices_term_implies (value, value);
 CAMLprim value ocamlyices_term_tuple (value args);
 CAMLprim value ocamlyices_term_select (value index, value tuple);
-CAMLprim value ocamlyices_term_tuple_update (value tuple, value index, value newv);
+CAMLprim value ocamlyices_term_tuple_update (value tuple, value index,
+    value newv);
 CAMLprim value ocamlyices_term_update (value fun, value args, value newv);
 CAMLprim value ocamlyices_term_distinct (value args);
 CAMLprim value ocamlyices_term_forall (value arg, value body);
@@ -70,10 +71,14 @@ CAMLprim value ocamlyices_term_poly_int (value as, value ts);
 CAMLprim value ocamlyices_term_poly_nativeint (value as, value ts);
 CAMLprim value ocamlyices_term_poly_int32 (value as, value ts);
 CAMLprim value ocamlyices_term_poly_int64 (value as, value ts);
-CAMLprim value ocamlyices_term_poly_rational_int (value nums, value dens, value ts);
-CAMLprim value ocamlyices_term_poly_rational_nativeint (value nums, value dens, value ts);
-CAMLprim value ocamlyices_term_poly_rational_int32 (value nums, value dens, value ts);
-CAMLprim value ocamlyices_term_poly_rational_int64 (value nums, value dens, value ts);
+CAMLprim value ocamlyices_term_poly_rational_int (value nums, value dens,
+    value ts);
+CAMLprim value ocamlyices_term_poly_rational_nativeint (value nums, value dens,
+    value ts);
+CAMLprim value ocamlyices_term_poly_rational_int32 (value nums, value dens,
+    value ts);
+CAMLprim value ocamlyices_term_poly_rational_int64 (value nums, value dens,
+    value ts);
 CAMLprim value ocamlyices_term_poly_z (value zs, value ts);
 CAMLprim value ocamlyices_term_poly_q (value qs, value ts);
 CAMLprim value ocamlyices_term_arith_eq (value arg1, value arg2);
@@ -169,7 +174,8 @@ CAMLprim value ocamlyices_term_is_function (value t);
 CAMLprim value ocamlyices_term_is_scalar (value t);
 CAMLprim value ocamlyices_term_is_ground (value t);
 
-CAMLprim value ocamlyices_term_print (value width_opt, value height_opt, value offset_opt, value cb, value t);
+CAMLprim value ocamlyices_term_print (value width_opt, value height_opt,
+                                      value offset_opt, value cb, value t);
 
 static inline term_t Term_val (value v) {
   return (term_t)Long_val(v);

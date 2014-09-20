@@ -384,7 +384,7 @@ static int _oy_type_pp(FILE *output, void *arg_) {
 }
 
 CAMLprim value ocamlyices_type_print(value v_width_opt, value v_height_opt,
-                         value v_offset_opt, value v_cb, value v_t) {
+                                     value v_offset_opt, value v_cb, value v_t) {
   CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
   type_t t = Type_val(v_t);
   uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);

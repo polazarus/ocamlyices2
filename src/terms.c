@@ -1534,7 +1534,7 @@ static int _oy_term_pp(FILE *output, void *arg_) {
   return yices_pp_term(output, arg->t, arg->width, arg->height, arg->offset);
 }
 CAMLprim value ocamlyices_term_print(value v_width_opt, value v_height_opt,
-                         value v_offset_opt, value v_cb, value v_t) {
+                                     value v_offset_opt, value v_cb, value v_t) {
   CAMLparam1(v_cb);
   term_t t = Term_val(v_t);
   uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);

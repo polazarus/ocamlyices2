@@ -27,7 +27,8 @@ CAMLprim value ocamlyices_model_get_scalar (value, value);
 CAMLprim value ocamlyices_model_get_as_term (value, value);
 CAMLprim value ocamlyices_model_get_as_terms (value, value);
 
-CAMLprim value ocamlyices_model_print (value width_opt, value height_opt, value offset_opt, value cb, value mdl);
+CAMLprim value ocamlyices_model_print (value width_opt, value height_opt,
+                                       value offset_opt, value cb, value mdl);
 
 static inline model_t *Model_val(value v) {
   return (*((model_t **)Data_custom_val(v)));

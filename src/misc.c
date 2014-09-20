@@ -87,9 +87,10 @@ void _oy_check_error() {
   CAMLlocal1(temp);
   intnat lec = _oy_linear_error_code(ec);
   error_report_t *report = yices_error_report();
-  DEBUG_PRINT("error %s (linear code %d))\n",_oy_linear_error_code_names[lec], lec);
+  const char *name = _oy_linear_error_code_names[lec];
+  DEBUG_PRINT("error %s (linear code %d))\n", name, lec);
   temp = caml_alloc_tuple(8);
-  Store_field(temp, 0, caml_copy_string(_oy_linear_error_code_names[lec]));
+  Store_field(temp, 0, caml_copy_string(name));
   Store_field(temp, 1, Val_long(report->column));
   Store_field(temp, 2, Val_long(report->line));
   Store_field(temp, 3, term_option(report->term1));
@@ -99,15 +100,18 @@ void _oy_check_error() {
   Store_field(temp, 7, caml_copy_int64(report->badval));
   _oy_error_args[0] = Val_long(lec);
   _oy_error_args[1] = temp;
-  value* exc = caml_named_value("ocamlyices2.exception");
-  if (exc == NULL) caml_failwith("cannot find exception");
+  value *exc = caml_named_value("ocamlyices2.exception");
+  if (exc == NULL) {
+    caml_failwith("cannot find exception");
+  }
   caml_raise_with_args(*exc, 2, _oy_error_args);
   CAMLreturn0;
 }
 
 #if defined(HAVE_FOPENCOOKIE)
 
-static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, const char*, size_t)) {
+static inline FILE *fopen_write_callback(void *cookie, ssize_t (*write)(void *,
+    const char *, size_t)) {
   cookie_io_functions_t iofuns = { NULL, write, NULL, NULL };
   return fopencookie(cookie, "w", iofuns);
 }
@@ -120,12 +124,14 @@ static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, c
 
 typedef struct {
   void *true_cookie;
-  ssize_t (*true_write)(void*, const char*, size_t);
+  ssize_t (*true_write)(void *, const char *, size_t);
 } cookie_wrap_t;
 
-static int fopen_write_callback__write(void *cookie, const char *buf, int size) {
-  cookie_wrap_t *cookie_wrap = (cookie_wrap_t*)cookie;
-  return (int)cookie_wrap->true_write(cookie_wrap->true_cookie, buf, (size_t)size);
+static int fopen_write_callback__write(void *cookie, const char *buf,
+                                       int size) {
+  cookie_wrap_t *cookie_wrap = (cookie_wrap_t *)cookie;
+  return (int)cookie_wrap->true_write(cookie_wrap->true_cookie, buf,
+                                      (size_t)size);
 }
 
 static int fopen_write_callback__close(void *cookie_wrap) {
@@ -133,17 +139,20 @@ static int fopen_write_callback__close(void *cookie_wrap) {
   return 0;
 }
 
-static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, const char*, size_t)) {
-  cookie_wrap_t* wrap = malloc(sizeof(cookie_wrap_t));
+static inline FILE *fopen_write_callback(void *cookie, ssize_t (*write)(void *,
+    const char *, size_t)) {
+  cookie_wrap_t *wrap = malloc(sizeof(cookie_wrap_t));
   wrap->true_cookie = cookie;
   wrap->true_write = write;
-  return funopen((void*)wrap, NULL, fopen_write_callback__write, NULL, fopen_write_callback__close);
+  return funopen((void *)wrap, NULL, fopen_write_callback__write, NULL,
+                 fopen_write_callback__close);
 }
 
 #else
 
 #warning "Pretty printing not supported (missing fopencookie/funopen)"
-static inline FILE* fopen_write_callback(UNUSED void* cookie, ssize_t (*UNUSED write)(void*, const char*, size_t)) NORETURN {
+static inline FILE *fopen_write_callback(UNUSED void *cookie,
+    ssize_t (*UNUSED write)(void *, const char *, size_t)) NORETURN {
   return _oy_unsupported();
 }
 
@@ -165,8 +174,8 @@ static ssize_t _oy_pp_write (void *cookie, const char *buf, size_t size) {
 
 // Precondition: the callback should be a root
 int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *),
-                                void *arg) {
-  FILE *output = fopen_write_callback((void*)&v_cb, &_oy_pp_write);
+                       void *arg) {
+  FILE *output = fopen_write_callback((void *)&v_cb, &_oy_pp_write);
   if (output == NULL) {
     _oy_error();  // FIXME meaningfull error
   }

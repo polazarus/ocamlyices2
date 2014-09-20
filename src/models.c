@@ -39,11 +39,11 @@ static struct custom_operations _oy_model_ops = {
 };
 
 static inline value alloc_model_val () {
-  return caml_alloc_custom(&_oy_model_ops, sizeof (model_t*), 0, 1);
+  return caml_alloc_custom(&_oy_model_ops, sizeof (model_t *), 0, 1);
 }
 
-static inline void Store_model_val(value v, model_t* raw) {
-  *((model_t**)Data_custom_val(v)) = raw;
+static inline void Store_model_val(value v, model_t *raw) {
+  *((model_t **)Data_custom_val(v)) = raw;
 }
 
 CAMLprim value ocamlyices_context_get_model(value v_keepsubst,
@@ -568,7 +568,8 @@ static int _oy_model_pp(FILE *output, void *arg_) {
   return yices_pp_model(output, arg->mdl, arg->width, arg->height, arg->offset);
 }
 
-CAMLprim value ocamlyices_model_print(value v_width_opt, value v_height_opt, value v_offset_opt, value v_cb, value v_mdl) {
+CAMLprim value ocamlyices_model_print(value v_width_opt, value v_height_opt,
+                                      value v_offset_opt, value v_cb, value v_mdl) {
   CAMLparam4(v_width_opt, v_height_opt, v_offset_opt, v_cb);
   model_t *mdl = Mdlctx_val_model(v_mdl);
   uint32_t width = (uint32_t)Long_option_val(v_width_opt, UINT32_MAX);

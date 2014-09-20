@@ -188,7 +188,7 @@ CAMLprim value ocamlyices_context_reset(value v_context) {
 }
 
 static inline value _oy_context_stackop(int32_t (*f)(context_t *),
-    value v_context) {
+                                        value v_context) {
   CAMLparam1(v_context);
   int32_t res;
   context_t *context;
