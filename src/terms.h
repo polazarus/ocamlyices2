@@ -171,10 +171,15 @@ CAMLprim value ocamlyices_term_is_ground (value t);
 
 CAMLprim value ocamlyices_term_print (value width_opt, value height_opt, value offset_opt, value cb, value t);
 
-#define Term_val(v) (term_t)Long_val(v)
-#define Val_term(v) Val_long((intnat)v)
+static inline term_t Term_val (value v) {
+  return (term_t)Long_val(v);
+}
 
-static inline term_t *_oy_terms_from_values(value v_arr, uint32_t n) {
+static inline value Val_term (term_t term) {
+  return Val_long((intnat)term);
+}
+
+static inline term_t *_oy_terms_from_values (value v_arr, uint32_t n) {
   term_t *arr;
   uint32_t i;
 
