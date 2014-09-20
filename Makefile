@@ -92,16 +92,20 @@ clean:
 
 .PHONY: all build install uninstall clean test debug
 
-TESTFLAGS = $(shell ocamlfind query zarith -i-format) $(shell ocamlfind query zarith -a-format -predicates byte)
+TESTS = $(wildcard tests/*.ml)
 
+$(TESTS:%.ml=%.opt): %.opt: %.ml
+	$(OCAMLFIND) opt -package zarith -linkpkg -I src src/$(PACKAGE_NAME).cmxa $< -o $@
 
-test: build
-	@cd tests; for testfile in *.ml; do\
-		echo ocaml $(TESTFLAGS) -I ../src/ ../src/$(PACKAGE_NAME).cma  $$testfile; \
-		if ocaml $(TESTFLAGS) -I ../src/ ../src/$(PACKAGE_NAME).cma  $$testfile ; then\
-			echo "test '$${testfile%.ml}' passed";\
+$(TESTS:%.ml=%.byte): %.byte: %.ml
+	$(OCAMLFIND) c -package zarith -linkpkg -I src src/$(PACKAGE_NAME).cma $< -o $@
+
+test: build $(TESTS:%.ml=%.opt) $(TESTS:%.ml=%.byte)
+	@cd tests; for testfile in *.opt; do\
+		if ./$$testfile ; then\
+			echo "test '$${testfile%.opt}' passed";\
 		else\
-			echo "test '$${testfile%.ml}' failed";\
+			echo "test '$${testfile%.opt}' failed";\
 		fi;\
 	done
 
