@@ -53,11 +53,11 @@ def gen_ml(codes, filenameml, filenamemli):
         mli.write(contentsmli)
 
 stub_header = r"""/* automatically generated file */
-static const char *_oy__linear_error_code_names[] = {
+static const char *_oy_linear_error_code_names[] = {
 """
 stub_middle = r"""
 };
-static inline intnat _oy__linear_error_code (error_code_t err) {
+static inline intnat _oy_linear_error_code (error_code_t err) {
   switch (err) {
 """
 stub_footer = r"""
