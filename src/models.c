@@ -27,11 +27,11 @@ static inline context_t *Mdlctx_val_context(value v) {
   return Context_val(Field(v,1));
 }
 
-static void _oy__model_finalize(value);
-static char _oy__model_id[] = "ocamlyices.model";
-static struct custom_operations _oy__model_ops = {
-  _oy__model_id,
-  &_oy__model_finalize,
+static void _oy_model_finalize(value);
+static char _oy_model_id[] = "ocamlyices.model";
+static struct custom_operations _oy_model_ops = {
+  _oy_model_id,
+  &_oy_model_finalize,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
@@ -40,7 +40,7 @@ static struct custom_operations _oy__model_ops = {
 };
 
 static inline value alloc_model_val () {
-  return caml_alloc_custom(&_oy__model_ops, sizeof (model_t*), 0, 1);
+  return caml_alloc_custom(&_oy_model_ops, sizeof (model_t*), 0, 1);
 }
 
 static inline void Store_model_val(value v, model_t* raw) {
@@ -62,7 +62,7 @@ CAMLprim value ocamlyices_context_get_model(value v_keepsubst,
   model = yices_get_model(context, keepsubst);
   COND_MT_END(MTFLAG_GET_MODEL);
   if (model == NULL) {
-    _oy__error();
+    _oy_error();
   }
 
   v_model = alloc_model_val();
@@ -75,7 +75,7 @@ CAMLprim value ocamlyices_context_get_model(value v_keepsubst,
   CAMLreturn(v_res);
 }
 
-static void _oy__model_finalize(value v_model) {
+static void _oy_model_finalize(value v_model) {
   model_t *model = Model_val(v_model);
 
   if (model != NULL) {
@@ -94,12 +94,12 @@ CAMLprim value ocamlyices_model_get_bool(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_bool_value(mdl, t, &val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_long(val != 0));
@@ -116,7 +116,7 @@ CAMLprim value ocamlyices_model_get_int(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   if (sizeof(intnat) == sizeof(int32_t)) {
@@ -130,11 +130,11 @@ CAMLprim value ocamlyices_model_get_int(value v_mdlctx, value v_t) {
   }
 
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (val > Max_long || val < Min_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   CAMLreturn(Val_long(val));
@@ -151,7 +151,7 @@ CAMLprim value ocamlyices_model_get_nativeint(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   if (sizeof(intnat) == sizeof(int32_t)) {
@@ -165,7 +165,7 @@ CAMLprim value ocamlyices_model_get_nativeint(value v_mdlctx, value v_t) {
   }
 
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(caml_copy_nativeint(val));
@@ -181,12 +181,12 @@ CAMLprim value ocamlyices_model_get_int32(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_int32_value(mdl, t, &val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(caml_copy_int32(val));
@@ -203,12 +203,12 @@ CAMLprim value ocamlyices_model_get_int64(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_int64_value(mdl, t, &val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(caml_copy_int64(val));
@@ -227,7 +227,7 @@ CAMLprim value ocamlyices_model_get_rational_int(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   if (sizeof(intnat) == sizeof(int32_t)) {
@@ -245,14 +245,14 @@ CAMLprim value ocamlyices_model_get_rational_int(value v_mdlctx, value v_t) {
   }
 
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (num > Max_long || num < Min_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
   if (den > Max_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   v_res = caml_alloc_tuple(2);
@@ -276,7 +276,7 @@ CAMLprim value ocamlyices_model_get_rational_nativeint(value v_mdlctx,
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   if (sizeof(intnat) == sizeof(int32_t)) {
@@ -294,14 +294,14 @@ CAMLprim value ocamlyices_model_get_rational_nativeint(value v_mdlctx,
   }
 
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (num > Max_long || num < Min_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
   if (den > Max_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   v_res = caml_alloc_tuple(2);
@@ -323,16 +323,16 @@ CAMLprim value ocamlyices_model_get_rational_int32(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_rational32_value(mdl, t, &num, &den);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (den > INT32_MAX) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   v_res = caml_alloc_tuple(2);
@@ -355,16 +355,16 @@ CAMLprim value ocamlyices_model_get_rational_int64(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_rational64_value(mdl, t, &num, &den);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (den > INT64_MAX) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   v_res = caml_alloc_tuple(2);
@@ -385,12 +385,12 @@ CAMLprim value ocamlyices_model_get_float(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_double_value(mdl, t, &val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(caml_copy_double(val));
@@ -405,7 +405,7 @@ CAMLprim value ocamlyices_model_get_z(value v_mdlctx, value v_t) {
 
   res = yices_get_mpz_value(Mdlctx_val_model(v_mdlctx), Term_val(v_t), val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(ml_z_from_mpz(val));
@@ -423,7 +423,7 @@ CAMLprim value ocamlyices_model_get_q(value v_mdlctx, value v_t) {
 
   res = yices_get_mpq_value(Mdlctx_val_model(v_mdlctx), Term_val(v_t), val);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   mpq_get_num(num, val);
@@ -449,24 +449,24 @@ CAMLprim value ocamlyices_model_get_bitvector(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   n = yices_term_bitsize(t);
   if (n <= 0) {
-    _oy__error();
+    _oy_error();
   }
 
   bv = (int32_t *)malloc(sizeof(int32_t[n]));
   if (bv == NULL) {
-    _oy__allocation_error();
+    _oy_allocation_error();
   }
 
   res = yices_get_bv_value(mdl, t, bv);
 
   if (res != 0) {
     free(bv);
-    _oy__error();
+    _oy_error();
   }
 
   v_bv = caml_alloc(n, 0);
@@ -487,13 +487,13 @@ CAMLprim value ocamlyices_model_get_scalar(value v_mdlctx, value v_t) {
   t = Term_val(v_t);
 
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_scalar_value(mdl, t, &val);
 
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_long(val));
@@ -506,12 +506,12 @@ CAMLprim value ocamlyices_model_get_as_term(value v_mdlctx, value v_t) {
 
   mdl = Mdlctx_val_model(v_mdlctx);
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   res = yices_get_value_as_term(mdl, Term_val(v_t));
   if (res == NULL_TERM) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_term(res));
@@ -528,24 +528,24 @@ CAMLprim value ocamlyices_model_get_as_terms(value v_mdlctx, value v_ts) {
 
   mdl = Mdlctx_val_model(v_mdlctx);
   if (mdl == NULL) {
-    _oy__freed_model_error();
+    _oy_freed_model_error();
   }
 
   lts = check_Wosize_val(v_ts);
-  ts = _oy__terms_from_values(v_ts, lts);
+  ts = _oy_terms_from_values(v_ts, lts);
   outts = (term_t *)malloc(sizeof(term_t[lts]));
 
   if (ts == NULL || outts == NULL) {
     free(ts);
     free(outts);
-    _oy__allocation_error();
+    _oy_allocation_error();
   }
 
   res = yices_term_array_value(mdl, lts, ts, outts);
   free(ts);
   if (res == NULL_TERM) {
     free(outts);
-    _oy__error();
+    _oy_error();
   }
 
   v_outts = caml_alloc(lts, 0);
@@ -578,7 +578,7 @@ CAMLprim value ocamlyices_model_print(value v_width_opt, value v_height_opt, val
   struct pp_model_arg arg = { mdl, width, height, offset };
   int res = _oy_callback_print(v_cb, &_oy_model_pp, &arg);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
   CAMLreturn(Val_unit);
 }

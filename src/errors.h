@@ -1,5 +1,5 @@
 /* automatically generated file */
-static const char *_oy__linear_error_code_names[] = {
+static const char *_oy_linear_error_code_names[] = {
   "NO_ERROR",
   "INVALID_TYPE",
   "INVALID_TERM",
@@ -102,7 +102,7 @@ static const char *_oy__linear_error_code_names[] = {
   "OUTPUT_ERROR",
   "INTERNAL_EXCEPTION",
 };
-static inline intnat _oy__linear_error_code (error_code_t err) {
+static inline intnat _oy_linear_error_code (error_code_t err) {
   switch (err) {
   case NO_ERROR:
     return 0;

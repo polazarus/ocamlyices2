@@ -16,7 +16,7 @@
 #define DEBUG_PRINT(...) do {} while (0)
 #endif
 
-void _oy__check_error();
+void _oy_check_error();
 void _oy_check_init();
 int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *), void *arg);
 
@@ -25,40 +25,40 @@ CAMLprim value ocamlyices_reset (value unit);
 
 
 
-static inline NORETURN void _oy__error() {
-  _oy__check_error();
+static inline NORETURN void _oy_error() {
+  _oy_check_error();
   caml_failwith("Unknown error");
 }
 
-static inline NORETURN void _oy__binding_overflow_error() {
+static inline NORETURN void _oy_binding_overflow_error() {
   caml_failwith("Output overflows (due to the binding, try another variant of the function)");
 }
 
-static inline NORETURN void _oy__freed_model_error() {
+static inline NORETURN void _oy_freed_model_error() {
   caml_failwith("Illegal operation on freed model");
 }
 
-static inline NORETURN void _oy__freed_config_error() {
+static inline NORETURN void _oy_freed_config_error() {
   caml_failwith("Illegal operation on freed config");
 }
 
-static inline NORETURN void _oy__freed_context_error() {
+static inline NORETURN void _oy_freed_context_error() {
   caml_failwith("Illegal operation on freed context");
 }
 
-static inline NORETURN void _oy__allocation_error() {
+static inline NORETURN void _oy_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
 
-static inline NORETURN void _oy__unsupported() {
+static inline NORETURN void _oy_unsupported() {
   caml_failwith("Unsupported operation");
 }
 
-static inline NORETURN void _oy__invalid_array_sizes() {
+static inline NORETURN void _oy_invalid_array_sizes() {
   caml_invalid_argument("Arrays with different sizes");
 }
 
-static inline NORETURN void _oy__invalid_argument(const char *message) {
+static inline NORETURN void _oy_invalid_argument(const char *message) {
   caml_invalid_argument(message);
 }
 
@@ -69,7 +69,7 @@ static inline intnat Long_option_val(value val, intnat def) {
 static inline uint32_t check_Wosize_val(value val) {
   mlsize_t n_raw = Wosize_val(val);
   if (Max_wosize > UINT32_MAX && n_raw > UINT32_MAX) {
-    _oy__invalid_argument("array too large");
+    _oy_invalid_argument("array too large");
   }
   return (uint32_t) n_raw;
 }

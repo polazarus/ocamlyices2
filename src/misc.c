@@ -75,9 +75,9 @@ static inline value type_option(type_t t) {
   return (t == NULL_TYPE) ? Val_long(0) : caml_alloc_set1(0, Val_type(t));
 }
 
-static value _oy__error_args[2];
+static value _oy_error_args[2];
 
-void _oy__check_error() {
+void _oy_check_error() {
   error_code_t ec = yices_error_code();
   if (ec == NO_ERROR) {
     return;
@@ -85,11 +85,11 @@ void _oy__check_error() {
   DEBUG_PRINT("error %d\n", (int)ec);
   CAMLparam0();
   CAMLlocal1(temp);
-  intnat lec = _oy__linear_error_code(ec);
+  intnat lec = _oy_linear_error_code(ec);
   error_report_t *report = yices_error_report();
-  DEBUG_PRINT("error %s (linear code %d))\n",_oy__linear_error_code_names[lec], lec);
+  DEBUG_PRINT("error %s (linear code %d))\n",_oy_linear_error_code_names[lec], lec);
   temp = caml_alloc_tuple(8);
-  Store_field(temp, 0, caml_copy_string(_oy__linear_error_code_names[lec]));
+  Store_field(temp, 0, caml_copy_string(_oy_linear_error_code_names[lec]));
   Store_field(temp, 1, Val_long(report->column));
   Store_field(temp, 2, Val_long(report->line));
   Store_field(temp, 3, term_option(report->term1));
@@ -97,11 +97,11 @@ void _oy__check_error() {
   Store_field(temp, 5, term_option(report->term2));
   Store_field(temp, 6, type_option(report->type2));
   Store_field(temp, 7, caml_copy_int64(report->badval));
-  _oy__error_args[0] = Val_long(lec);
-  _oy__error_args[1] = temp;
+  _oy_error_args[0] = Val_long(lec);
+  _oy_error_args[1] = temp;
   value* exc = caml_named_value("ocamlyices2.exception");
   if (exc == NULL) caml_failwith("cannot find exception");
-  caml_raise_with_args(*exc, 2, _oy__error_args);
+  caml_raise_with_args(*exc, 2, _oy_error_args);
   CAMLreturn0;
 }
 
@@ -144,7 +144,7 @@ static inline FILE* fopen_write_callback(void *cookie, ssize_t (*write)(void*, c
 
 #warning "Pretty printing not supported (missing fopencookie/funopen)"
 static inline FILE* fopen_write_callback(UNUSED void* cookie, ssize_t (*UNUSED write)(void*, const char*, size_t)) NORETURN {
-  return _oy__unsupported();
+  return _oy_unsupported();
 }
 
 #endif
@@ -168,12 +168,10 @@ int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *),
                                 void *arg) {
   FILE *output = fopen_write_callback((void*)&v_cb, &_oy_pp_write);
   if (output == NULL) {
-    _oy__error();  // FIXME meaningfull error
+    _oy_error();  // FIXME meaningfull error
   }
   DEBUG_PRINT("print with callback initialized\n");
   int res = printfn(output, arg);
   fclose(output);
   return res;
 }
-
-

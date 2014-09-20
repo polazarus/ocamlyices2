@@ -17,7 +17,7 @@
 static inline value _oy_nullary_type(type_t (*f)()) {
   type_t res = (*f)();
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   return Val_type(res);
@@ -27,7 +27,7 @@ static inline value _oy_bool_of_type (int32_t (*f) (type_t), value v_t) {
   CAMLparam1(v_t);
   int32_t res = f(Type_val(v_t));
   if (res == 0) {
-    _oy__check_error();
+    _oy_check_error();
   }
   CAMLreturn(Val_bool(res));
 }
@@ -40,15 +40,15 @@ static inline value _oy_type_of_MLintCuint32(type_t (*f)(uint32_t), value v_arg,
 
   intnat arg = Long_val (v_arg);
   if (arg < 0) {
-    _oy__invalid_argument(negative);
+    _oy_invalid_argument(negative);
   }
   if (Max_long > UINT32_MAX && arg > UINT32_MAX) {
-    _oy__invalid_argument(toolarge);
+    _oy_invalid_argument(toolarge);
   }
 
   res = (*f)((uint32_t)arg);
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -104,14 +104,14 @@ CAMLprim value ocamlyices_type_tuple(value v_taus) {
   n = check_Wosize_val(v_taus);
   taus = _oy_types_from_values(v_taus, n);
   if (taus == NULL) {
-    _oy__allocation_error();
+    _oy_allocation_error();
   }
 
   res = yices_tuple_type(n, taus);
   free(taus);
 
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -123,7 +123,7 @@ CAMLprim value ocamlyices_type_tuple1(value v_tau1) {
 
   res = yices_tuple_type1(Type_val(v_tau1));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -135,7 +135,7 @@ CAMLprim value ocamlyices_type_tuple2(value v_tau1, value v_tau2) {
 
   res = yices_tuple_type2(Type_val(v_tau1), Type_val(v_tau2));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -148,7 +148,7 @@ CAMLprim value ocamlyices_type_tuple3(value v_tau1, value v_tau2,
 
   res = yices_tuple_type3(Type_val(v_tau1), Type_val(v_tau2), Type_val(v_tau3));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -162,14 +162,14 @@ CAMLprim value ocamlyices_type_function (value v_dom, value v_range) {
   n = check_Wosize_val(v_dom);
   dom = _oy_types_from_values(v_dom, n);
   if (dom == NULL) {
-    _oy__allocation_error();
+    _oy_allocation_error();
   }
 
   res = yices_function_type(n, dom, Type_val(v_range));
   free(dom);
 
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -181,7 +181,7 @@ CAMLprim value ocamlyices_type_function1(value v_dom1, value v_range) {
 
   res = yices_function_type1(Type_val(v_dom1), Type_val(v_range));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -195,7 +195,7 @@ CAMLprim value ocamlyices_type_function2(value v_dom1, value v_dom2,
   res = yices_function_type2(Type_val(v_dom1), Type_val(v_dom2),
                              Type_val(v_range));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -209,7 +209,7 @@ CAMLprim value ocamlyices_type_function3(value v_dom1, value v_dom2,
   res = yices_function_type3(Type_val(v_dom1), Type_val(v_dom2), Type_val(v_dom3),
                              Type_val(v_range));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -223,7 +223,7 @@ CAMLprim value ocamlyices_type_parse (value v_str) {
 
   res = yices_parse_type(String_val(v_str));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -238,7 +238,7 @@ CAMLprim value ocamlyices_type_set_name (value v_t, value v_name) {
 
   res = yices_set_type_name(Type_val(v_t), String_val(v_name));
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_unit);
@@ -259,7 +259,7 @@ CAMLprim value ocamlyices_type_clear_name (value v_typ) {
 
   res = yices_clear_type_name(Type_val(v_typ));
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
 
   return Val_unit;
@@ -271,7 +271,7 @@ CAMLprim value ocamlyices_type_get_name (value v_typ) {
 
   res = yices_get_type_name(Type_val(v_typ));
   if (res == NULL) {
-    _oy__error();
+    _oy_error();
   }
 
   return caml_copy_string(res);
@@ -284,7 +284,7 @@ CAMLprim value ocamlyices_type_by_name (value v_name) {
 
   res = yices_get_type_by_name(String_val(v_name));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   CAMLreturn(Val_type(res));
@@ -297,11 +297,11 @@ CAMLprim value ocamlyices_type_bitsize (value v_typ) {
 
   uint32_t bitsize = yices_bvtype_size(Type_val(v_typ));
   if (bitsize == 0) {
-    _oy__error();
+    _oy_error();
   }
 
   if (YICES_MAX_BVSIZE > Max_long /* should not happen */ && bitsize > Max_long) {
-    _oy__binding_overflow_error();
+    _oy_binding_overflow_error();
   }
 
   return Val_long((intnat)bitsize);
@@ -314,7 +314,7 @@ CAMLprim value ocamlyices_type_of_term(value v_t) {
 
   type_t res = yices_type_of_term(Term_val(v_t));
   if (res == NULL_TYPE) {
-    _oy__error();
+    _oy_error();
   }
 
   return Val_type(res);
@@ -364,7 +364,7 @@ CAMLprim value ocamlyices_type_is_subtype(value v_t1, value v_t2) {
 
   res = yices_test_subtype(Type_val(v_t1), Type_val(v_t2));
   if (res == 0) {
-    _oy__check_error();
+    _oy_check_error();
   }
 
   CAMLreturn(Val_bool(res != 0));
@@ -392,7 +392,7 @@ CAMLprim value ocamlyices_type_print(value v_width_opt, value v_height_opt,
   struct pp_type_arg arg = { t, width, height, offset };
   int res = _oy_callback_print(v_cb, &_oy_type_pp, &arg);
   if (res != 0) {
-    _oy__error();
+    _oy_error();
   }
   CAMLreturn(Val_unit);
 }
