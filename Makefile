@@ -81,7 +81,7 @@ uninstall:
 
 # Clean up #####################################################################
 clean:
-	rm -rf build src/*.o src/*.[aos] src/*.cm[aoxi] src/*.cmxa src/*.so src/a.out .depend
+	$(RM) */*.o */*.[aos] */*.cm[aoxit] */*.cmti */*.cmxa */*.annot */*.so */a.out .depend
 
 .PHONY: all build install uninstall clean test debug
 
