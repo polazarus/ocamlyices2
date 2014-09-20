@@ -17,7 +17,7 @@ let () =
   let model = Context.get_model ctx in
 
   try
-    let _ = Context.Model.get_int model var in assert false
+    let _ = Model.get_int model var in assert false
   with Failure _ ->
     ()
 

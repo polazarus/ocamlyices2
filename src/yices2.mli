@@ -203,7 +203,7 @@ module Type : sig
   external is_subtype : typ -> typ -> bool = "ocamlyices_type_is_subtype"
 
   external print : ?width:int -> ?height:int -> ?offset:int
-    -> (string -> unit) -> typ -> unit = "ocamlyices_pp_type"
+    -> (string -> unit) -> typ -> unit = "ocamlyices_type_print"
 end
 
 
@@ -412,7 +412,7 @@ module Term : sig
   external clear_name : term -> unit = "ocamlyices_term_clear_name"
   external remove_name : string -> unit = "ocamlyices_term_remove_name"
 
-  external print : ?width:int -> ?height:int -> ?offset:int -> (string -> unit) -> term -> unit = "ocamlyices_pp_term"
+  external print : ?width:int -> ?height:int -> ?offset:int -> (string -> unit) -> term -> unit = "ocamlyices_term_print"
 end
 
 (******************************************************************************)
@@ -452,28 +452,29 @@ module Context : sig
 
   external get_model : ?keepsubst:bool -> context -> model = "ocamlyices_context_get_model"
 
-  (** Model *)
-  module Model : sig
+end
 
-    external get_bool : model -> term -> bool = "ocamlyices_model_get_bool"
-    external get_int : model -> term -> int = "ocamlyices_model_get_int"
-    external get_nativeint : model -> term -> nativeint = "ocamlyices_model_get_nativeint"
-    external get_int32 : model -> term -> int32 = "ocamlyices_model_get_int32"
-    external get_int64 : model -> term -> int64 = "ocamlyices_model_get_int64"
-    external get_rational : model -> term -> int*int = "ocamlyices_model_get_rational_int"
-    external get_rational_int32 : model -> term -> int32*int32 = "ocamlyices_model_get_rational_int32"
-    external get_rational_int64 : model -> term -> int64*int64 = "ocamlyices_model_get_rational_int64"
-    external get_rational_nativeint : model -> term -> nativeint*nativeint = "ocamlyices_model_get_rational_nativeint"
-    external get_float : model -> term -> float = "ocamlyices_model_get_float"
-    external get_bitvector : model -> term -> bool array = "ocamlyices_model_get_bitvector"
-    external get_z : model -> term -> Z.t = "ocamlyices_model_get_z"
-    external get_q : model -> term -> Q.t = "ocamlyices_model_get_q"
-    external get_scalar : model -> term -> int = "ocamlyices_model_get_scalar"
+(** Model *)
+module Model : sig
 
-    external get_as_term : model -> term -> term = "ocamlyices_model_get_as_term"
-    external get_as_terms : model -> term array -> term array = "ocamlyices_model_get_as_terms"
+  external get_bool : model -> term -> bool = "ocamlyices_model_get_bool"
+  external get_int : model -> term -> int = "ocamlyices_model_get_int"
+  external get_nativeint : model -> term -> nativeint = "ocamlyices_model_get_nativeint"
+  external get_int32 : model -> term -> int32 = "ocamlyices_model_get_int32"
+  external get_int64 : model -> term -> int64 = "ocamlyices_model_get_int64"
+  external get_rational : model -> term -> int*int = "ocamlyices_model_get_rational_int"
+  external get_rational_int32 : model -> term -> int32*int32 = "ocamlyices_model_get_rational_int32"
+  external get_rational_int64 : model -> term -> int64*int64 = "ocamlyices_model_get_rational_int64"
+  external get_rational_nativeint : model -> term -> nativeint*nativeint = "ocamlyices_model_get_rational_nativeint"
+  external get_float : model -> term -> float = "ocamlyices_model_get_float"
+  external get_bitvector : model -> term -> bool array = "ocamlyices_model_get_bitvector"
+  external get_z : model -> term -> Z.t = "ocamlyices_model_get_z"
+  external get_q : model -> term -> Q.t = "ocamlyices_model_get_q"
+  external get_scalar : model -> term -> int = "ocamlyices_model_get_scalar"
 
-    external print : ?width:int -> ?height:int -> ?offset:int
-      -> (string -> unit) -> model -> unit = "ocamlyices_pp_model"
-  end
+  external get_as_term : model -> term -> term = "ocamlyices_model_get_as_term"
+  external get_as_terms : model -> term array -> term array = "ocamlyices_model_get_as_terms"
+
+  external print : ?width:int -> ?height:int -> ?offset:int
+    -> (string -> unit) -> model -> unit = "ocamlyices_model_print"
 end

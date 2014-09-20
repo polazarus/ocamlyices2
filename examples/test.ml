@@ -35,7 +35,7 @@ let () =
     Context.assert_formula ctx formula;
     let status = Context.check ctx in
     let model = Context.get_model ctx in
-    Printf.printf "v1 %B,  v2 %B\n" (Context.Model.get_bool model var1) (Context.Model.get_bool model var2);
+    Printf.printf "v1 %B,  v2 %B\n" (Model.get_bool model var1) (Model.get_bool model var2);
     (* let _ = get_bool_value model var1 in*)
   end;
 
@@ -48,5 +48,5 @@ let () =
   Context.assert_formula ctx formula;
   let status = Context.check ctx in
   let model = Context.get_model ctx in
-  Printf.printf "v %Ld\n" (Context.Model.get_int64 model var);
-  Printf.printf "v %a\n" Z.output (Context.Model.get_z model var);
+  Printf.printf "v %Ld\n" (Model.get_int64 model var);
+  Printf.printf "v %a\n" Z.output (Model.get_z model var);
