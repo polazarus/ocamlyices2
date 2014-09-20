@@ -84,7 +84,7 @@ static void _oy_model_finalize(value v_model) {
 }
 
 CAMLprim value ocamlyices_model_get_bool(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   int32_t res, val;
@@ -105,7 +105,7 @@ CAMLprim value ocamlyices_model_get_bool(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_int(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   intnat val;
@@ -140,7 +140,7 @@ CAMLprim value ocamlyices_model_get_int(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_nativeint(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   intnat val;
@@ -171,7 +171,7 @@ CAMLprim value ocamlyices_model_get_nativeint(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_int32(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   int32_t res, val;
@@ -192,7 +192,7 @@ CAMLprim value ocamlyices_model_get_int32(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_int64(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   int32_t res;
@@ -214,7 +214,7 @@ CAMLprim value ocamlyices_model_get_int64(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_rational_int(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_res);
   model_t *mdl;
   term_t t;
@@ -263,7 +263,7 @@ CAMLprim value ocamlyices_model_get_rational_int(value v_mdlctx, value v_t) {
 
 CAMLprim value ocamlyices_model_get_rational_nativeint(value v_mdlctx,
     value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_res);
   model_t *mdl;
   term_t t;
@@ -311,7 +311,7 @@ CAMLprim value ocamlyices_model_get_rational_nativeint(value v_mdlctx,
 }
 
 CAMLprim value ocamlyices_model_get_rational_int32(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_res);
   model_t *mdl;
   term_t t;
@@ -342,7 +342,7 @@ CAMLprim value ocamlyices_model_get_rational_int32(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_rational_int64(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_res);
   model_t *mdl;
   term_t t;
@@ -374,7 +374,7 @@ CAMLprim value ocamlyices_model_get_rational_int64(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_float(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   int32_t res;
@@ -436,7 +436,7 @@ CAMLprim value ocamlyices_model_get_q(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_bitvector(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_bv);
   model_t *mdl;
   term_t t;
@@ -477,7 +477,7 @@ CAMLprim value ocamlyices_model_get_bitvector(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_scalar(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   term_t t;
   int32_t res, val;
@@ -499,7 +499,7 @@ CAMLprim value ocamlyices_model_get_scalar(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_as_term(value v_mdlctx, value v_t) {
-  CAMLparam2(v_mdlctx, v_t);
+  CAMLparam1(v_mdlctx);
   model_t *mdl;
   int32_t res;
 
@@ -517,7 +517,7 @@ CAMLprim value ocamlyices_model_get_as_term(value v_mdlctx, value v_t) {
 }
 
 CAMLprim value ocamlyices_model_get_as_terms(value v_mdlctx, value v_ts) {
-  CAMLparam2(v_mdlctx, v_ts);
+  CAMLparam1(v_mdlctx);
   CAMLlocal1(v_outts);
 
   model_t *mdl;
