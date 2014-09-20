@@ -48,15 +48,15 @@ build: $(BUILD_FILES)
 # Deps
 src/yices2.cmo src/yices2.cmx: src/yices2.cmi
 
-contexts.o: src/contexts.c src/config.h src/contexts.h src/misc.h \
+src/contexts.o: src/contexts.c src/config.h src/contexts.h src/misc.h \
  src/terms.h
-misc.o: src/misc.c src/config.h src/misc.h src/terms.h src/types.h \
+src/misc.o: src/misc.c src/config.h src/misc.h src/terms.h src/types.h \
  src/models.h src/errors.h
-models.o: src/models.c src/config.h src/models.h src/misc.h src/terms.h \
+src/models.o: src/models.c src/config.h src/models.h src/misc.h src/terms.h \
  src/contexts.h
-terms.o: src/terms.c src/config.h src/terms.h src/misc.h src/types.h \
+src/terms.o: src/terms.c src/config.h src/terms.h src/misc.h src/types.h \
  src/terms_macros.h
-types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
+src/types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
 
 # Generic compilation rules ####################################################
 
