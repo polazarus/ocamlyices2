@@ -1,9 +1,30 @@
 open Yices2
 
+let trim s =
+  let is_space = function
+    | ' ' | '\012' | '\n' | '\r' | '\t' -> true
+    | _ -> false in
+  let len = String.length s in
+  let i = ref 0 in
+  while !i < len && is_space (String.get s !i) do
+    incr i
+  done;
+  let j = ref (len - 1) in
+  while !j >= !i && is_space (String.get s !j) do
+    decr j
+  done;
+  if !i = 0 && !j = len - 1 then
+    s
+  else if !j >= !i then
+    String.sub s !i (!j - !i + 1)
+  else
+    ""
+;;
+
 let prstr f arg =
   let res = ref "" in
   f (fun x -> res := !res ^ x) arg;
-  String.trim !res
+  trim !res
 
 let new_input name typ =
   let term = Term.new_uninterpreted typ in

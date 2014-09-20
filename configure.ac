@@ -32,6 +32,15 @@ AC_MSG_RESULT([$OCAMLVERSION])
 AS_VERSION_COMPARE($OCAMLVERSION, 3.12,
   AC_MSG_ERROR([Please update to a newer version of ocaml.]))
 
+AC_MSG_CHECKING([ocamlc binary annotations])
+AS_IF([ocamlc -bin-annot > /dev/null], [
+  AC_MSG_RESULT([yes])
+  ANNOTFLAG="-bin-annot -annot"
+],[
+  AC_MSG_RESULT([no])
+  ANNOTFLAG="-annot"
+])
+
 AC_CHECK_PROG([OCAMLDOC], [ocamldoc], [ocamldoc])
 AS_IF([test "x$OCAMLDOC" = x], AC_MSG_WARN([Cannot find ocamldoc.]))
 
@@ -59,7 +68,7 @@ AS_IF([test "x$OCAMLOPT" = x], [
   ])
 ])
 
-AC_SUBST([HAVE_FUNOPEN])
+AC_SUBST([ANNOTFLAG])
 AC_CONFIG_HEADERS([src/config.h])
 AC_CONFIG_FILES([Makefile.config META])
 

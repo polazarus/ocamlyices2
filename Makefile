@@ -2,9 +2,9 @@
 
 include Makefile.config
 
-compile_byte = $(OCAMLFIND) c -package zarith -I src -c -annot -bin-annot
+compile_byte = $(OCAMLFIND) c -package zarith -I src -c $(ANNOTFLAG)
 compile_interface = $(compile_byte)
-compile_native = $(OCAMLFIND) opt -package zarith -I src -c -annot -bin-annot
+compile_native = $(OCAMLFIND) opt -package zarith -I src -c $(ANNOTFLAG)
 compile_stubs = $(CC) $(CFLAGS) -I$(shell $(OCAMLFIND) query zarith) -c -pedantic -std=c11 -Wall -Wextra -Wconversion
 #-x c++ -fno-exceptions
 link_byte = $(OCAMLFIND) ocamlc -a -package zarith -linkpkg -dllib -l$(PACKAGE_NAME) -cclib '$(LIBS)'
@@ -94,10 +94,10 @@ clean:
 
 TESTS = $(wildcard tests/*.ml)
 
-$(TESTS:%.ml=%.opt): %.opt: %.ml
+$(TESTS:%.ml=%.opt): %.opt: %.ml src/$(PACKAGE_NAME).cmxa
 	$(OCAMLFIND) opt -package zarith -linkpkg -I src src/$(PACKAGE_NAME).cmxa $< -o $@
 
-$(TESTS:%.ml=%.byte): %.byte: %.ml
+$(TESTS:%.ml=%.byte): %.byte: %.ml src/$(PACKAGE_NAME).cma
 	$(OCAMLFIND) c -package zarith -linkpkg -I src src/$(PACKAGE_NAME).cma $< -o $@
 
 test: build test.byte test.opt
