@@ -1,11 +1,11 @@
-Ocamlyices2: Yices 2 SMT solver binding for OCaml, version 0.1.0
+OCamlYices2: Yices 2 SMT solver binding for OCaml, version 0.1.0
 ================================================================
 Mickaël Delahaye, 2014
 
 BEWARE: highly unstable API, see the to-do list.
 
 [Yices 2][1] is an efficient SMT solver developed at SRI International.
-Ocamlyices2 lets you use this SMT solver inside your own program in OCaml.
+OCamlYices2 lets you use this SMT solver inside your own program in OCaml.
 
 You might also be interested in [Ocamlyices][2], a binding for Yices 1 SMT solver.
 
@@ -20,23 +20,15 @@ To do
 Requirements
 ------------
 
-* Yices 2 (installed)
-  After downloading the tarball from their website, you can use:
+* [OCaml][4] 3.12 or later
 
-        ./install-yices.sh yicesXYZ.tar.gz
+* [Findlib][5] (`ocamlfind`), also available through [OPAM][6]
 
-  to install yices in `/usr/local` and
-  register the DLL. You can change destination directories with parameters:
+* [Zarith OCaml library][7], also available through [OPAM][6]
 
-        ./install-yices yices.tar.gz /usr/local /usr/local/lib64
-
-* OCaml 3.12 or later
-
-* Findlib
-
-* GMP header file (gmp.h), needed to extract big integer and rational values
-  from models (as strings), available on most systems (for instance, in the
-  package libgmp-dev on Debian and Ubuntu)
+* GMP with header file (`gmp.h`), needed to handle big integer and rational
+  values (as `Z.t` and `Q.t` from Zarith), available on most systems (for
+  instance, in the package `libgmp-dev` on Debian and Ubuntu).
 
 
 Build and install
@@ -45,7 +37,7 @@ Build and install
     $ ./configure
     $ make
 
-Build the Ocamlyices2 library (for ocamlopt and ocamlc).
+Build the OCamlYices2 library (for ocamlopt and ocamlc).
 
     $ sudo make install
 
@@ -84,3 +76,7 @@ THIS SOFTWARE.
 [1]: http://yices.csl.sri.com/
 [2]: https://github.com/polazarus/ocamlyices
 [3]: http://micdel.fr
+[4]: http://ocaml.org
+[5]: http://projects.camlcity.org/projects/findlib.html
+[6]: http://opam.ocaml.org
+[7]: https://forge.ocamlcore.org/projects/zarith

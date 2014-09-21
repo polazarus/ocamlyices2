@@ -1,5 +1,6 @@
 PACKAGE_NAME = @PACKAGE_NAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
+LIB_NAME = $(PACKAGE_NAME)
 
 # Tools
 OCAMLFIND = @OCAMLFIND@
@@ -14,4 +15,4 @@ CC = $(shell $(OCAMLC) -config | grep bytecomp_c_compiler | sed 's/^\w\+:\s\+//'
 
 # Configuration
 CFLAGS += -Wall -Wextra -Wconversion -O2
-LIBS += -lyices
+LIBS += -lyices -lgmp
