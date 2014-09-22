@@ -51,7 +51,7 @@ compile_stubs       = $(CC) $(CFLAGS) -I$(shell $(OCAMLFIND) query zarith) \
                       -Iext -std=c11 -c
 
 link_byte           = $(OCAMLFIND) c -a -package zarith \
-                      -dllib -l$(LIB_NAME) -cclib '$(LIBS)'
+                      -dllib -l$(LIB_NAME)
 link_native         = $(OCAMLFIND) opt -a -package zarith \
                       -cclib -l$(LIB_NAME) -cclib '$(LIBS)'
 link_dll            = gcc -shared -Lext
