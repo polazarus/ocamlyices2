@@ -7,7 +7,7 @@ BEWARE: highly unstable API, see the to-do list.
 [Yices 2][1] is an efficient SMT solver developed at SRI International.
 OCamlYices2 lets you use this SMT solver inside your own program in OCaml.
 
-**N.B:** Yices is only availabe freely for *non-commercial end*. See Yices'
+**N.B:** Yices is only available freely for *non-commercial end*. See Yices'
 [license terms][2]. As a result OCamlYices is only usable under the same
 restrictions. However OCamlYices' own code (the binding) is freely available.
 
