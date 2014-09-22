@@ -1,0 +1,11 @@
+gperf/
+gperf.tar.gz
+
+yices/build/
+yices/configs/
+
+yices*.h
+
+
+bin/
+share/
