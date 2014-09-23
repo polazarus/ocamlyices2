@@ -48,7 +48,7 @@ compile_byte        = $(OCAMLFIND) c -package zarith -I src -c $(ANNOTFLAG)
 compile_interface   = $(compile_byte)
 compile_native      = $(OCAMLFIND) opt -package zarith -I src -c $(ANNOTFLAG)
 compile_stubs       = $(CC) $(CFLAGS) -I$(shell $(OCAMLFIND) query zarith) \
-                      -Iext -std=c1x -c
+                      -Iext -std=c99 -c
 
 link_byte           = $(OCAMLFIND) c -a -package zarith \
                       -dllib -l$(LIB_NAME)

@@ -4,7 +4,8 @@ install:
 script:
   - bash -ex .travis-script.sh
 env:
-  - OCAML_VERSION=4.02.0 MAC_TOO=1
+  - OCAML_VERSION=4.02.0
+  - OCAML_VERSION=4.02.0 NO_GPERF=1
   - OCAML_VERSION=4.01.0
   - OCAML_VERSION=4.00.1
   - OCAML_VERSION=3.12.1
