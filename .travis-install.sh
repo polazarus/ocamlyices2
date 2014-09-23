@@ -25,4 +25,4 @@
 
 opam init -y
 eval `opam config env`
-opam install ocamlfind zarith
+opam install -y ocamlfind zarith
