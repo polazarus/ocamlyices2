@@ -11,7 +11,7 @@
 
   sudo add-apt-repository -y ppa:$ppa
   sudo apt-get update -qq
-  sudo apt-get install -qq ocaml-nox ocaml-native-compilers opam
+  sudo apt-get install -qq ocaml-nox ocaml-native-compilers opam libgmp-dev
 # ;;
 # osx)
 #   if [ -z "$MAC_TOO" ]; then
@@ -19,7 +19,7 @@
 #     exit 0
 #   fi
 #   brew update
-#   brew install ocaml opam
+#   brew install ocaml opam gmp
 # ;;
 # esac
 
