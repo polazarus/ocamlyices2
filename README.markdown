@@ -1,22 +1,24 @@
-OCamlYices2: Yices 2 SMT solver binding for OCaml, version 0.1.0
+Ocamlyices2: Yices 2 SMT solver binding for OCaml, version 0.1.0
 ================================================================
 Mickaël Delahaye, 2014
+
+[![Build Status](https://travis-ci.org/polazarus/ocamlyices2.svg?branch=master)](https://travis-ci.org/polazarus/ocamlyices2)
 
 BEWARE: highly unstable API, see the to-do list.
 
 [Yices 2][1] is an efficient SMT solver developed at SRI International.
-OCamlYices2 lets you use this SMT solver inside your own program in OCaml.
+Ocamlyices2 lets you use this SMT solver inside your own program in OCaml.
 
-**N.B:** Yices is only available freely for *non-commercial end*. See Yices'
-[license terms][2]. As a result OCamlYices is only usable under the same
-restrictions. However OCamlYices' own code (the binding) is freely available.
+**N.B:** Yices is only available freely for *non-commercial use*. See Yices'
+[license terms][2]. So, although Ocamlyices2's own code (the binding) is freely
+available, Ocamlyices2 is only usable under the same restrictions.
 
 You might also be interested in [Ocamlyices][3], a binding for Yices 1 SMT solver.
 
 To do
 -----
 
-* Cleanup API name convention
+* Cleanup API name convention (mostly done)
 * Add some examples
 * Documentation
 
@@ -40,7 +42,7 @@ Build and install
     $ ./configure
     $ make
 
-Build the OCamlYices2 library (for ocamlopt and ocamlc).
+Build the Ocamlyices2 library (for ocamlopt and ocamlc).
 
     $ sudo make install
 
@@ -53,10 +55,14 @@ With Ocamlfind:
 
     ocamlfind ocamlc/ocamlopt -package ocamlyices2 …
 
-Or without:
+When linking (i.e, actually making an executable), add the `-linkpkg` flag.
 
-    ocamlc -I +ocamlyices2 ocamlyices2.cma …
-    ocamlopt -I +ocamlyices2 ocamlyices2.cmxa …
+Without, well… it depends of your actual setup of OCaml. To compile your
+program, add the directory of Ocamlyices2 and of Zarith in the
+search path with the flag `-I` of `ocamlc`/`ocamlopt` (run
+`ocamlfind query ocamlyices2` to find out). And when linking, add the library
+`ocamlyices2.cma`/`.cmxa` to the command.
+
 
 License
 -------
