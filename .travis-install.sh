@@ -1,5 +1,5 @@
-case "$TRAVIS_OS_NAME" in
-linux)
+# case "$TRAVIS_OS_NAME" in
+# linux)
   # Install Anil's PPAs
   case "$OCAML_VERSION" in
   3|3.12|3.12.1) ppa=avsm/ocaml312+opam11 ;;
@@ -12,16 +12,16 @@ linux)
   sudo add-apt-repository -y ppa:$ppa
   sudo apt-get update -qq
   sudo apt-get install -qq ocaml-nox ocaml-native-compilers opam
-;;
-osx)
-  if [ -z "$MAC_TOO" ]; then
-    touch skip
-    exit 0
-  fi
-  brew update
-  brew install ocaml opam
-;;
-esac
+# ;;
+# osx)
+#   if [ -z "$MAC_TOO" ]; then
+#     touch skip
+#     exit 0
+#   fi
+#   brew update
+#   brew install ocaml opam
+# ;;
+# esac
 
 opam init
 eval `opam config env`
