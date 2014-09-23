@@ -6,7 +6,7 @@ authors: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
 homepage: "http://micdel.fr/ocamlyices2.html"
 bug-reports: "https://github.com/polazarus/ocamlyices2/issues"
 dev-repo: "https://github.com/polazarus/ocamlyices2.git"
-license: "ISC and proprietary"
+license: "ISC license and non-commercial use"
 build: [
   ["./configure" "--prefix=%{prefix}%"]
   [make]
