@@ -28,7 +28,7 @@ gperf/README: gperf.tar.gz
 	mkdir -p gperf; tar -xzf gperf.tar.gz -C gperf --strip-components 1; touch $@
 
 $(GPERF): gperf/README
-	cd gperf; ./configure --prefix=$(dir $@); $(MAKE); $(MAKE) install
+	cd gperf; ./configure --prefix=$(realpath .); $(MAKE); $(MAKE) install
 
 clean:
 	$(RM) -r gperf/ gperf.tar.gz lib/ share/ bin/ yices*.h libyices.a
