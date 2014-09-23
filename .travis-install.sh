@@ -23,6 +23,6 @@
 # ;;
 # esac
 
-opam init
+opam init -y
 eval `opam config env`
 opam install ocamlfind zarith
