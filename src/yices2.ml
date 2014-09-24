@@ -191,7 +191,7 @@ module Type = struct
   external func3 : typ -> typ -> typ -> typ -> typ = "ocamlyices_type_function3"
 
   (** Parse type *)
-  external parse : string -> term = "ocamlyices_type_parse"
+  external parse : string -> typ = "ocamlyices_type_parse"
 
   (** Get type by name *)
   external by_name : string -> typ = "ocamlyices_type_by_name"
