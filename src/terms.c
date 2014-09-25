@@ -1,14 +1,13 @@
 #include "config.h"
+
+#include <gmp.h> /* should be included before yices and zarith */
+#define __GMP_H__
+
 #include "terms.h"
 
-#include <stdlib.h> // for malloc, free
-#include <stdint.h> // for (u)int32_t etc.
+#include <stdlib.h> /* for malloc, free */
+#include <stdint.h> /* for (u)int32_t etc. */
 
-#ifdef HAVE_GMP_H
-#include <gmp.h> // should be included before yices and zarith
-#define __GMP_H__
-#define __GMP_H
-#endif
 
 #include <yices.h>
 #include <zarith.h>

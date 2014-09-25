@@ -3,16 +3,20 @@ PACKAGE_VERSION = @PACKAGE_VERSION@
 LIB_NAME = $(PACKAGE_NAME)
 
 # Tools
+GPERF = @GPERF@ # for Yices
+
 OCAMLFIND = @OCAMLFIND@
-OCAMLC = @OCAMLC@
-OCAMLOPT = @OCAMLOPT@
-OCAMLMKLIB = @OCAMLMKLIB@
 ANNOTFLAG = @ANNOTFLAG@
 OF_INSTALL = $(OCAMLFIND) install
 OF_REMOVE = $(OCAMLFIND) remove
 
-CC = $(shell $(OCAMLC) -config | grep bytecomp_c_compiler | sed 's/^\w\+:\s\+//')
+BIN_ANNOT = @BIN_ANNOT@
+
+HAVE_OCAMLOPT = @HAVE_OCAMLOPT@
+HAVE_OCAMLDOC = @HAVE_OCAMLDOC@
+
+CC = $(shell $(OCAMLFIND) c -config | grep bytecomp_c_compiler | sed 's/^\w\+:\s\+//')
 
 # Configuration
-CFLAGS += -Wall -Wextra -Wconversion -O2
-LIBS += -lyices -lgmp
+CFLAGS = -Wall -Wextra -Wconversion -O2
+LIBS = -lyices @LIBS@

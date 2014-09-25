@@ -1,12 +1,6 @@
 #ifndef __OY_MODELS_H__
 #define __OY_MODELS_H__
 
-#ifdef HAVE_GMP_H
-#include <gmp.h> // should be included before yices and zarith
-#define __GMP_H__
-#define __GMP_H
-#endif
-
 #include <yices.h>
 #include <caml/mlvalues.h>
 

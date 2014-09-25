@@ -36,11 +36,10 @@ INSTALL_FILES  = $(CMA_FILE) $(MLI_SOURCE) $(CMI_FILES) \
                  $(ANNOT_FILES) ext/libyices.a
 INSTALL_DLLS   = $(DLL_FILE)
 
-ifneq ($(OCAMLOPT),)
+ifdef HAVE_OCAMLOPT
 BUILD_FILES   += $(CMXA_FILE) $(LIB_FILE)
 INSTALL_FILES += $(CMXA_FILE) $(A_FILE) $(LIB_FILE)
 endif
-
 
 # Commands
 
