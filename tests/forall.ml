@@ -7,7 +7,7 @@ let () =
   let body var =
     Term.Arith.eq0 (Term.Arith.mul var input)
   in
-  let term = Term.forall int body in
+  let term = Term.Bool.forall int body in
   ()
 
   (* quantifier are not yet supported for anything else :( *)

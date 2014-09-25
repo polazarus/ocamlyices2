@@ -2,15 +2,15 @@ open Yices2
 
 let () =
   let zone = Z.one in
-  let _one = Term.Arith.z zone in
-  let _one_third = Term.Arith.q (Q.of_ints 1 3) in
+  let _one = Term.Int.of_z zone in
+  let _one_third = Term.Ratio.of_q (Q.of_ints 1 3) in
   ()
 
 
 let () =
   let ctx = Context.create () in
   let var = Term.new_uninterpreted (Type.int ()) in
-  let phi = Term.Arith.eq var (Term.Arith.power (Term.Arith.of_int 2) 64) in
+  let phi = Term.Arith.eq var (Term.Arith.power (Term.Int.of_int 2) 64) in
   Context.assert_formula ctx phi;
   match Context.check ctx with
   | SAT ->

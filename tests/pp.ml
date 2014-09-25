@@ -33,7 +33,7 @@ let new_input name typ =
 
 let () =
   let bv1 = Term.Bitvector.zero 5 in
-  let i64 = Term.Arith.of_int64 64L in
+  let i64 = Term.Int.of_int64 64L in
 
   let bv_string = prstr Term.print bv1 in
   assert (bv_string = "0b00000");
@@ -46,7 +46,7 @@ let () =
   and v2 = new_input "v2" bool_typ
   and v3 = new_input "v3" bool_typ in
 
-  let form = Term.or2 v3 (Term.and2 v1 v2) in
+  let form = Term.Bool.or2 v3 (Term.Bool.and2 v1 v2) in
   let form_string = prstr Term.print form in
   assert (form_string = "(or v3 (and v1 v2))");
 

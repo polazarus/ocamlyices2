@@ -2,7 +2,7 @@ open Yices2;;
 
 let () =
   let bv1 = Term.Bitvector.zero 5 in
-  let i64 = Term.Arith.of_int64 64L in
+  let i64 = Term.Int.of_int64 64L in
 
   assert (Term.is_bitvector bv1);
   assert (not (Term.is_bitvector i64));
