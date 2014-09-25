@@ -1,0 +1,5 @@
+# DO NOT REMOVE
+# This directory is intented for the ocamldoc-generated API documentation.
+
+*.html
+*.css

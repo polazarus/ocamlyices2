@@ -1,3 +1,6 @@
+Makefile.config: configure
+	@echo Please run ./configure first; exit 1
+
 include Makefile.config
 
 # Source files
@@ -62,6 +65,12 @@ compile_test_byte   = $(OCAMLFIND) c -package zarith -linkpkg \
                       -I src -ccopt -Lext \
                       $(CMA_FILE)
 
+ifdef HAVE_OCAMLDOC
+  gen_doc           = $(OCAMLFIND) ocamldoc -package zarith -I src -html -charset utf-8 -d
+else
+  gen_doc           = @echo "Error: Cannot generate API doc. Please install 'ocamldoc'."
+endif
+
 ################################################################################
 
 all: ext build
@@ -113,6 +122,12 @@ $(CMA_FILE): $(DLL_FILE) $(CMO_FILES)
 	$(link_byte) -o $@ $(CMO_FILES)
 $(CMXA_FILE): $(LIB_FILE) $(CMX_FILES)
 	$(link_native) -o $@ $(CMX_FILES)
+
+
+# Documentation ################################################################
+
+doc:
+	$(gen_doc) doc $(MLI_SOURCE)
 
 
 # (Un)Install ##################################################################
@@ -167,4 +182,4 @@ cleantest:
 
 ################################################################################
 
-.PHONY: all build install uninstall clean test debug test.opt test.byte ext
+.PHONY: all build install uninstall clean test debug test.opt test.byte ext doc
