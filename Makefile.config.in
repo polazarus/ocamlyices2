@@ -15,8 +15,8 @@ BIN_ANNOT = @BIN_ANNOT@
 HAVE_OCAMLOPT = @HAVE_OCAMLOPT@
 HAVE_OCAMLDOC = @HAVE_OCAMLDOC@
 
-CC = $(shell $(OCAMLFIND) c -config | grep bytecomp_c_compiler | sed 's/^\w\+:\s\+//')
+CC = @CC@
 
 # Configuration
-CFLAGS = -Wall -Wextra -Wconversion -O2
+CFLAGS = @CFLAGS@
 LIBS = -lyices @LIBS@

@@ -1,5 +1,6 @@
 AC_INIT(ocamlyices2,0.1.0)
 
+: ${CFLAGS="-O2 -Wall -Wextra -Wconversion"}
 AC_PROG_CC
 
 AC_CHECK_LIB(gmp, __gmpz_init, [],

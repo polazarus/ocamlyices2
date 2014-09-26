@@ -16,19 +16,21 @@ TESTS        = $(wildcard tests/*.ml)
 
 # Compiled files
 
-OBJECTS      = $(C_SOURCE:%.c=%.o)
-CMO_FILES    = $(ML_SOURCE:%.ml=%.cmo)
-CMX_FILES    = $(ML_SOURCE:%.ml=%.cmx)
-CMI_FILES    = $(MLI_SOURCE:%.mli=%.cmi)
-CMA_FILE     = src/$(LIB_NAME).cma
-CMXA_FILE    = src/$(LIB_NAME).cmxa
-LIB_FILE     = src/lib$(LIB_NAME).a
-A_FILE       = src/$(LIB_NAME).a                # Generated with the .cmxa
-DLL_FILE     = src/dll$(LIB_NAME).so
+OBJECTS        = $(C_SOURCE:%.c=%.o)
+OBJECTS_STATIC = $(C_SOURCE:%.c=%.lo)
+CMO_FILES      = $(ML_SOURCE:%.ml=%.cmo)
+CMX_FILES      = $(ML_SOURCE:%.ml=%.cmx)
+CMI_FILES      = $(MLI_SOURCE:%.mli=%.cmi)
+CMA_FILE       = src/$(LIB_NAME).cma
+CMXA_FILE      = src/$(LIB_NAME).cmxa
+CMXS_FILE      = src/$(LIB_NAME).cmxs
+LIB_FILE       = src/lib$(LIB_NAME).a
+A_FILE         = src/$(LIB_NAME).a                # Generated with the .cmxa
+DLL_FILE       = src/dll$(LIB_NAME).so
 
-ANNOT_FILES  = $(ML_SOURCE:%.ml=%.annot)
-ifneq ($(filter -bin-annot, $(ANNOTFLAG)),)
-ANNOT_FILES += $(ML_SOURCE:%.ml=%.cmt) $(MLI_SOURCE:%.mli=%.cmti)
+ANNOT_FILES    = $(ML_SOURCE:%.ml=%.annot)
+ifdef BIN_ANNOT
+  ANNOT_FILES += $(ML_SOURCE:%.ml=%.cmt) $(MLI_SOURCE:%.mli=%.cmti)
 endif
 
 TESTS_BYTE   = $(TESTS:%.ml=%.byte)
@@ -37,41 +39,62 @@ TESTS_OPT    = $(TESTS:%.ml=%.opt)
 
 # Build and install files
 
-BUILD_FILES    = $(CMA_FILE) src/dll$(LIB_NAME).so $(CMI_FILES)
-INSTALL_FILES  = $(CMA_FILE) $(MLI_SOURCE) $(CMI_FILES) \
-                 $(ANNOT_FILES) ext/libyices.a
-INSTALL_DLLS   = $(DLL_FILE)
+BUILD_FILES         = $(CMA_FILE) $(DLL_FILE)
+INSTALL_FILES       = META \
+                      $(CMA_FILE) $(DLL_FILE) \
+                      $(MLI_SOURCE) $(CMI_FILES) \
+                      $(ANNOT_FILES) \
+                      ext/libyices.a
 
 ifdef HAVE_OCAMLOPT
-BUILD_FILES   += $(CMXA_FILE) $(LIB_FILE)
-INSTALL_FILES += $(CMXA_FILE) $(A_FILE) $(LIB_FILE)
+  BUILD_FILES      += $(CMXA_FILE) $(LIB_FILE) $(CMXS_FILE)
+  INSTALL_FILES    += $(CMXA_FILE) $(A_FILE) $(LIB_FILE) $(CMXS_FILE)
 endif
+
+###############################################################################
+
+ZARITH_LIBDIR       = $(shell $(OCAMLFIND) query zarith)
 
 # Commands
 
-compile_byte        = $(OCAMLFIND) c -package zarith -I src -c $(ANNOTFLAG)
+compile_byte        = $(OCAMLFIND) ocamlc -package zarith -I src \
+                      -annot $(BIN_ANNOT) -c -o
+
 compile_interface   = $(compile_byte)
-compile_native      = $(OCAMLFIND) opt -package zarith -I src -c $(ANNOTFLAG)
-compile_stubs       = $(CC) $(CFLAGS) -I$(shell $(OCAMLFIND) query zarith) \
-                      -Iext -std=c99 -c
+
+compile_native      = $(OCAMLFIND) opt -package zarith -I src -c -o
+
+compile_stub        = $(CC) $(CFLAGS) -fPIC -I$(ZARITH_LIBDIR) -Iext -Isrc -std=c99 -c -o
+
+compile_stub_static = $(CC) $(CFLAGS) -I$(ZARITH_LIBDIR) -Iext -Isrc -std=c99 -c -o
 
 link_byte           = $(OCAMLFIND) c -a -package zarith \
-                      -dllib -l$(LIB_NAME)
+                      -dllib -l$(LIB_NAME) -o
+
 link_native         = $(OCAMLFIND) opt -a -package zarith \
-                      -cclib -l$(LIB_NAME) -cclib '$(LIBS)'
-link_dll            = gcc -shared -Lext
+                      -cclib -l$(LIB_NAME) -o
+
+link_native_shared  = $(OCAMLFIND) opt -shared -package zarith \
+                      -ccopt -Lext -o
+
+link_stubs_shared   = gcc -shared -Lext -o
+
+link_stubs_static   = $(AR) rcs
 
 compile_test_native = $(OCAMLFIND) opt -package zarith -linkpkg \
                       -I src -ccopt -Lext \
                       $(CMXA_FILE)
+
 compile_test_byte   = $(OCAMLFIND) c -package zarith -linkpkg \
                       -I src -ccopt -Lext \
                       $(CMA_FILE)
 
 ifdef HAVE_OCAMLDOC
-  gen_doc           = $(OCAMLFIND) ocamldoc -package zarith -I src -html -charset utf-8 -d
+  gen_doc           = $(OCAMLFIND) ocamldoc -package zarith -I src -html \
+                      -charset utf-8 -d
 else
-  gen_doc           = @echo "Error: Cannot generate API doc. Please install 'ocamldoc'."
+  gen_doc           = @echo "Error: Cannot generate API doc. \
+                      Please install 'ocamldoc'."
 endif
 
 ################################################################################
@@ -104,25 +127,35 @@ src/types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
 # Generic compilation ##########################################################
 
 %.o: %.c
-	$(compile_stubs) -o $@ $<
+	$(compile_stub) $@ $<
+%.lo: %.c
+	$(compile_stub_static) $@ $<
 %.cmi: %.mli
-	$(compile_interface) -o $@ $<
+	$(compile_interface) $@ $<
 %.cmo: %.ml
-	$(compile_byte) -o $@ $<
+	$(compile_byte) $@ $<
 %.cmx: %.ml
-	$(compile_native) -o $@ $<
+	$(compile_native) $@ $<
 
 
 # Library compilation ##########################################################
 
 $(DLL_FILE): $(OBJECTS)
-	$(link_dll) -o $@ $^ $(LIBS)
-$(LIB_FILE): $(OBJECTS)
-	$(AR) rcs $@ $^
+	$(link_stubs_shared) $@ $^ $(LIBS)
+# $(LIBS)'s position matters here
+
+$(LIB_FILE): $(OBJECTS_STATIC)
+	$(link_stubs_static) $@ $^
+
 $(CMA_FILE): $(DLL_FILE) $(CMO_FILES)
-	$(link_byte) -o $@ $(CMO_FILES)
+	$(link_byte) $@ $(CMO_FILES)
+
 $(CMXA_FILE): $(LIB_FILE) $(CMX_FILES)
-	$(link_native) -o $@ $(CMX_FILES)
+	$(link_native) $@ $(CMX_FILES) -cclib '$(LIBS)'
+
+$(CMXS_FILE): $(OBJECTS) $(CMX_FILES)
+	$(link_native_shared) $@ $^ -cclib '$(LIBS)'
+# $(LIBS)'s position matters here
 
 
 # Documentation ################################################################
@@ -134,16 +167,18 @@ doc:
 # (Un)Install ##################################################################
 
 install: build
-	$(OF_INSTALL) $(LIB_NAME) -nodll $(INSTALL_FILES) META -dll $(INSTALL_DLLS)
+	$(OF_INSTALL) $(LIB_NAME) $(INSTALL_FILES)
 uninstall:
 	$(OF_REMOVE) $(LIB_NAME)
 
 
 # Clean up #####################################################################
 
+CLEAN_EXTS = */*.[aos] */*.cm[aoxit] */*.cmti */*.cmx[as] */*.annot \
+             */*.so */a.out .depend
+
 clean:
-	$(RM) */*.o */*.[aos] */*.cm[aoxit] */*.cmti */*.cmxa */*.annot */*.so \
- */a.out .depend
+	$(RM) $(CLEAN_EXTS)
 
 
 # Testing ######################################################################
@@ -156,7 +191,7 @@ $(TESTS_BYTE): %.byte: %.ml
 
 test: test.byte
 
-ifneq ($(OCAMLOPT),)
+ifdef HAVE_OCAMLOPT
 test: test.opt
 endif
 
