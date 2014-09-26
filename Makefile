@@ -23,7 +23,6 @@ CMX_FILES      = $(ML_SOURCE:%.ml=%.cmx)
 CMI_FILES      = $(MLI_SOURCE:%.mli=%.cmi)
 CMA_FILE       = src/$(LIB_NAME).cma
 CMXA_FILE      = src/$(LIB_NAME).cmxa
-CMXS_FILE      = src/$(LIB_NAME).cmxs
 LIB_FILE       = src/lib$(LIB_NAME).a
 A_FILE         = src/$(LIB_NAME).a                # Generated with the .cmxa
 DLL_FILE       = src/dll$(LIB_NAME).so
@@ -47,8 +46,8 @@ INSTALL_FILES       = META \
                       ext/libyices.a
 
 ifdef HAVE_OCAMLOPT
-  BUILD_FILES      += $(CMXA_FILE) $(LIB_FILE) $(CMXS_FILE)
-  INSTALL_FILES    += $(CMXA_FILE) $(A_FILE) $(LIB_FILE) $(CMXS_FILE)
+  BUILD_FILES      += $(CMXA_FILE) $(LIB_FILE)
+  INSTALL_FILES    += $(CMXA_FILE) $(A_FILE) $(LIB_FILE)
 endif
 
 ###############################################################################
@@ -65,8 +64,6 @@ compile_interface   = $(compile_byte)
 compile_native      = $(OCAMLFIND) opt -package zarith -I src -c -o
 
 compile_stub        = $(CC) $(CFLAGS) -fPIC -I$(ZARITH_LIBDIR) -Iext -Isrc -std=c99 -c -o
-
-compile_stub_static = $(CC) $(CFLAGS) -I$(ZARITH_LIBDIR) -Iext -Isrc -std=c99 -c -o
 
 link_byte           = $(OCAMLFIND) c -a -package zarith \
                       -dllib -l$(LIB_NAME) -o
@@ -128,8 +125,6 @@ src/types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
 
 %.o: %.c
 	$(compile_stub) $@ $<
-%.lo: %.c
-	$(compile_stub_static) $@ $<
 %.cmi: %.mli
 	$(compile_interface) $@ $<
 %.cmo: %.ml
@@ -144,7 +139,7 @@ $(DLL_FILE): $(OBJECTS)
 	$(link_stubs_shared) $@ $^ $(LIBS)
 # $(LIBS)'s position matters here
 
-$(LIB_FILE): $(OBJECTS_STATIC)
+$(LIB_FILE): $(OBJECTS)
 	$(link_stubs_static) $@ $^
 
 $(CMA_FILE): $(DLL_FILE) $(CMO_FILES)
@@ -152,11 +147,6 @@ $(CMA_FILE): $(DLL_FILE) $(CMO_FILES)
 
 $(CMXA_FILE): $(LIB_FILE) $(CMX_FILES)
 	$(link_native) $@ $(CMX_FILES) -cclib '$(LIBS)'
-
-$(CMXS_FILE): $(OBJECTS) $(CMX_FILES)
-	$(link_native_shared) $@ $^ -cclib '$(LIBS)'
-# $(LIBS)'s position matters here
-
 
 # Documentation ################################################################
 
