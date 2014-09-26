@@ -1,7 +1,10 @@
+all: ext build
+# Be helpful if not configured
 Makefile.config: configure
 	@echo Please run ./configure first; exit 1
-
 include Makefile.config
+
+################################################################################
 
 # Source files
 
@@ -72,8 +75,6 @@ else
 endif
 
 ################################################################################
-
-all: ext build
 
 ext: ext/libyices.a
 
