@@ -764,7 +764,54 @@ end
 (** Context *)
 module Context : sig
 
-  (** Context configuration *)
+  (** Context configuration
+
+  {[
+         name    |    value            |      meaning
+----------------------------------------------------------------------------------------
+         "mode"  | "one-shot"          |  only one call to check is supported
+                 |                     |
+                 | "multi-checks"      |  several calls to assert and check are
+                 |                     |  possible
+                 |                     |
+                 | "push-pop"          |  like multi-check and with support for
+                 |                     |  retracting assertions (via push/pop)
+                 |                     |
+                 | "interactive"       |  like push-pop, but with automatic context clean
+                 |                     |  up when search is interrupted.
+----------------------------------------------------------------------------------------
+ "uf-solver"     | "default"           |  the uf-solver is included (i.e., the egraph)
+                 | "none"              |  no uf-solver
+----------------------------------------------------------------------------------------
+ "bv-solver"     | "default"           |  the bitvector solver is included
+                 | "none"              |  no bitvector solver
+----------------------------------------------------------------------------------------
+ "array-solver"  | "default"           |  the array solver is included
+                 | "none"              |  no array solver
+----------------------------------------------------------------------------------------
+ "arith-solver"  | "ifw"               |  solver for IDL, based on the Floyd-Warshall
+                 |                     |  algorithm
+                 |                     |
+                 | "rfw"               |  solver for RDL, based on Floyd-Warshall
+                 |                     |
+                 | "simplex"           |  solver for linear arithmetic, based on Simplex
+                 |                     |
+                 | "default"           |  same as "simplex"
+                 |                     |
+                 | "auto"              |  same as "simplex" unless mode="one-shot" and
+                 |                     |  logic is QF_IDL or QF_RDL, in which case the
+                 |                     |  solver is determined after the first call to
+                 |                     |  yices_assert_formula(s).
+                 |                     |
+                 | "none"              |  no arithmetic solver
+----------------------------------------------------------------------------------------
+"arith-fragment" | "IDL"               |  integer difference logic
+                 | "RDL"               |  real difference logic
+                 | "LIA"               |  linear integer arithmetic
+                 | "LRA"               |  linear real arithmetic
+                 | "LIRA"              |  mixed linear arithmetic (real + integer variables)
+]}
+   *)
   module Config : sig
     external create : unit -> config
       = "ocamlyices_config_create"
@@ -775,42 +822,91 @@ module Context : sig
   end
 
 
+  (** Create a context *)
   external create : ?config:config -> unit -> context
     = "ocamlyices_context_create"
 
+  (** Get status. *)
   external status : context -> status
     = "ocamlyices_context_status"
-  external reset : context -> unit
-    = "ocamlyices_context_reset"
-  external push : context -> unit
-    = "ocamlyices_context_push"
-  external pop : context -> unit
-    = "ocamlyices_context_pop"
+
+
+  (** {2 Options}
+    {ul
+      {- [var-elim]: whether to eliminate variables by substitution}
+      {- [arith-elim]: more variable elimination for arithmetic (Gaussian elimination)}
+      {- [bvarith-elim]: more variable elimination for bitvector arithmetic}
+      {- [eager-arith-lemmas]: if enabled and the simplex solver is used, the simplex solver will eagerly generate lemmas such as [(x >= 1) => (x >= 0)] (i.e., the lemmas that involve two inequalities on the same variable [x]).}
+      {- [flatten]: whether to flatten nested [(or ...)]. If this is enabled the term [(or (or a b) (or c d) ]) is flattened to [(or a b c d)].}
+      {- [learn-eq]: enable/disable heuristics to learn implied equalities}
+      {- [keep-ite]: whether to eliminate term if-then-else or keep them as terms - this requires the context to include the egraph}
+      {- [break-symmetries]: attempt to detect symmetries and add constraints to remove them (this can be used only if the context is created for QF_UF)}
+      {- [assert-ite-bounds]: try to determine upper and lower bound on if-then-else terms and assert these bounds. For example, if term [t] is defined as [(ite c 10 (ite d 3 20))], then the context with include the assertion [3 <= t <= 20].}
+    }
+  *)
+
+  (** Enable option *)
   external enable_option : context -> string -> unit
     = "ocamlyices_context_enable_option"
+
+  (** Disable option *)
   external disable_option : context -> string -> unit
     = "ocamlyices_context_disable_option"
+
+  (** {2 Formula assertion} *)
+
+  (** Assert a single formula *)
   external assert_formula : context -> term -> unit
     = "ocamlyices_context_assert_formula"
+
+  (** Assert multiple formulae *)
   external assert_formulas : context -> term array -> unit
     = "ocamlyices_context_assert_formulas"
 
-  (** Check parameters *)
+
+  (** {2 Assertion stack operations} *)
+
+  (** Reset context, i.e. remove all assertions. *)
+  external reset : context -> unit
+    = "ocamlyices_context_reset"
+
+  (** Push, i.e. mark a backtrack point. *)
+  external push : context -> unit
+    = "ocamlyices_context_push"
+
+  (** Pop, i.e. remove all assertions up to last backtrack point. *)
+  external pop : context -> unit
+    = "ocamlyices_context_pop"
+
+
+  (** {2 Satisfiability checking } *)
+  (** Check parameters
+
+   *)
   module Params : sig
+
+    (** Create a record of parameters *)
     external create : unit -> params
       = "ocamlyices_params_create"
+
+    (** Set a parameter *)
     external set : params -> string -> string -> unit
       = "ocamlyices_params_set"
   end
 
+  (** Check satisfiability. *)
   external check : ?params:params -> context -> status
     = "ocamlyices_context_check"
 
+  (** Add a blocking clause, i.e. a clause that ask for another model. *)
   external assert_blocking_clause : context -> unit
     = "ocamlyices_context_assert_blocking_clause"
+
+  (** Interrupt a search. *)
   external stop_search : context -> unit
     = "ocamlyices_context_stop_search"
 
+  (** Get model (should be called after {!check}). *)
   external get_model : ?keepsubst:bool -> context -> model
     = "ocamlyices_context_get_model"
 
