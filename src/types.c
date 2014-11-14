@@ -301,7 +301,11 @@ CAMLprim value ocamlyices_type_bitsize (value v_typ) {
     _oy_error();
   }
 
-  if (YICES_MAX_BVSIZE > Max_long /* should not happen */ && bitsize > Max_long) {
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wtype-limits"
+  if (YICES_MAX_BVSIZE > Max_long /* should not happen */ &&
+      bitsize > Max_long /* only possible on <= 64-bit system */) {
+  #pragma GCC diagnostic pop
     _oy_binding_overflow_error();
   }
 
