@@ -37,21 +37,24 @@ TESTS_OPT    = $(TESTS:%.ml=%.opt)
 
 
 # Build and install files
-INSTALL_FILES       = META \
+BUILD_FILES         = $(CMA_FILE)
+INSTALL_FILES       = $(CMA_FILE)\
+                      META \
                       $(MLI_SOURCE) $(CMI_FILES) \
                       $(ANNOT_FILES) \
                       ext/libyices.a
 # Linking dynamically doesn't seem to work on macosx (ocaml 4.03.0, mac os sierra).
 # The command 'gcc -shared' says that symbol _caml_builtin_cprim is not found.
-# So if the platform is macos, disable the creation of dynamically linked
-# stub (.cma and .so).
+# So if the platform is macos, do not dynamically link against ocamlyices2.so;
+# instead, statically link against ocamlyices2.a
 # See http://caml.inria.fr/pub/ml-archives/caml-list/2007/02/6bdc7f0fa0554826db2dcb7a6f2652e5.en.html
 ifneq ($(shell uname -s),Darwin)
-  BUILD_FILES      += $(CMA_FILE) $(DLL_FILE)
-  INSTALL_FILES    += $(CMA_FILE) $(DLL_FILE)
-else
-  # warning: on macos, dynamic linking (.cma,dll) doesn't work;
-	# linking will be static (.cmxa,.a))
+  SHARED_WORKS = 1
+endif
+
+ifdef SHARED_WORKS
+  BUILD_FILES      += $(DLL_FILE)
+  INSTALL_FILES    += $(DLL_FILE)
 endif
 
 ifdef HAVE_OCAMLOPT
@@ -153,8 +156,15 @@ $(DLL_FILE): $(OBJECTS)
 $(LIB_FILE): $(OBJECTS)
 	$(link_stubs_static) $@ $^
 
+# If linking dynamically (=shared) works, use it (.so or .dll).
+# Otherwise, use the statically linked (.a).
+ifdef SHARED_WORKS
 $(CMA_FILE): $(DLL_FILE) $(CMO_FILES)
 	$(link_byte) $@ $(CMO_FILES)
+else
+$(CMA_FILE): $(LIB_FILE) $(CMO_FILES)
+	$(link_byte) $@ $(CMO_FILES)
+endif
 
 $(CMXA_FILE): $(LIB_FILE) $(CMX_FILES)
 	$(link_native) $@ $(CMX_FILES) -cclib '$(LIBS)'
@@ -190,7 +200,7 @@ $(TESTS_OPT): %.opt: %.ml
 $(TESTS_BYTE): %.byte: %.ml
 	$(compile_test_byte) $< -o $@
 
-ifneq ($(shell uname -s),Darwin)
+ifdef SHARED_WORKS
 test: test.byte
 endif
 
