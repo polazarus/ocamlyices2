@@ -37,13 +37,21 @@ TESTS_OPT    = $(TESTS:%.ml=%.opt)
 
 
 # Build and install files
-
-BUILD_FILES         = $(CMA_FILE) $(DLL_FILE)
 INSTALL_FILES       = META \
-                      $(CMA_FILE) $(DLL_FILE) \
                       $(MLI_SOURCE) $(CMI_FILES) \
                       $(ANNOT_FILES) \
                       ext/libyices.a
+# Linking dynamically doesn't seem to work on macosx (ocaml 4.03.0, mac os sierra).
+# The command 'gcc -shared' says that symbol _caml_builtin_cprim is not found.
+# So if the platform is macos, disable the creation of dynamically linked
+# stub (.cma and .so).
+# See http://caml.inria.fr/pub/ml-archives/caml-list/2007/02/6bdc7f0fa0554826db2dcb7a6f2652e5.en.html
+ifneq ($(shell uname -s),Darwin)
+  BUILD_FILES      += $(CMA_FILE) $(DLL_FILE)
+  INSTALL_FILES    += $(CMA_FILE) $(DLL_FILE)
+else
+  $(warning on macos, dynamic linking (.cma,dll) doesn't work; linking will be static (.cmxa,.a))
+endif
 
 ifdef HAVE_OCAMLOPT
   BUILD_FILES      += $(CMXA_FILE) $(LIB_FILE)
@@ -75,7 +83,7 @@ link_native         = $(OCAMLFIND) opt -a -package zarith \
 link_native_shared  = $(OCAMLFIND) opt -shared -package zarith \
                       -ccopt -Lext -o
 
-link_stubs_shared   = gcc -shared -Lext -o
+link_stubs_shared   = gcc -shared -Lext -L$(ZARITH_LIBDIR) -lzarith -L$(OCAML_LIBDIR) -lcamlrun -o
 
 link_stubs_static   = $(AR) rcs
 
@@ -180,7 +188,9 @@ $(TESTS_OPT): %.opt: %.ml
 $(TESTS_BYTE): %.byte: %.ml
 	$(compile_test_byte) $< -o $@
 
+ifneq ($(shell uname -s),Darwin)
 test: test.byte
+endif
 
 ifdef HAVE_OCAMLOPT
 test: test.opt
