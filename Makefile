@@ -50,7 +50,8 @@ ifneq ($(shell uname -s),Darwin)
   BUILD_FILES      += $(CMA_FILE) $(DLL_FILE)
   INSTALL_FILES    += $(CMA_FILE) $(DLL_FILE)
 else
-  $(warning on macos, dynamic linking (.cma,dll) doesn't work; linking will be static (.cmxa,.a))
+  # warning: on macos, dynamic linking (.cma,dll) doesn't work;
+	# linking will be static (.cmxa,.a))
 endif
 
 ifdef HAVE_OCAMLOPT
