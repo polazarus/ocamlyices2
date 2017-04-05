@@ -71,7 +71,8 @@ compile_byte        = $(OCAMLFIND) ocamlc -package zarith -I src \
 
 compile_interface   = $(compile_byte)
 
-compile_native      = $(OCAMLFIND) opt -package zarith -I src -c -o
+compile_native      = $(OCAMLFIND) opt -package zarith -I src \
+                      -annot $(BIN_ANNOT) -c -o
 
 compile_stub        = $(CC) $(CFLAGS) -fPIC -I$(OCAML_LIBDIR) -I$(ZARITH_LIBDIR) -Iext -Isrc -std=c99 -c -o
 
