@@ -1,0 +1,5 @@
+post-messages: [
+  "OCamlYices2 is free (BSD-like) but Yices is not!
+**Yices is free [only] for non-commercial use**
+License terms: http://yices.csl.sri.com/yices-newnewlicense.shtml" {success}
+]

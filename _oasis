@@ -1,0 +1,62 @@
+OASISFormat: 0.4
+Name: yices2
+Version: 0.1.0
+LicenseFile: LICENSE
+License: ISC
+Authors: Mickaël Delahaye <mickael.delahaye@gmail.com>
+Maintainers: Mickaël Delahaye <mickael.delahaye@gmail.com>
+Synopsis: Yices2 SMT solver binding
+Description: Yices is a Satisfiability Modulo Theories (SMT) solver from SRI.
+  It is available freely for non-commercial purposes.
+  "OCamlYices2 is free (BSD-like) but Yices is not!
+  **Yices is free [only] for non-commercial use**
+  License terms: http://yices.csl.sri.com/yices-newnewlicense.html" {success}
+BuildTools: ocamlbuild
+Plugins: DevFiles (0.2), META (0.2)
+AlphaFeatures: ocamlbuild_more_args
+
+# system can be win32, mingw, mingw64, macosx, linux
+# architecture can be amd64 or i386
+PreBuildCommand: make -C ext
+PostCleanCommand: make -C ext clean
+
+Library yices2
+  Path: src
+  Modules: Yices2
+  CSources: contexts.c, models.c, terms.c, types.c, misc.c,
+            contexts.h, models.h, terms.h, types.h, misc.h,
+            config.h, terms_macros.h, errors.h
+  CCLib: -lyices -lgmp -L../ext
+  CCOpt: -I$(pkg_zarith) -fPIC -std=c99 -I../ext
+  BuildDepends: zarith
+  ByteOpt: -custom
+  NativeOpt:
+
+Executable test_byte
+  Build$: flag(tests)
+  Path:   tests
+  MainIs: test.ml
+  CompiledObject: byte
+  BuildDepends: zarith, yices2, oUnit
+
+Executable test_native
+  Build$: flag(tests)
+  Path:   tests
+  MainIs: test.ml
+  CompiledObject: native
+  BuildDepends: zarith, yices2, oUnit
+
+Test byte
+  Command: $(test_byte)
+  TestTools: test_byte
+
+Test native
+  Command: $(test_native)
+  TestTools: test_native
+
+
+SourceRepository master
+  Type:           git
+  Location:       https://github.com/polazarus/ocamlyices2.git
+  Browser:        https://github.com/polazarus/ocamlyices2
+  

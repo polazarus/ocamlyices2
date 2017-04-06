@@ -1,0 +1,33 @@
+opam-version: "1.2"
+name: "yices2"
+version: "0.1.0"
+maintainer: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
+authors: [ "Mickaël Delahaye <mickael.delahaye@gmail.com>" ]
+license: "ISC"
+dev-repo: "https://github.com/polazarus/ocamlyices2.git"
+bug-reports: "https://github.com/polazarus/ocamlyices2/issues"
+tags: [ "clib:yices" "clib:gmp"  ]
+build: [
+  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
+  ["ocaml" "setup.ml" "-build"]
+]
+install: ["ocaml" "setup.ml" "-install"]
+remove: [
+  ["ocaml" "%{etc}%/yices2/setup.ml" "-C" "%{etc}%/yices2" "-uninstall"]
+]
+build-test: [
+  ["ocaml" "setup.ml" "-configure" "--enable-tests"]
+  ["ocaml" "setup.ml" "-build"]
+  ["ocaml" "setup.ml" "-test"]
+]
+depends: [
+  "ocamlbuild" {build}
+  "ocamlfind" {build}
+  "ounit" {test}
+  "zarith"
+]
+post-messages: [
+  "OCamlYices2 is free (BSD-like) but Yices is not!
+**Yices is free [only] for non-commercial use**
+License terms: http://yices.csl.sri.com/yices-newnewlicense.shtml" {success}
+]
