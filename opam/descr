@@ -1,0 +1,7 @@
+Yices2 SMT solver binding
+
+Yices is a Satisfiability Modulo Theories (SMT) solver from SRI. It is
+available freely for non-commercial purposes. "OCamlYices2 is free
+(BSD-like) but Yices is not! **Yices is free [only] for non-commercial
+use** License terms:
+http://yices.csl.sri.com/yices-newnewlicense.html" {success}

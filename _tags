@@ -1,0 +1,56 @@
+<ext/**/*>: not_hygienic
+# OASIS_START
+# DO NOT EDIT (digest: 5a91cc7db975dfc7f7392ae35990b959)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library yices2
+"src/yices2.cmxs": use_yices2
+<src/*.ml{,i,y}>: oasis_library_yices2_ccopt
+"src/contexts.c": oasis_library_yices2_ccopt
+"src/models.c": oasis_library_yices2_ccopt
+"src/terms.c": oasis_library_yices2_ccopt
+"src/types.c": oasis_library_yices2_ccopt
+"src/misc.c": oasis_library_yices2_ccopt
+<src/yices2.{cma,cmxa}>: oasis_library_yices2_cclib
+"src/libyices2_stubs.lib": oasis_library_yices2_cclib
+"src/dllyices2_stubs.dll": oasis_library_yices2_cclib
+"src/libyices2_stubs.a": oasis_library_yices2_cclib
+"src/dllyices2_stubs.so": oasis_library_yices2_cclib
+<src/yices2.{cma,cmxa}>: oasis_library_yices2_byte
+<src/*.ml{,i,y}>: oasis_library_yices2_byte
+"src/contexts.c": oasis_library_yices2_byte
+"src/models.c": oasis_library_yices2_byte
+"src/terms.c": oasis_library_yices2_byte
+"src/types.c": oasis_library_yices2_byte
+"src/misc.c": oasis_library_yices2_byte
+<src/yices2.{cma,cmxa}>: use_libyices2_stubs
+<src/*.ml{,i,y}>: pkg_zarith
+"src/contexts.c": pkg_zarith
+"src/models.c": pkg_zarith
+"src/terms.c": pkg_zarith
+"src/types.c": pkg_zarith
+"src/misc.c": pkg_zarith
+# Executable test_byte
+"tests/test.byte": pkg_oUnit
+"tests/test.byte": pkg_zarith
+"tests/test.byte": use_yices2
+# Executable test_native
+"tests/test.native": pkg_oUnit
+"tests/test.native": pkg_zarith
+"tests/test.native": use_yices2
+<tests/*.ml{,i,y}>: pkg_oUnit
+<tests/*.ml{,i,y}>: pkg_zarith
+<tests/*.ml{,i,y}>: use_yices2
+# OASIS_STOP
