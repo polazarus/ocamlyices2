@@ -30,7 +30,7 @@ gperf/README: gperf.tar.gz
 gperf/Makefile:
 	cd gperf && ./configure --prefix=$(realpath .);
 
-$(GPERF): gperf/Makefile gperf/README
+$(GPERF): gperf/README gperf/Makefile
 	cd gperf && $(MAKE) && $(MAKE) install
 
 clean:
