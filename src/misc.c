@@ -104,6 +104,7 @@ void _oy_check_error() {
   if (exc == NULL) {
     caml_failwith("cannot find exception");
   }
+  yices_clear_error();
   caml_raise_with_args(*exc, 2, _oy_error_args);
   CAMLreturn0;
 }
