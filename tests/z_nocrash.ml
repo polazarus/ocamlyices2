@@ -1,13 +1,14 @@
 open Yices2
+open OUnit2
 
-let () =
+let z_nocrash2 _ =
   let zone = Z.one in
   let _one = Term.Int.of_z zone in
   let _one_third = Term.Ratio.of_q (Q.of_ints 1 3) in
   ()
 
 
-let () =
+let z_nocrash _ =
   let ctx = Context.create () in
   let var = Term.new_uninterpreted (Type.int ()) in
   let phi = Term.Arith.eq var (Term.Arith.power (Term.Int.of_int 2) 64) in
@@ -16,7 +17,5 @@ let () =
   | SAT ->
     let mdl = Context.get_model ctx in
     let z = Model.get_z mdl var in
-    assert (z = Z.pow (Z.of_int 2) 64)
-  | _ -> assert false
-
-
+    OUnit2.assert_equal z (Z.pow (Z.of_int 2) 64)
+  | _ -> OUnit2.assert_failure ""
