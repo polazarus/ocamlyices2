@@ -1,12 +1,13 @@
 open Yices2
+open OUnit2
 
-let has_long_in = (max_int lsl 34) != 0
-
-let mk_ctx () =
-  let config = Context.Config.create () in
-  Context.create ~config ()
-
-let () =
+let checkoverflow _ =
+  let has_long_in = (max_int lsl 34) != 0
+  in
+  let mk_ctx () =
+    let config = Context.Config.create () in
+    Context.create ~config ()
+  in
   let ctx = mk_ctx () in
   let int_typ = Type.int () in
   let var = Term.new_uninterpreted int_typ in
@@ -17,8 +18,6 @@ let () =
   let model = Context.get_model ctx in
 
   try
-    let _ = Model.get_int model var in assert false
+    let _ = Model.get_int model var in OUnit2.assert_failure ""
   with Failure _ ->
     ()
-
-
