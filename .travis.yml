@@ -9,3 +9,7 @@ env:
   - OCAML_VERSION=4.01.0
   - OCAML_VERSION=4.00.1
   - OCAML_VERSION=3.12.1
+  # NO_GPERF note: in all previous tests, we install gperf
+  # In the last test, we test that our project will
+  # correclty download & build gperf if it is not found
+  # on the system.
