@@ -141,6 +141,12 @@ end
 
 exception YicesError of Error.code * Error.report
 
+(** [register_exn] must be called before any use of Yices2 functions.
+    In most cases, the main function of the Yices2 package will call
+    [register_exn]) by itself, so you won't have to do anything.
+    But in some cases, the main wont be executed and will need to
+    run [register_exn] yourself. *)
+val register_exn : unit -> unit
 
 module Experimental : sig
   (** Reset Yices *)
