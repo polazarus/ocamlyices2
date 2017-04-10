@@ -2,6 +2,7 @@
 *.[oa]
 *.cm[oaix]
 *.cmxa
+*.cmxs
 *.so
 *.dll
 *.byte
@@ -25,3 +26,8 @@ config.status
 
 #build
 /build/
+
+# Files produced by OUnit2
+*.log
+*.cache
+
