@@ -1,4 +1,4 @@
-AC_INIT(ocamlyices2,0.1.0)
+AC_INIT(yices2,0.1.0)
 
 : ${CFLAGS="-O2 -Wall -Wextra -Wconversion"}
 AC_PROG_CC
@@ -69,6 +69,15 @@ AS_IF([$OCAMLFIND query zarith 1> /dev/null 2>&1], [
   AC_MSG_ERROR([Cannot find zarith with 'ocamlfind'. Please install zarith.])
 ])
 
+# OUnit is only needed for testing.
+AC_MSG_CHECKING([for OCaml library ounit])
+AS_IF([$OCAMLFIND query oUnit 1> /dev/null 2>&1], [
+  AC_MSG_RESULT(yes)
+  HAVE_OUNIT=yes
+], [
+  AC_MSG_RESULT(no)
+])
+
 AC_MSG_CHECKING([for OCaml binary annotations (.cmt, .cmti)])
 AS_IF([$OCAMLFIND ocamlc -bin-annot 1> /dev/null 2>&1], [
   AC_MSG_RESULT([yes])
@@ -83,6 +92,7 @@ AC_SUBST([ANNOTFLAG])
 AC_SUBST([BIN_ANNOT])
 AC_SUBST([HAVE_OCAMLOPT])
 AC_SUBST([HAVE_OCAMLDOC])
+AC_SUBST([HAVE_OUNIT])
 AC_CONFIG_HEADERS([src/config.h])
 AC_CONFIG_FILES([Makefile.config META])
 
