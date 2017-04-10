@@ -4,3 +4,7 @@ eval `opam config env`
 make
 make install
 make test
+
+cd examples
+make
+./test.byte && ./test.opt
