@@ -7,11 +7,11 @@ let () =
   print_endline build_date
 
 let () =
-  let _ = Term.true_ () in
-  let _ = Term.false_ () in
-  let _ = Term.Arith.of_int 1 in
-  let _ = Term.Arith.of_int32 32l in
-  let i64 = Term.Arith.of_int64 64L in
+  let _ = Term.Bool.true_ () in
+  let _ = Term.Bool.false_ () in
+  let _ = Term.Int.of_int 1 in
+  let _ = Term.Int.of_int32 32l in
+  let i64 = Term.Int.of_int64 64L in
   let bv1 = Term.Bitvector.zero 5 in
   assert (Term.is_bitvector bv1);
   assert (not (Term.is_bitvector i64));
@@ -29,7 +29,7 @@ let () =
   let bool_typ = Type.bool () in
   let var1 = Term.new_uninterpreted bool_typ in
   let var2 = Term.new_uninterpreted bool_typ in
-  let formula = Term.and2 (Term.implies var1 var2) var1 in
+  let formula = Term.Bool.and2 (Term.Bool.implies var1 var2) var1 in
   begin
     let ctx = Context.create () in
     Context.assert_formula ctx formula;
@@ -44,7 +44,7 @@ let () =
   let ctx = Context.create () in
   let int_typ = Type.int () in
   let var = Term.new_uninterpreted int_typ in
-  let formula = Term.Arith.eq var (Term.Arith.power (Term.Arith.of_int 2) 62) in
+  let formula = Term.Arith.eq var (Term.Arith.power (Term.Int.of_int 2) 62) in
   Context.assert_formula ctx formula;
   let status = Context.check ctx in
   let model = Context.get_model ctx in

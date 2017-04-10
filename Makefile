@@ -42,10 +42,11 @@ BUILD_FILES         = $(CMA_FILE) $(DLL_FILE) $(LIB_FILE)
 INSTALL_FILES       = META \
                       $(CMA_FILE) $(DLL_FILE) $(LIB_FILE)\
                       $(MLI_SOURCE) $(CMI_FILES) \
-                      $(ANNOT_FILES)
+                      $(ANNOT_FILES) \
+					  src/libyices.a
 ifdef HAVE_OCAMLOPT
-  BUILD_FILES      += $(CMXA_FILE) $(CMXS_FILE)
-  INSTALL_FILES    += $(CMXA_FILE) $(CMXS_FILE)
+  BUILD_FILES      += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
+  INSTALL_FILES    += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
 endif
 
 ###############################################################################
@@ -65,6 +66,8 @@ ext: ext/libyices.a
 
 ext/libyices.a:
 	$(MAKE) -C ext
+src/libyices.a: ext/libyices.a
+	cp ext/libyices.a src/libyices.a
 
 debug: CFLAGS += -DDEBUG
 debug: build
@@ -96,11 +99,13 @@ src/types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
 	$(OCAMLFIND) ocamlc -g -custom -c $< -ccopt '-std=c99 -fPIC $(CFLAGS) -I$(OCAML_LIBDIR) -I$(ZARITH_LIBDIR) -Iext -Isrc'
 	mv $(notdir $@) $@
 
-# Compile libocamlyices.a
-# For lib%.a, $* contains what has been matched by %.
-# It will create libocamlyices2.a and dllocamlyices.so
-%lib$(LIB_NAME)_stubs.a %dll$(LIB_NAME)_stubs.so: $(OBJECTS)
-	$(OCAMLFIND) ocamlmklib -o $*$(LIB_NAME)_stubs $^ -Lext $(LDFLAGS) $(LIBS)
+# Compile libyices2_stubs.a and dllyices2_stubs.so.
+# NOTE: If I use the flag -Lext for finding the library -lyices, the resulting
+# library will complain about -Lext being useless.
+# To avoid that, we ocamlmklib in the same dir as libyices.a and use -L. (which
+# should not output any warning when building with the yices2 package).
+src/lib$(LIB_NAME)_stubs.a src/dll$(LIB_NAME)_stubs.so: $(OBJECTS) | src/libyices.a
+	cd $(dir $@) && $(OCAMLFIND) ocamlmklib -o $(LIB_NAME)_stubs $(notdir $^) $(LDFLAGS) $(LIBS) -L.
 
 src/%.cmi: src/%.mli
 	$(OCAMLFIND) ocamlc $(PACKAGES) -I src -annot $(BIN_ANNOT) -c -o $@ $<
@@ -112,16 +117,16 @@ src/%.cmx: src/%.ml
 # Library compilation ##########################################################
 
 %$(LIB_NAME).cma: %$(LIB_NAME).cmo | %lib$(LIB_NAME)_stubs.a %dll$(LIB_NAME)_stubs.so
-	$(OCAMLFIND) ocamlc -a -dllib '-Lsrc -l$(LIB_NAME)_stubs' \
-	-cclib '-Lsrc -l$(LIB_NAME)_stubs -Lext -lyices -lgmp $(LDFLAGS) $(LIBS)' \
+	$(OCAMLFIND) ocamlc -a \
+	-cclib '-l$(LIB_NAME)_stubs -lyices -lgmp $(LDFLAGS) $(LIBS)' \
 	-custom $^ -o $@
 
-%$(LIB_NAME).cmxa: %$(LIB_NAME).cmx | %lib$(LIB_NAME)_stubs.a
+%$(LIB_NAME).cmxa %$(LIB_NAME).a: %$(LIB_NAME).cmx | %lib$(LIB_NAME)_stubs.a
 	$(OCAMLFIND) ocamlopt -a \
-	-cclib '-Lsrc -l$(LIB_NAME)_stubs -Lext -lyices -lgmp $(LDFLAGS) $(LIBS)' \
+	-cclib '-l$(LIB_NAME)_stubs -lyices -lgmp $(LDFLAGS) $(LIBS)' \
 	$^ -o $@
 
-%$(LIB_NAME).cmxs: %$(LIB_NAME).cmxa %$(LIB_NAME).cmx | %dll$(LIB_NAME)_stubs.so
+%$(LIB_NAME).cmxs %$(LIB_NAME).so: %$(LIB_NAME).cmxa %$(LIB_NAME).cmx | %dll$(LIB_NAME)_stubs.so
 	$(OCAMLFIND) ocamlopt -shared -I $(dir $@) $^ -o $@
 
 # Documentation ################################################################
