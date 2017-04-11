@@ -1,5 +1,5 @@
 version = "@PACKAGE_VERSION@"
 description = "OCamlYices2: Yices 2 SMT solver binding for OCaml"
-archive(byte) = "yices2.cma"
-archive(native) = "yices2.cmxa"
+archive(byte) = "@PACKAGE_NAME@.cma"
+archive(native) = "@PACKAGE_NAME@.cmxa"
 requires = "zarith"

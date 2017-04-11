@@ -3624,7 +3624,7 @@ fi
 
 ac_config_headers="$ac_config_headers src/config.h"
 
-ac_config_files="$ac_config_files Makefile.config META"
+ac_config_files="$ac_config_files Makefile.config META opam"
 
 
 cat >confcache <<\_ACEOF
@@ -4319,6 +4319,7 @@ do
     "src/config.h") CONFIG_HEADERS="$CONFIG_HEADERS src/config.h" ;;
     "Makefile.config") CONFIG_FILES="$CONFIG_FILES Makefile.config" ;;
     "META") CONFIG_FILES="$CONFIG_FILES META" ;;
+    "opam") CONFIG_FILES="$CONFIG_FILES opam" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac
