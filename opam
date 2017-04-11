@@ -19,8 +19,15 @@ build-test: [
 ]
 depends: [
   "ocamlfind" {build}
+  "conf-gmp" {build}     # needed for building src/yices
   "zarith"
   "ounit" {test}
+]
+# gperf is needed for building ext/yices
+depexts: [
+  [["linux"] ["gperf"]]
+  [["osx" "homebrew"] ["gperf"]]
+  [["win32" "cygwinports"] ["gperf"]]
 ]
 post-messages: [
   "OCamlYices2 is free (BSD-like) but Yices is not!
