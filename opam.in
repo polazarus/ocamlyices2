@@ -1,0 +1,29 @@
+opam-version: "1.2"
+name: "@PACKAGE_NAME@"
+version: "@PACKAGE_VERSION@"
+maintainer: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
+authors: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
+homepage: "http://micdel.fr/ocamlyices2.html"
+bug-reports: "https://github.com/polazarus/ocamlyices2/issues"
+dev-repo: "https://github.com/polazarus/ocamlyices2.git"
+license: "ISC license and non-commercial use"
+build: [
+  ["./configure" "--prefix=%{prefix}%"]
+  [make]
+]
+install: [make "install"]
+remove: ["ocamlfind" "remove" "@PACKAGE_NAME@"]
+build-test: [
+  ["./configure"]
+  [make test]
+]
+depends: [
+  "ocamlfind" {build}
+  "zarith"
+  "ounit" {test}
+]
+post-messages: [
+  "OCamlYices2 is free (BSD-like) but Yices is not!
+**Yices is free [only] for non-commercial use**
+License terms: http://yices.csl.sri.com/yices-newnewlicense.shtml" {success}
+]
