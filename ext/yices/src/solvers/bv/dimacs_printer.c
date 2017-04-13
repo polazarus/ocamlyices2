@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 
+#include "context/internalization_codes.h"
 #include "io/term_printer.h"
 #include "solvers/bv/dimacs_printer.h"
 
@@ -384,7 +385,7 @@ void dimacs_print_term_map_array(FILE *f, context_t *ctx, term_t *a, uint32_t n)
  */
 
 /*
- * Print the term map for every uinterpreted term present in ctx->intern_tbl
+ * Print the term map for every uninterpreted term present in ctx->intern_tbl
  * then print the core
  */
 void dimacs_print_bvcontext(FILE *f, context_t *ctx) {

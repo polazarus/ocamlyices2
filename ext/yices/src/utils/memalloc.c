@@ -13,14 +13,26 @@
 #include <assert.h>
 
 #include "utils/memalloc.h"
+
 #include "yices_exit_codes.h"
+
+
+/*
+ * Callback function: give a chance to do something when
+ * we run out of memory.
+ */
+out_of_mem_callback_t __out_of_mem_callback = NULL;
 
 
 /*
  * Fatal error: out of memory
  */
-void out_of_memory() {
-  fprintf(stderr, "Out of memory\n");
+void out_of_memory(void) {
+  if (__out_of_mem_callback != NULL) {
+    __out_of_mem_callback();
+  } else {
+    fprintf(stderr, "Out of memory\n");
+  }
   exit(YICES_EXIT_OUT_OF_MEMORY);
 }
 

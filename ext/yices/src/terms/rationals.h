@@ -286,7 +286,6 @@ extern void q_integer_div(rational_t *r1, rational_t *r2);
 extern void q_integer_rem(rational_t *r1, rational_t *r2);
 
 
-
 /*
  * Generalized LCM: compute the smallest non-negative rational q
  * such that q/r1 is an integer and q/r2 is an integer.
@@ -294,6 +293,34 @@ extern void q_integer_rem(rational_t *r1, rational_t *r2);
  * - the result is stored in r1
  */
 extern void q_generalized_lcm(rational_t *r1, rational_t *r2);
+
+/*
+ * Generalized GCD: compute the largest positive rational q
+ * such that r1/q and r2/q are both integer.
+ * - the result is stored in r2
+ */
+extern void q_generalized_gcd(rational_t *r1, rational_t *r2);
+
+
+
+/*
+ * SMT2 Versions of division and mod
+ *
+ * Intended semantics for div and mod:
+ * - if y > 0 then div(x, y) is floor(x/y)
+ * - if y < 0 then div(x, y) is ceil(x/y)
+ * - 0 <= mod(x, y) < y
+ * - x = y * div(x, y) + mod(x, y)
+ * These operations are defined for any x and non-zero y.
+ * The terms x and y are not required to be integers.
+ *
+ * - q_smt2_div(q, x, y) stores (div x y) in q
+ * - q_smt2_mod(q, x, y) stores (mod x y) in q
+ *
+ * For both functions, y must not be zero.
+ */
+extern void q_smt2_div(rational_t *q, const rational_t *x, const rational_t *y);
+extern void q_smt2_mod(rational_t *q, const rational_t *x, const rational_t *y);
 
 
 
@@ -321,7 +348,7 @@ static inline int q_sgn(rational_t *r) {
  * - returns 0 if r1 = r2
  * - returns a positive number if r1 > r2
  */
-extern int q_cmp(rational_t *r1, rational_t *r2);
+extern int q_cmp(const rational_t *r1, const rational_t *r2);
 
 
 /*
@@ -331,8 +358,8 @@ extern int q_cmp(rational_t *r1, rational_t *r2);
  * - returns 0 if r1 = num/den
  * - returns a positive number if r1 > num/den
  */
-extern int q_cmp_int32(rational_t *r1, int32_t num, uint32_t den);
-extern int q_cmp_int64(rational_t *r1, int64_t num, uint64_t den);
+extern int q_cmp_int32(const rational_t *r1, int32_t num, uint32_t den);
+extern int q_cmp_int64(const rational_t *r1, int64_t num, uint64_t den);
 
 
 /*
@@ -344,27 +371,27 @@ extern int q_cmp_int64(rational_t *r1, int64_t num, uint64_t den);
  * - q_eq(r1, r2) is nonzero iff r1 = r2
  * - q_neq(r1, r2) is nonzero iff r1 != r2
  */
-static inline bool q_le(rational_t *r1, rational_t *r2) {
+static inline bool q_le(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) <= 0;
 }
 
-static inline bool q_lt(rational_t *r1, rational_t *r2) {
+static inline bool q_lt(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) < 0;
 }
 
-static inline bool q_ge(rational_t *r1, rational_t *r2) {
+static inline bool q_ge(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) >= 0;
 }
 
-static inline bool q_gt(rational_t *r1, rational_t *r2) {
+static inline bool q_gt(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) > 0;
 }
 
-static inline bool q_eq(rational_t *r1, rational_t *r2) {
+static inline bool q_eq(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) == 0;
 }
 
-static inline bool q_neq(rational_t *r1, rational_t *r2) {
+static inline bool q_neq(const rational_t *r1, const rational_t *r2) {
   return q_cmp(r1, r2) != 0;
 }
 
@@ -372,47 +399,47 @@ static inline bool q_neq(rational_t *r1, rational_t *r2) {
 /*
  * Check whether r1 and r2 are opposite (i.e., r1 + r2 = 0)
  */
-extern bool q_opposite(rational_t *r1, rational_t *r2);
+extern bool q_opposite(const rational_t *r1, const rational_t *r2);
 
 
 /*
  * Tests on rational r
  */
-static inline bool q_is_zero(rational_t *r) {
+static inline bool q_is_zero(const rational_t *r) {
   return r->den == 0 ? mpq_is_zero(bank_q[r->num]) : r->num == 0;
 }
 
-static inline bool q_is_nonzero(rational_t *r) {
+static inline bool q_is_nonzero(const rational_t *r) {
   return r->den == 0 ? mpq_is_nonzero(bank_q[r->num]) : r->num != 0;
 }
 
-static inline bool q_is_one(rational_t *r) {
+static inline bool q_is_one(const rational_t *r) {
   return (r->den == 1 && r->num == 1) ||
     (r->den == 0 && mpq_is_one(bank_q[r->num]));
 }
 
-static inline bool q_is_minus_one(rational_t *r) {
+static inline bool q_is_minus_one(const rational_t *r) {
   return (r->den == 1 && r->num == -1) ||
     (r->den == 0 && mpq_is_minus_one(bank_q[r->num]));
 }
 
-static inline bool q_is_pos(rational_t *r) {
+static inline bool q_is_pos(const rational_t *r) {
   return (r->den > 0 ?  r->num > 0 : mpq_is_pos(bank_q[r->num]));
 }
 
-static inline bool q_is_nonneg(rational_t *r) {
+static inline bool q_is_nonneg(const rational_t *r) {
   return (r->den > 0 ?  r->num >= 0 : mpq_is_nonneg(bank_q[r->num]));
 }
 
-static inline bool q_is_neg(rational_t *r) {
+static inline bool q_is_neg(const rational_t *r) {
   return (r->den > 0 ?  r->num < 0 : mpq_is_neg(bank_q[r->num]));
 }
 
-static inline bool q_is_nonpos(rational_t *r) {
+static inline bool q_is_nonpos(const rational_t *r) {
   return (r->den > 0 ?  r->num <= 0 : mpq_is_nonpos(bank_q[r->num]));
 }
 
-static inline bool q_is_integer(rational_t *r) {
+static inline bool q_is_integer(const rational_t *r) {
   return (r->den == 1) || (r->den == 0 && mpq_is_integer(bank_q[r->num]));
 }
 
@@ -436,6 +463,13 @@ extern bool q_integer_divides(rational_t *r1, const rational_t *r2);
  */
 extern bool q_divides(const rational_t *r1, const rational_t *r2);
 
+
+/*
+ * SMT2 version:
+ * - if t1 is non-zero, return true iff (r2/r1) is an integer
+ * - if t1 is zero, return true iff r2 is zero
+ */
+extern bool q_smt2_divides(const rational_t *r1, const rational_t *r2);
 
 
 
@@ -486,6 +520,16 @@ extern bool q_fits_int64(rational_t *r); // r is a/b where a is int64, b is uint
 
 
 /*
+ * Size estimate
+ * - this returns approximately the number of bits to represent r's numerator
+ * - this may not be exact (typically rounded up to a multiple of 32)
+ * - also if r is really really big, this function may return 
+ *   UINT32_MAX (not very likely!)
+ */
+extern uint32_t q_size(rational_t *r);
+
+
+/*
  * CONVERSION TO GMP OBJECTS
  */
 
@@ -517,8 +561,8 @@ extern double q_get_double(rational_t *r);
  * Print r on stream f.
  * q_print_abs prints the absolute value
  */
-extern void q_print(FILE *f, rational_t *r);
-extern void q_print_abs(FILE *f, rational_t *r);
+extern void q_print(FILE *f, const rational_t *r);
+extern void q_print_abs(FILE *f, const rational_t *r);
 
 
 /*
@@ -531,9 +575,9 @@ extern void q_print_abs(FILE *f, rational_t *r);
  * - hash_denominator(r) = denominator MOD bigprime
  * where bigprime is the largest prime number smaller than 2^32.
  */
-extern uint32_t q_hash_numerator(rational_t *r);
-extern uint32_t q_hash_denominator(rational_t *r);
-extern void q_hash_decompose(rational_t *r, uint32_t *h_num, uint32_t *h_den);
+extern uint32_t q_hash_numerator(const rational_t *r);
+extern uint32_t q_hash_denominator(const rational_t *r);
+extern void q_hash_decompose(const rational_t *r, uint32_t *h_num, uint32_t *h_den);
 
 
 

@@ -48,6 +48,16 @@
  *      bv_ge t1 t2 (unsigned comparison: t1 >= t2)
  *      bv_sge t1 t2 (signed comparison: t1 >= t2)
  *
+ * 8) more arithmetic operators (defined in SMTLIB2)
+ *    - floor x
+ *    - ceil x
+ *    - abs x
+ *    - div x y
+ *    - mod x y
+ *    - divides x y: y is a multiple of y
+ *    - is_int x: true if x is an integer
+ *    - rdiv x y: (/ x y)
+ *
  * Every term is an index t in a global term table,
  * where 0 <= t <= 2^30. The two term occurrences
  * t+ and t- are encoded on 32bits (signed integer) with
@@ -69,12 +79,11 @@
  * we want to allow the user to give different names to t and (not t).
  */
 
+#include "terms/bv64_constants.h"
+#include "terms/terms.h"
+#include "utils/hash_functions.h"
 #include "utils/memalloc.h"
 #include "utils/refcount_strings.h"
-#include "utils/hash_functions.h"
-#include "terms/bv64_constants.h"
-
-#include "terms/terms.h"
 
 
 /*
@@ -261,6 +270,26 @@ static int32_t new_select_term(term_table_t *table, term_kind_t tag, type_t tau,
   table->desc[i].select.arg = t;
 
   return i;
+}
+
+
+/*
+ * Root object:
+ * - k = root index
+ * - x = variable
+ * - p = polynomial in x
+ * - r = relation
+ */
+static root_atom_t* new_root_atom(term_table_t *table, uint32_t k, term_t x, term_t p, root_atom_rel_t r) {
+  root_atom_t *atom;
+
+  atom = (root_atom_t *) safe_malloc(sizeof(root_atom_t));
+  atom->k = k;
+  atom->x = x;
+  atom->p = p;
+  atom->r = r;
+
+  return atom;
 }
 
 
@@ -531,6 +560,14 @@ static inline uint32_t hash_select_term(term_kind_t tag, uint32_t k, term_t t) {
 
 
 /*
+ * Root atoms: (k, x, p, r)
+ */
+static inline uint32_t hash_root_atom(uint32_t k, term_t x, term_t p, root_atom_rel_t r) {
+  return jenkins_hash_quad(k, x, p, r, 0xdededede);
+}
+
+
+/*
  * Power product: since the pprod-table already does hash consing,
  * a power product r is uniquely identified by its address.
  */
@@ -712,6 +749,23 @@ typedef struct {
 
 
 /*
+ * Root atom
+ * - k = root index
+ * - x = main variable
+ * - p = the polynomial (in x) whose root is being compared
+ * - r = the relation
+ */
+typedef struct {
+  int_hobj_t m;
+  term_table_t *tbl;
+  uint32_t k;
+  term_t x;
+  term_t p;
+  root_atom_rel_t r;
+} root_atom_hobj_t;
+
+
+/*
  * Power product
  * - tau = type (can be int, real, or bitvector)
  * - r = power product
@@ -825,6 +879,10 @@ static uint32_t hash_lambda_hobj(lambda_term_hobj_t *o) {
 
 static uint32_t hash_select_hobj(select_term_hobj_t *o) {
   return hash_select_term(o->tag, o->k, o->arg);
+}
+
+static uint32_t hash_root_atom_hobj(root_atom_hobj_t *o) {
+  return hash_root_atom(o->k, o->x, o->p, o->r);
 }
 
 static uint32_t hash_pprod_hobj(pprod_term_hobj_t *o) {
@@ -977,6 +1035,20 @@ static bool eq_select_hobj(select_term_hobj_t *o, int32_t i) {
   return d->idx == o->k && d->arg == o->arg;
 }
 
+static bool eq_root_atom_hobj(root_atom_hobj_t *o, int32_t i) {
+  term_table_t *table;
+  root_atom_t *r;
+
+  table = o->tbl;
+  assert(good_term_idx(table, i));
+
+  if (table->kind[i] != ARITH_ROOT_ATOM) return false;
+
+  r = table->desc[i].ptr;
+  return r->k == o->k && r->p == o->p && r->r == o->r && r->x == o->x;
+}
+
+
 static bool eq_pprod_hobj(pprod_term_hobj_t *o, int32_t i) {
   term_table_t *table;
 
@@ -1101,6 +1173,13 @@ static int32_t build_select_hobj(select_term_hobj_t *o) {
   return new_select_term(o->tbl, o->tag, o->tau, o->k, o->arg);
 }
 
+static int32_t build_root_atom_hobj(root_atom_hobj_t *o) {
+  root_atom_t* r;
+
+  r = new_root_atom(o->tbl, o->k, o->x, o->p, o->r);
+  return new_ptr_term(o->tbl, ARITH_ROOT_ATOM, bool_type(o->tbl->types), r);
+}
+
 static int32_t build_pprod_hobj(pprod_term_hobj_t *o) {
   return new_ptr_term(o->tbl, POWER_PRODUCT, o->tau, o->r);
 }
@@ -1204,6 +1283,13 @@ static lambda_term_hobj_t lambda_hobj = {
 static select_term_hobj_t select_hobj = {
   { (hobj_hash_t) hash_select_hobj, (hobj_eq_t) eq_select_hobj,
     (hobj_build_t) build_select_hobj },
+  NULL,
+  0, 0, 0, 0,
+};
+
+static root_atom_hobj_t root_atom_hobj = {
+  { (hobj_hash_t) hash_root_atom_hobj, (hobj_eq_t) eq_root_atom_hobj,
+    (hobj_build_t) build_root_atom_hobj },
   NULL,
   0, 0, 0, 0,
 };
@@ -1501,6 +1587,7 @@ void clear_term_name(term_table_t *table, term_t t) {
 static void delete_term(term_table_t *table, int32_t i) {
   composite_term_t *d;
   select_term_t *s;
+  root_atom_t* r;
   bvconst_term_t *c;
   bvconst64_term_t *c64;
   uint32_t h, n;
@@ -1538,6 +1625,10 @@ static void delete_term(term_table_t *table, int32_t i) {
   case VARIABLE:
   case ARITH_EQ_ATOM:
   case ARITH_GE_ATOM:
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
     // The descriptor is an integer nothing to delete.
     h = hash_integer_term(table->kind[i], table->type[i], table->desc[i].integer);
     break;
@@ -1549,6 +1640,10 @@ static void delete_term(term_table_t *table, int32_t i) {
   case OR_TERM:
   case XOR_TERM:
   case ARITH_BINEQ_ATOM:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_ARRAY:
   case BV_DIV:
   case BV_REM:
@@ -1613,6 +1708,13 @@ static void delete_term(term_table_t *table, int32_t i) {
     // Select terms: nothing to delete.
     s = &table->desc[i].select;
     h = hash_select_term(table->kind[i], s->idx, s->arg);
+    break;
+
+  case ARITH_ROOT_ATOM:
+    // Root atoms
+    r = table->desc[i].ptr;
+    h = hash_root_atom(r->k, r->x, r->p, r->r);
+    safe_free(r);
     break;
 
   case POWER_PRODUCT:
@@ -1760,6 +1862,10 @@ static void delete_term_descriptors(term_table_t *table) {
     case POWER_PRODUCT:
     case ARITH_EQ_ATOM:
     case ARITH_GE_ATOM:
+    case ARITH_IS_INT_ATOM:
+    case ARITH_FLOOR:
+    case ARITH_CEIL:
+    case ARITH_ABS:
     case SELECT_TERM:
     case BIT_TERM:
       break;
@@ -1775,6 +1881,11 @@ static void delete_term_descriptors(term_table_t *table) {
     case OR_TERM:
     case XOR_TERM:
     case ARITH_BINEQ_ATOM:
+    case ARITH_RDIV:
+    case ARITH_IDIV:
+    case ARITH_MOD:
+    case ARITH_DIVIDES_ATOM:
+    case ARITH_ROOT_ATOM:
     case BV64_CONSTANT:
     case BV_CONSTANT:
     case BV_ARRAY:
@@ -2195,6 +2306,23 @@ static term_t binary_term(term_table_t *table, term_kind_t tag, type_t tau, term
 
 
 /*
+ * One-argument term: defined by (tag, tau, t)
+ */
+static term_t unary_term(term_table_t *table, term_kind_t tag, type_t tau, term_t t) {
+  int32_t i;
+
+  integer_hobj.tbl = table;
+  integer_hobj.tag = tag;
+  integer_hobj.tau = tau;
+  integer_hobj.id = t;
+
+  i = int_htbl_get_obj(&table->htbl, &integer_hobj.m);
+
+  return pos_term(i);
+}
+
+
+/*
  * Equality (eq left right)
  */
 term_t eq_term(term_table_t *table, term_t left, term_t right) {
@@ -2361,16 +2489,7 @@ term_t arith_constant(term_table_t *table, rational_t *a) {
  * Atom t == 0 for an arithmetic term t
  */
 term_t arith_eq_atom(term_table_t *table, term_t t) {
-  int32_t i;
-
-  integer_hobj.tbl = table;
-  integer_hobj.tag = ARITH_EQ_ATOM;
-  integer_hobj.tau = bool_type(table->types);
-  integer_hobj.id = t;
-
-  i = int_htbl_get_obj(&table->htbl, &integer_hobj.m);
-
-  return pos_term(i);
+  return unary_term(table, ARITH_EQ_ATOM, bool_type(table->types), t);
 }
 
 
@@ -2378,18 +2497,8 @@ term_t arith_eq_atom(term_table_t *table, term_t t) {
  * Atom (t >= 0) for an arithmetic term t
  */
 term_t arith_geq_atom(term_table_t *table, term_t t) {
-  int32_t i;
-
-  integer_hobj.tbl = table;
-  integer_hobj.tag = ARITH_GE_ATOM;
-  integer_hobj.tau = bool_type(table->types);
-  integer_hobj.id = t;
-
-  i = int_htbl_get_obj(&table->htbl, &integer_hobj.m);
-
-  return pos_term(i);
+  return unary_term(table, ARITH_GE_ATOM, bool_type(table->types), t);
 }
-
 
 
 /*
@@ -2397,6 +2506,87 @@ term_t arith_geq_atom(term_table_t *table, term_t t) {
  */
 term_t arith_bineq_atom(term_table_t *table, term_t left, term_t right) {
   return binary_term(table, ARITH_BINEQ_ATOM, bool_type(table->types), left, right);
+}
+
+
+/*
+ * Test for integrality: (is_int x)
+ */
+term_t arith_is_int(term_table_t *table, term_t x) {
+  return unary_term(table, ARITH_IS_INT_ATOM, bool_type(table->types), x);
+}
+
+/*
+ * Floor and ceiling: the result has type int
+ */
+term_t arith_floor(term_table_t *table, term_t x) {
+  return unary_term(table, ARITH_FLOOR, int_type(table->types), x);
+}
+
+term_t arith_ceil(term_table_t *table, term_t x) {
+  return unary_term(table, ARITH_CEIL, int_type(table->types), x);
+}
+
+/*
+ * Absolute value: the result has the same type as x
+ */
+term_t arith_abs(term_table_t *table, term_t x) {
+  type_t tau;
+
+  tau = term_type(table, x);
+  return unary_term(table, ARITH_ABS, tau, x);
+}
+
+/*
+ * (div x y): the result has type int
+ */
+term_t arith_idiv(term_table_t *table, term_t x, term_t y) {
+  return binary_term(table, ARITH_IDIV, int_type(table->types), x, y);
+}
+
+/*
+ * (mod x y) = x - y * (div x y)
+ * So the result has type int if both x and y are integers
+ */
+term_t arith_mod(term_table_t *table, term_t x, term_t y) {
+  type_t tau;
+
+  tau = is_integer_term(table, x) ? term_type(table, y) : real_type(table->types);
+  return binary_term(table, ARITH_MOD, tau, x, y);
+}
+
+/*
+ * Test whether x divides y
+ */
+term_t arith_divides(term_table_t *table, term_t x, term_t y) {
+  return binary_term(table, ARITH_DIVIDES_ATOM, bool_type(table->types), x, y);
+}
+
+
+
+/*
+ * Root constraint x r root_k(p).
+ */
+term_t arith_root_atom(term_table_t *table, uint32_t k, term_t x, term_t p, root_atom_rel_t r) {
+  int32_t i;
+
+  root_atom_hobj.tbl = table;
+  root_atom_hobj.k = k;
+  root_atom_hobj.x = x;
+  root_atom_hobj.p = p;
+  root_atom_hobj.r = r;
+
+  i = int_htbl_get_obj(&table->htbl, &root_atom_hobj.m);
+
+  return pos_term(i);
+}
+
+
+/*
+ * Real division: the result (/ x y) has type real
+ */
+term_t arith_rdiv(term_table_t *table, term_t x, term_t y) {
+  return binary_term(table, ARITH_RDIV, real_type(table->types), x, y);
 }
 
 
@@ -3139,6 +3329,12 @@ static inline void mark_select_term(term_table_t *table, int32_t ptr, select_ter
   mark_and_explore_term(table, ptr, d->arg);
 }
 
+// root atoms
+static inline void mark_root_atom(term_table_t *table, int32_t ptr, root_atom_t *r) {
+  // x should be in p, so no need to explore
+  mark_and_explore_term(table, ptr, r->p);
+}
+
 // variables in polynomials
 static void mark_polynomial(term_table_t *table, int32_t ptr, polynomial_t *p) {
   monomial_t *q;
@@ -3211,8 +3407,17 @@ static void mark_reachable_terms(term_table_t *table, int32_t ptr, int32_t i) {
 
   case ARITH_EQ_ATOM:
   case ARITH_GE_ATOM:
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
     // i has a single subterm stored in desc[i].integer
     mark_and_explore_term(table, ptr, table->desc[i].integer);
+    break;
+
+  case ARITH_ROOT_ATOM:
+    // i is a root atom
+    mark_root_atom(table, ptr, table->desc[i].ptr);
     break;
 
   case ITE_TERM:
@@ -3226,6 +3431,10 @@ static void mark_reachable_terms(term_table_t *table, int32_t ptr, int32_t i) {
   case OR_TERM:
   case XOR_TERM:
   case ARITH_BINEQ_ATOM:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_ARRAY:
   case BV_DIV:
   case BV_REM:

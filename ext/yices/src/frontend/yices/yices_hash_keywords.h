@@ -36,12 +36,12 @@
 #line 7 "frontend/yices/yices_keywords.txt"
 struct keyword_s;
 
-#define TOTAL_KEYWORDS 107
+#define TOTAL_KEYWORDS 114
 #define MIN_WORD_LENGTH 1
 #define MAX_WORD_LENGTH 16
 #define MIN_HASH_VALUE 1
-#define MAX_HASH_VALUE 201
-/* maximum key range = 201, duplicates = 0 */
+#define MAX_HASH_VALUE 340
+/* maximum key range = 340, duplicates = 0 */
 
 #ifdef __GNUC__
 __inline
@@ -53,34 +53,34 @@ inline
 static unsigned int
 hash (register const char *str, register unsigned int len)
 {
-  static const unsigned char asso_values[] =
+  static const unsigned short asso_values[] =
     {
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202,  80,  75,  75,   0,  32,  70,  75,  65,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-       42,   5,   0,   0, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202,  35,  35, 202,   0,  90,  15,
-       60,  10,  60,  65,  15,  90,   0,  25,   5,  25,
-       10,  20,  15,  50,   5,   0,   0,  65,  30,  65,
-       90,  30,  15, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      202, 202, 202, 202, 202, 202, 202
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341,  90,  85,  85,   0,  90, 110,  45,  50,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+       27,   5,   0,   0, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341,  65,  60, 341,   0, 110,  15,
+       10,  10, 110,  40,  25,  35,  65,   5,   5,  10,
+       35,  20,  50,  10,   5,   0,   0,  85,  95,  75,
+      100,  20,  30, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341, 341, 341, 341,
+      341, 341, 341, 341, 341, 341, 341
     };
   register int hval = len;
 
@@ -117,9 +117,7 @@ in_yices_kw (register const char *str, register unsigned int len)
       {">",                      TK_GT},
 #line 28 "frontend/yices/yices_keywords.txt"
       {"=>",                     TK_IMPLIES},
-#line 10 "frontend/yices/yices_keywords.txt"
-      {"int",                    TK_INT},
-      {""}, {""},
+      {""}, {""}, {""},
 #line 20 "frontend/yices/yices_keywords.txt"
       {"=",                      TK_EQ},
 #line 44 "frontend/yices/yices_keywords.txt"
@@ -127,37 +125,37 @@ in_yices_kw (register const char *str, register unsigned int len)
 #line 27 "frontend/yices/yices_keywords.txt"
       {"<=>",                    TK_IFF},
       {""}, {""},
-#line 110 "frontend/yices/yices_keywords.txt"
+#line 117 "frontend/yices/yices_keywords.txt"
       {"set-timeout",            TK_SET_TIMEOUT},
 #line 42 "frontend/yices/yices_keywords.txt"
       {"<=",                     TK_LE},
-#line 19 "frontend/yices/yices_keywords.txt"
-      {"ite",                    TK_ITE},
+#line 98 "frontend/yices/yices_keywords.txt"
+      {"let",                    TK_LET},
 #line 11 "frontend/yices/yices_keywords.txt"
       {"real",                   TK_REAL},
-#line 99 "frontend/yices/yices_keywords.txt"
+#line 106 "frontend/yices/yices_keywords.txt"
       {"reset",                  TK_RESET},
 #line 13 "frontend/yices/yices_keywords.txt"
       {"scalar",                 TK_SCALAR},
       {""},
 #line 90 "frontend/yices/yices_keywords.txt"
-      {"bit",                    TK_BIT,},
+      {"bit",                    TK_BIT},
       {""}, {""},
-#line 109 "frontend/yices/yices_keywords.txt"
+#line 116 "frontend/yices/yices_keywords.txt"
       {"reset-stats",            TK_RESET_STATS},
-#line 23 "frontend/yices/yices_keywords.txt"
-      {"or",                     TK_OR},
+      {""},
 #line 25 "frontend/yices/yices_keywords.txt"
       {"not",                    TK_NOT},
-      {""},
+#line 92 "frontend/yices/yices_keywords.txt"
+      {"ceil",                   TK_CEIL},
 #line 73 "frontend/yices/yices_keywords.txt"
       {"bv-lt",                  TK_BV_LT},
 #line 77 "frontend/yices/yices_keywords.txt"
       {"bv-slt",                 TK_BV_SLT},
 #line 80 "frontend/yices/yices_keywords.txt"
       {"bv-ashr",                TK_BV_ASHR},
-#line 91 "frontend/yices/yices_keywords.txt"
-      {"let",                    TK_LET},
+#line 26 "frontend/yices/yices_keywords.txt"
+      {"xor",                    TK_XOR},
 #line 9 "frontend/yices/yices_keywords.txt"
       {"bool",                   TK_BOOL},
 #line 62 "frontend/yices/yices_keywords.txt"
@@ -166,209 +164,236 @@ in_yices_kw (register const char *str, register unsigned int len)
       {"select",                 TK_SELECT},
 #line 79 "frontend/yices/yices_keywords.txt"
       {"bv-lshr",                TK_BV_LSHR},
-#line 37 "frontend/yices/yices_keywords.txt"
-      {"-",                      TK_SUB},
-#line 15 "frontend/yices/yices_keywords.txt"
-      {"->",                     TK_ARROW},
-      {""},
+#line 41 "frontend/yices/yices_keywords.txt"
+      {"<",                      TK_LT},
+      {""}, {""},
 #line 76 "frontend/yices/yices_keywords.txt"
       {"bv-sle",                 TK_BV_SLE},
-#line 100 "frontend/yices/yices_keywords.txt"
-      {"dump-context",           TK_DUMP_CONTEXT},
-#line 26 "frontend/yices/yices_keywords.txt"
-      {"xor",                    TK_XOR},
+#line 84 "frontend/yices/yices_keywords.txt"
+      {"bv-srem",                TK_BV_SREM},
+      {""},
 #line 67 "frontend/yices/yices_keywords.txt"
       {"bv-repeat",              TK_BV_REPEAT},
-      {""},
-#line 78 "frontend/yices/yices_keywords.txt"
-      {"bv-shl",                 TK_BV_SHL},
-      {""},
+#line 102 "frontend/yices/yices_keywords.txt"
+      {"check",                  TK_CHECK},
+#line 46 "frontend/yices/yices_keywords.txt"
+      {"bv-add",                 TK_BV_ADD},
+#line 85 "frontend/yices/yices_keywords.txt"
+      {"bv-smod",                TK_BV_SMOD},
 #line 86 "frontend/yices/yices_keywords.txt"
       {"bv-redor",               TK_BV_REDOR},
       {""},
 #line 72 "frontend/yices/yices_keywords.txt"
       {"bv-le",                  TK_BV_LE},
-#line 32 "frontend/yices/yices_keywords.txt"
-      {"update",                 TK_UPDATE},
+#line 82 "frontend/yices/yices_keywords.txt"
+      {"bv-rem",                 TK_BV_REM},
       {""},
-#line 41 "frontend/yices/yices_keywords.txt"
-      {"<",                      TK_LT},
-#line 105 "frontend/yices/yices_keywords.txt"
-      {"set-param",              TK_SET_PARAM},
+#line 95 "frontend/yices/yices_keywords.txt"
+      {"mod",                    TK_MOD},
+#line 87 "frontend/yices/yices_keywords.txt"
+      {"bv-redand",              TK_BV_REDAND},
 #line 53 "frontend/yices/yices_keywords.txt"
       {"bv-or",                  TK_BV_OR},
-#line 51 "frontend/yices/yices_keywords.txt"
-      {"bv-not",                 TK_BV_NOT},
-#line 84 "frontend/yices/yices_keywords.txt"
-      {"bv-srem",                TK_BV_SREM},
-      {""},
+#line 78 "frontend/yices/yices_keywords.txt"
+      {"bv-shl",                 TK_BV_SHL},
+#line 21 "frontend/yices/yices_keywords.txt"
+      {"/=",                     TK_DISEQ},
+#line 22 "frontend/yices/yices_keywords.txt"
+      {"distinct",               TK_DISTINCT},
 #line 63 "frontend/yices/yices_keywords.txt"
       {"bv-rotate-left",         TK_BV_ROTATE_LEFT},
 #line 64 "frontend/yices/yices_keywords.txt"
       {"bv-rotate-right",        TK_BV_ROTATE_RIGHT},
-#line 56 "frontend/yices/yices_keywords.txt"
-      {"bv-nor",                 TK_BV_NOR},
-      {""}, {""},
-#line 66 "frontend/yices/yices_keywords.txt"
-      {"bv-concat",              TK_BV_CONCAT},
-#line 89 "frontend/yices/yices_keywords.txt"
-      {"bool-to-bv",             TK_BOOL_TO_BV,},
-#line 82 "frontend/yices/yices_keywords.txt"
-      {"bv-rem",                 TK_BV_REM},
-#line 18 "frontend/yices/yices_keywords.txt"
-      {"if",                     TK_IF},
-      {""},
-#line 102 "frontend/yices/yices_keywords.txt"
-      {"exit",                   TK_EXIT},
-      {""},
-#line 34 "frontend/yices/yices_keywords.txt"
-      {"exists",                 TK_EXISTS},
-      {""},
-#line 98 "frontend/yices/yices_keywords.txt"
-      {"pop",                    TK_POP},
-#line 12 "frontend/yices/yices_keywords.txt"
-      {"bitvector",              TK_BITVECTOR},
-      {""},
-#line 40 "frontend/yices/yices_keywords.txt"
-      {"^",                      TK_POW},
-#line 88 "frontend/yices/yices_keywords.txt"
-      {"bv-comp",                TK_BV_COMP},
-      {""},
-#line 104 "frontend/yices/yices_keywords.txt"
-      {"eval",                   TK_EVAL},
-#line 108 "frontend/yices/yices_keywords.txt"
-      {"show-stats",             TK_SHOW_STATS},
-#line 107 "frontend/yices/yices_keywords.txt"
-      {"show-params",            TK_SHOW_PARAMS},
-#line 111 "frontend/yices/yices_keywords.txt"
-      {"show-timeout",           TK_SHOW_TIMEOUT},
-      {""},
-#line 115 "frontend/yices/yices_keywords.txt"
-      {"show-implicant",         TK_SHOW_IMPLICANT},
-#line 103 "frontend/yices/yices_keywords.txt"
-      {"show-model",             TK_SHOW_MODEL},
 #line 33 "frontend/yices/yices_keywords.txt"
       {"forall",                 TK_FORALL},
-#line 21 "frontend/yices/yices_keywords.txt"
-      {"/=",                     TK_DISEQ},
+#line 23 "frontend/yices/yices_keywords.txt"
+      {"or",                     TK_OR},
       {""},
-#line 97 "frontend/yices/yices_keywords.txt"
-      {"push",                   TK_PUSH},
+#line 66 "frontend/yices/yices_keywords.txt"
+      {"bv-concat",              TK_BV_CONCAT},
 #line 71 "frontend/yices/yices_keywords.txt"
       {"bv-gt",                  TK_BV_GT},
 #line 75 "frontend/yices/yices_keywords.txt"
       {"bv-sgt",                 TK_BV_SGT},
-#line 101 "frontend/yices/yices_keywords.txt"
-      {"include",                TK_INCLUDE},
-      {""},
-#line 16 "frontend/yices/yices_keywords.txt"
-      {"true",                   TK_TRUE},
+#line 96 "frontend/yices/yices_keywords.txt"
+      {"divides",                TK_DIVIDES},
+#line 105 "frontend/yices/yices_keywords.txt"
+      {"pop",                    TK_POP},
+#line 104 "frontend/yices/yices_keywords.txt"
+      {"push",                   TK_PUSH},
 #line 17 "frontend/yices/yices_keywords.txt"
       {"false",                  TK_FALSE},
 #line 52 "frontend/yices/yices_keywords.txt"
       {"bv-and",                 TK_BV_AND},
 #line 55 "frontend/yices/yices_keywords.txt"
       {"bv-nand",                TK_BV_NAND},
-#line 29 "frontend/yices/yices_keywords.txt"
-      {"mk-tuple",               TK_MK_TUPLE},
+#line 10 "frontend/yices/yices_keywords.txt"
+      {"int",                    TK_INT},
+#line 112 "frontend/yices/yices_keywords.txt"
+      {"set-param",              TK_SET_PARAM},
       {""},
-#line 14 "frontend/yices/yices_keywords.txt"
-      {"tuple",                  TK_TUPLE},
 #line 74 "frontend/yices/yices_keywords.txt"
       {"bv-sge",                 TK_BV_SGE},
+#line 107 "frontend/yices/yices_keywords.txt"
+      {"dump-context",           TK_DUMP_CONTEXT},
       {""},
-#line 113 "frontend/yices/yices_keywords.txt"
-      {"ef-solve",		TK_EF_SOLVE},
-#line 87 "frontend/yices/yices_keywords.txt"
-      {"bv-redand",              TK_BV_REDAND},
-#line 106 "frontend/yices/yices_keywords.txt"
-      {"show-param",             TK_SHOW_PARAM},
-#line 114 "frontend/yices/yices_keywords.txt"
-      {"export-to-dimacs",       TK_EXPORT_TO_DIMACS},
-#line 31 "frontend/yices/yices_keywords.txt"
-      {"tuple-update",           TK_UPDATE_TUPLE},
+#line 68 "frontend/yices/yices_keywords.txt"
+      {"bv-sign-extend",         TK_BV_SIGN_EXTEND},
+#line 91 "frontend/yices/yices_keywords.txt"
+      {"floor",                  TK_FLOOR},
+#line 51 "frontend/yices/yices_keywords.txt"
+      {"bv-not",                 TK_BV_NOT},
       {""},
-#line 96 "frontend/yices/yices_keywords.txt"
-      {"echo",                   TK_ECHO},
-#line 70 "frontend/yices/yices_keywords.txt"
-      {"bv-ge",                  TK_BV_GE},
-#line 49 "frontend/yices/yices_keywords.txt"
-      {"bv-neg",                 TK_BV_NEG},
-#line 85 "frontend/yices/yices_keywords.txt"
-      {"bv-smod",                TK_BV_SMOD},
-#line 22 "frontend/yices/yices_keywords.txt"
-      {"distinct",               TK_DISTINCT},
-#line 59 "frontend/yices/yices_keywords.txt"
-      {"bv-shift-left1",         TK_BV_SHIFT_LEFT1},
-#line 61 "frontend/yices/yices_keywords.txt"
-      {"bv-shift-right1",        TK_BV_SHIFT_RIGHT1},
-#line 94 "frontend/yices/yices_keywords.txt"
-      {"assert",                 TK_ASSERT},
-#line 83 "frontend/yices/yices_keywords.txt"
-      {"bv-sdiv",                TK_BV_SDIV},
-      {""},
+#line 19 "frontend/yices/yices_keywords.txt"
+      {"ite",                    TK_ITE},
 #line 69 "frontend/yices/yices_keywords.txt"
       {"bv-zero-extend",         TK_BV_ZERO_EXTEND},
+#line 70 "frontend/yices/yices_keywords.txt"
+      {"bv-ge",                  TK_BV_GE},
+#line 56 "frontend/yices/yices_keywords.txt"
+      {"bv-nor",                 TK_BV_NOR},
+      {""}, {""}, {""},
+#line 115 "frontend/yices/yices_keywords.txt"
+      {"show-stats",             TK_SHOW_STATS},
+#line 114 "frontend/yices/yices_keywords.txt"
+      {"show-params",            TK_SHOW_PARAMS},
+#line 118 "frontend/yices/yices_keywords.txt"
+      {"show-timeout",           TK_SHOW_TIMEOUT},
       {""},
-#line 48 "frontend/yices/yices_keywords.txt"
-      {"bv-mul",                 TK_BV_MUL},
+#line 122 "frontend/yices/yices_keywords.txt"
+      {"show-implicant",         TK_SHOW_IMPLICANT},
+#line 110 "frontend/yices/yices_keywords.txt"
+      {"show-model",             TK_SHOW_MODEL},
+#line 37 "frontend/yices/yices_keywords.txt"
+      {"-",                      TK_SUB},
+#line 15 "frontend/yices/yices_keywords.txt"
+      {"->",                     TK_ARROW},
+      {""}, {""},
+#line 113 "frontend/yices/yices_keywords.txt"
+      {"show-param",             TK_SHOW_PARAM},
+#line 100 "frontend/yices/yices_keywords.txt"
+      {"define",                 TK_DEFINE},
       {""}, {""},
 #line 58 "frontend/yices/yices_keywords.txt"
       {"bv-shift-left0",         TK_BV_SHIFT_LEFT0},
 #line 60 "frontend/yices/yices_keywords.txt"
       {"bv-shift-right0",        TK_BV_SHIFT_RIGHT0},
-#line 50 "frontend/yices/yices_keywords.txt"
-      {"bv-pow",                 TK_BV_POW},
+#line 99 "frontend/yices/yices_keywords.txt"
+      {"define-type",            TK_DEFINE_TYPE},
       {""}, {""},
-#line 112 "frontend/yices/yices_keywords.txt"
-      {"help",                   TK_HELP},
+#line 59 "frontend/yices/yices_keywords.txt"
+      {"bv-shift-left1",         TK_BV_SHIFT_LEFT1},
+#line 61 "frontend/yices/yices_keywords.txt"
+      {"bv-shift-right1",        TK_BV_SHIFT_RIGHT1},
+#line 49 "frontend/yices/yices_keywords.txt"
+      {"bv-neg",                 TK_BV_NEG},
+#line 88 "frontend/yices/yices_keywords.txt"
+      {"bv-comp",                TK_BV_COMP},
+#line 94 "frontend/yices/yices_keywords.txt"
+      {"div",                    TK_IDIV},
+#line 16 "frontend/yices/yices_keywords.txt"
+      {"true",                   TK_TRUE},
+      {""},
+#line 32 "frontend/yices/yices_keywords.txt"
+      {"update",                 TK_UPDATE},
+      {""},
+#line 93 "frontend/yices/yices_keywords.txt"
+      {"abs",                    TK_ABS},
+#line 109 "frontend/yices/yices_keywords.txt"
+      {"exit",                   TK_EXIT},
+#line 14 "frontend/yices/yices_keywords.txt"
+      {"tuple",                  TK_TUPLE},
+#line 34 "frontend/yices/yices_keywords.txt"
+      {"exists",                 TK_EXISTS},
+      {""}, {""}, {""}, {""},
+#line 48 "frontend/yices/yices_keywords.txt"
+      {"bv-mul",                 TK_BV_MUL},
+#line 31 "frontend/yices/yices_keywords.txt"
+      {"tuple-update",           TK_UPDATE_TUPLE},
+#line 24 "frontend/yices/yices_keywords.txt"
+      {"and",                    TK_AND},
+#line 111 "frontend/yices/yices_keywords.txt"
+      {"eval",                   TK_EVAL},
+#line 89 "frontend/yices/yices_keywords.txt"
+      {"bool-to-bv",             TK_BOOL_TO_BV},
+#line 40 "frontend/yices/yices_keywords.txt"
+      {"^",                      TK_POW},
+#line 83 "frontend/yices/yices_keywords.txt"
+      {"bv-sdiv",                TK_BV_SDIV},
+      {""}, {""}, {""},
+#line 101 "frontend/yices/yices_keywords.txt"
+      {"assert",                 TK_ASSERT},
+      {""}, {""},
+#line 12 "frontend/yices/yices_keywords.txt"
+      {"bitvector",              TK_BITVECTOR},
 #line 65 "frontend/yices/yices_keywords.txt"
       {"bv-extract",             TK_BV_EXTRACT},
-#line 93 "frontend/yices/yices_keywords.txt"
-      {"define",                 TK_DEFINE},
-#line 57 "frontend/yices/yices_keywords.txt"
-      {"bv-xnor",                TK_BV_XNOR},
-      {""}, {""},
-#line 95 "frontend/yices/yices_keywords.txt"
-      {"check",                  TK_CHECK},
-#line 92 "frontend/yices/yices_keywords.txt"
-      {"define-type",            TK_DEFINE_TYPE},
+#line 35 "frontend/yices/yices_keywords.txt"
+      {"lambda",                 TK_LAMBDA},
+      {""},
+#line 29 "frontend/yices/yices_keywords.txt"
+      {"mk-tuple",               TK_MK_TUPLE},
+#line 119 "frontend/yices/yices_keywords.txt"
+      {"help",                   TK_HELP},
+      {""},
+#line 97 "frontend/yices/yices_keywords.txt"
+      {"is-int",                 TK_IS_INT},
       {""}, {""}, {""}, {""},
 #line 54 "frontend/yices/yices_keywords.txt"
       {"bv-xor",                 TK_BV_XOR},
-      {""}, {""}, {""}, {""},
-#line 46 "frontend/yices/yices_keywords.txt"
-      {"bv-add",                 TK_BV_ADD},
-      {""}, {""}, {""}, {""},
+      {""},
+#line 120 "frontend/yices/yices_keywords.txt"
+      {"ef-solve",		TK_EF_SOLVE},
+      {""}, {""},
+#line 121 "frontend/yices/yices_keywords.txt"
+      {"export-to-dimacs",       TK_EXPORT_TO_DIMACS},
+      {""}, {""},
+#line 103 "frontend/yices/yices_keywords.txt"
+      {"echo",                   TK_ECHO},
+      {""},
 #line 39 "frontend/yices/yices_keywords.txt"
       {"/",                      TK_DIV},
       {""}, {""}, {""}, {""},
+#line 81 "frontend/yices/yices_keywords.txt"
+      {"bv-div",                 TK_BV_DIV},
+#line 57 "frontend/yices/yices_keywords.txt"
+      {"bv-xnor",                TK_BV_XNOR},
+      {""}, {""}, {""},
+#line 50 "frontend/yices/yices_keywords.txt"
+      {"bv-pow",                 TK_BV_POW},
+      {""}, {""}, {""}, {""},
 #line 36 "frontend/yices/yices_keywords.txt"
       {"+",                      TK_ADD},
-      {""},
-#line 24 "frontend/yices/yices_keywords.txt"
-      {"and",                    TK_AND},
-      {""}, {""},
+#line 108 "frontend/yices/yices_keywords.txt"
+      {"include",                TK_INCLUDE},
+      {""}, {""}, {""},
 #line 38 "frontend/yices/yices_keywords.txt"
       {"*",                      TK_MUL},
-      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
-#line 45 "frontend/yices/yices_keywords.txt"
-      {"mk-bv",                  TK_MK_BV},
+#line 18 "frontend/yices/yices_keywords.txt"
+      {"if",                     TK_IF},
       {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
-      {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""},
 #line 47 "frontend/yices/yices_keywords.txt"
       {"bv-sub",                 TK_BV_SUB},
-      {""}, {""},
-#line 68 "frontend/yices/yices_keywords.txt"
-      {"bv-sign-extend",         TK_BV_SIGN_EXTEND},
-      {""},
-#line 35 "frontend/yices/yices_keywords.txt"
-      {"lambda",                 TK_LAMBDA},
       {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
       {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
-      {""},
-#line 81 "frontend/yices/yices_keywords.txt"
-      {"bv-div",                 TK_BV_DIV}
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+      {""}, {""}, {""}, {""}, {""}, {""},
+#line 45 "frontend/yices/yices_keywords.txt"
+      {"mk-bv",                  TK_MK_BV}
     };
 
   if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH)

@@ -23,16 +23,15 @@
 // EXPERIMENT
 #include <locale.h>
 
-#include "utils/command_line.h"
-
-
+#include "frontend/smt2/smt2_commands.h"
 #include "frontend/smt2/smt2_lexer.h"
 #include "frontend/smt2/smt2_parser.h"
 #include "frontend/smt2/smt2_term_stack.h"
-#include "frontend/smt2/smt2_commands.h"
+#include "utils/command_line.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
+#include "common.h"
 
 
 /*
@@ -44,6 +43,7 @@
  *   followed by a single call to (check_sat).
  * - interactive: if this flag is true, print a prompt before
  *   parsing commands. Also set the option :print-success to true.
+ * - timeout: command-line option
  *
  * - filename = name of the input file (NULL means read stdin)
  */
@@ -55,7 +55,15 @@ static bool incremental;
 static bool interactive;
 static bool show_stats;
 static int32_t verbosity;
+static uint32_t timeout;
 static char *filename;
+
+// mcsat options
+static bool mcsat;
+static bool mcsat_nra_mgcd;
+static bool mcsat_nra_nlsat;
+
+static pvector_t trace_tags;
 
 
 /****************************
@@ -63,15 +71,20 @@ static char *filename;
  ***************************/
 
 typedef enum optid {
-  show_version_opt,     // print version and exit
-  show_help_opt,        // print help and exit
-  show_stats_opt,       // show statistics after all commands are processed
-  verbosity_opt,        // set verbosity on the command line
-  incremental_opt,      // enable incremental mode
-  interactive_opt,      // enable interactive mode
+  show_version_opt,       // print version and exit
+  show_help_opt,          // print help and exit
+  show_stats_opt,         // show statistics after all commands are processed
+  verbosity_opt,          // set verbosity on the command line
+  incremental_opt,        // enable incremental mode
+  interactive_opt,        // enable interactive mode
+  timeout_opt,            // give a timeout
+  mcsat_opt,              // enable mcsat
+  mcsat_nra_mgcd_opt,     // use the mgcd instead psc in projection
+  mcsat_nra_nlsat_opt,    // use the nlsat projection instead of brown single-cell
+  trace_opt,              // enable a trace tag
 } optid_t;
 
-#define NUM_OPTIONS (interactive_opt+1)
+#define NUM_OPTIONS (trace_opt+1)
 
 /*
  * Option descriptors
@@ -81,8 +94,13 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "help", 'h', FLAG_OPTION, show_help_opt },
   { "stats", 's', FLAG_OPTION, show_stats_opt },
   { "verbosity", 'v', MANDATORY_INT, verbosity_opt },
+  { "timeout", 't', MANDATORY_INT, timeout_opt },
   { "incremental", '\0', FLAG_OPTION, incremental_opt },
   { "interactive", '\0', FLAG_OPTION, interactive_opt },
+  { "mcsat", '\0', FLAG_OPTION, mcsat_opt },
+  { "mcsat-nra-mgcd", '\0', FLAG_OPTION, mcsat_nra_mgcd_opt },
+  { "mcsat-nra-nlsat", '\0', FLAG_OPTION, mcsat_nra_nlsat_opt },
+  { "trace", 't', MANDATORY_STRING, trace_opt },
 };
 
 
@@ -109,11 +127,18 @@ static void print_help(const char *progname) {
 	 "    --help, -h              Print this message and exit\n"
 	 "    --verbosity=<level>     Set verbosity level (default = 0)\n"
 	 "             -v <level>\n"
+	 "    --timeout=<timeout>     Set a timeout in seconds (default = no timeout)\n"
+	 "           -t <timeout>\n"
 	 "    --stats, -s             Print statistics once all commands have been processed\n"
 	 "    --incremental           Enable support for push/pop\n"
 	 "    --interactive           Run in interactive mode (ignored if a filename is given)\n"
+#if HAVE_MCSAT
+         "    --mcsat                 Use the MCSat solver\n"
+         "    --mcsat-nra-mgcd        Use model-based GCD instead of PSC for projection\n"
+         "    --mcsat-nra-nlsat       Use NLSAT projection instead of Brown's single-cell construction"
+#endif
 	 "\n"
-	 "For bug reports and ohter information, please see http://yices.csl.sri.com/\n");
+	 "For bug reports and other information, please see http://yices.csl.sri.com/\n");
   fflush(stdout);
 }
 
@@ -134,12 +159,20 @@ static void parse_command_line(int argc, char *argv[]) {
   cmdline_elem_t elem;
   optid_t k;
   int32_t v;
+  int code;
 
   filename = NULL;
   incremental = false;
   interactive = false;
   show_stats = false;
   verbosity = 0;
+  timeout = 0;
+
+  mcsat = false;
+  mcsat_nra_mgcd = false;
+  mcsat_nra_nlsat = false;
+
+  init_pvector(&trace_tags, 5);
 
   init_cmdline_parser(&parser, options, NUM_OPTIONS, argv, argc);
 
@@ -155,7 +188,8 @@ static void parse_command_line(int argc, char *argv[]) {
       } else {
 	fprintf(stderr, "%s: too many arguments\n", parser.command_name);
 	print_usage(parser.command_name);
-	exit(YICES_EXIT_USAGE);
+	code = YICES_EXIT_USAGE;
+	goto exit;
       }
       break;
 
@@ -164,11 +198,13 @@ static void parse_command_line(int argc, char *argv[]) {
       switch (k) {
       case show_version_opt:
 	print_version();
-	exit(YICES_EXIT_SUCCESS);
+	code = YICES_EXIT_SUCCESS;
+	goto exit;
 
       case show_help_opt:
 	print_help(parser.command_name);
-	exit(YICES_EXIT_SUCCESS);
+	code = YICES_EXIT_SUCCESS;
+	goto exit;
 
       case show_stats_opt:
 	show_stats = true;
@@ -179,9 +215,21 @@ static void parse_command_line(int argc, char *argv[]) {
 	if (v < 0) {
 	  fprintf(stderr, "%s: the verbosity level must be non-negative\n", parser.command_name);
 	  print_usage(parser.command_name);
-	  exit(YICES_EXIT_USAGE);
+	  code = YICES_EXIT_USAGE;
+	  goto exit;
 	}
 	verbosity = v;
+	break;
+
+      case timeout_opt:
+	v = elem.i_value;
+	if (v < 0) {
+	  fprintf(stderr, "%s: the timeout must be non-negative\n", parser.command_name);
+	  print_usage(parser.command_name);
+	  code = YICES_EXIT_USAGE;
+	  goto exit;
+	}
+	timeout = v;
 	break;
 
       case incremental_opt:
@@ -191,23 +239,90 @@ static void parse_command_line(int argc, char *argv[]) {
       case interactive_opt:
 	interactive = true;
 	break;
+
+      case mcsat_opt:
+#if HAVE_MCSAT
+        mcsat = true;
+#else
+	fprintf(stderr, "mcsat is not supported: %s was not compiled with mcsat support\n", parser.command_name);
+	code = YICES_EXIT_USAGE;
+	goto exit;
+#endif
+        break;
+
+      case mcsat_nra_mgcd_opt:
+#if HAVE_MCSAT
+        mcsat_nra_mgcd = true;
+#else
+        fprintf(stderr, "mcsat is not supported: %s was not compiled with mcsat support\n", parser.command_name);
+        code = YICES_EXIT_USAGE;
+        goto exit;
+#endif
+        break;
+
+      case mcsat_nra_nlsat_opt:
+#if HAVE_MCSAT
+        mcsat_nra_nlsat = true;
+#else
+        fprintf(stderr, "mcsat is not supported: %s was not compiled with mcsat support\n", parser.command_name);
+        code = YICES_EXIT_USAGE;
+        goto exit;
+#endif
+        break;
+
+      case trace_opt:
+        pvector_push(&trace_tags, elem.s_value);
+        break;
       }
       break;
 
     case cmdline_error:
       cmdline_print_error(&parser, &elem);
       fprintf(stderr, "Try %s --help for more information\n", parser.command_name);
-      exit(YICES_EXIT_USAGE);
+      code = YICES_EXIT_USAGE;
+      goto exit;
     }
   }
 
  done:
+  // can't have incremental and mcsat yet
+  if (mcsat && incremental) {
+    fprintf(stderr, "incremental mode is not supported by the mcsat solver\n");
+    code = YICES_EXIT_USAGE;
+    goto exit;
+  }
+
   // force interactive to false if there's a filename
   if (filename != NULL) {
     interactive = false;
   }
   return;
+
+ exit:
+  // cleanup then exit
+  // code is either YICES_EXIT_SUCCESS or YICES_EXIT_USAGE.
+  delete_pvector(&trace_tags);
+  exit(code);
 }
+
+static void setup_mcsat(void) {
+  aval_t aval_true;
+
+  if (mcsat) {
+    smt2_enable_mcsat();
+  }
+
+  aval_true = attr_vtbl_symbol(__smt2_globals.avtbl, "True");
+
+  if (mcsat_nra_mgcd) {
+    smt2_set_option(":yices-mcsat-nra-mgcd", aval_true);
+  }
+
+  if (mcsat_nra_nlsat) {
+    smt2_set_option(":yices-mcsat-nra-nlsat", aval_true);
+  }
+}
+
 
 /********************
  *  SIGNAL HANDLER  *
@@ -297,6 +412,7 @@ static void force_utf8(void) {
 
 int main(int argc, char *argv[]) {
   int32_t code;
+  uint32_t i;
 
   parse_command_line(argc, argv);
   force_utf8();
@@ -315,12 +431,22 @@ int main(int argc, char *argv[]) {
   init_handlers();
 
   yices_init();
-  init_smt2(!incremental, interactive);
+  init_smt2(!incremental, timeout, interactive);
   init_smt2_tstack(&stack);
   init_parser(&parser, &lexer, &stack);
+
+  init_parameter_name_table();
+  
   if (verbosity > 0) {
     smt2_set_verbosity(verbosity);
   }
+  if (trace_tags.size > 0) {
+    for (i = 0; i < trace_tags.size; ++ i) {
+      smt2_enable_trace_tag(trace_tags.data[i]);
+    }
+  }
+
+  setup_mcsat();
 
   while (smt2_active()) {
     if (interactive) {
@@ -343,6 +469,7 @@ int main(int argc, char *argv[]) {
     smt2_show_stats();
   }
 
+  delete_pvector(&trace_tags);
   delete_parser(&parser);
   close_lexer(&lexer);
   delete_tstack(&stack);

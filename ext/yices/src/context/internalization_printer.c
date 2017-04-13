@@ -12,13 +12,13 @@
 #include <assert.h>
 #include <inttypes.h>
 
+
 #include "context/internalization_codes.h"
+#include "context/internalization_printer.h"
 #include "io/term_printer.h"
 #include "io/type_printer.h"
-#include "solvers/egraph/egraph_printer.h"
 #include "solvers/cdcl/smt_core_printer.h"
-
-#include "context/internalization_printer.h"
+#include "solvers/egraph/egraph_printer.h"
 
 
 /*
@@ -36,7 +36,7 @@ static void print_intern_code(FILE *f, int32_t x, type_table_t *types, type_t ta
     } else if (is_integer_type(tau)) {
       fprintf(f, "i!%"PRId32, code2thvar(x));
     } else if (is_real_type(tau)) {
-      fprintf(f, "x!%"PRId32, code2thvar(x));
+      fprintf(f, "z!%"PRId32, code2thvar(x));
     } else {
       assert(is_bv_type(types, tau));
       fprintf(f, "u!%"PRId32, code2thvar(x));
@@ -103,7 +103,7 @@ void print_term_intern(FILE *f, intern_tbl_t *tbl, term_t t) {
         fputc('\n', f);
       }
     } else {
-      fputs("          not internalzed\n", f);
+      fputs("          not internalized\n", f);
     }
   }
 }
@@ -167,7 +167,7 @@ void print_intern_mapping(FILE *f, intern_tbl_t *tbl) {
 
 
 /*
- * Variant formatting for subsitutions
+ * Variant formatting for substitutions
  */
 void print_intern_substitution2(FILE *f, intern_tbl_t *tbl) {
   term_table_t *terms;

@@ -11,9 +11,9 @@
 #include <inttypes.h>
 #include <assert.h>
 
+#include "terms/balanced_arith_buffers.h"
 #include "terms/pprod_table.h"
 #include "terms/rationals.h"
-#include "terms/balanced_arith_buffers.h"
 
 
 
@@ -423,7 +423,7 @@ static void test2(void) {
 }
 
 
-int main() {
+int main(void) {
   init_globals();
   test1();
   printf("\n\n");

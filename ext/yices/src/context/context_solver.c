@@ -19,8 +19,10 @@
 #include <stdio.h>
 
 #include "context/context.h"
-#include "solvers/simplex/simplex.h"
+#include "context/internalization_codes.h"
+#include "model/models.h"
 #include "solvers/funs/fun_solver.h"
+#include "solvers/simplex/simplex.h"
 
 
 
@@ -135,6 +137,50 @@ static void search(smt_core_t *core, uint32_t conflict_bound, uint32_t *reduce_t
 
 
 /*
+ * HACK: Variant for Luby restart:
+ * - search until the conflict bound is reached or until the problem is solved.
+ * - reduce_threshold: number of learned clauses above which reduce_clause_database is called
+ * - r_factor = increment factor for reduce_threshold
+ * - use the default branching heuristic implemented by the core
+ *
+ * This uses smt_bounded_process to force more frequent restarts.
+ */
+static void luby_search(smt_core_t *core, uint32_t conflict_bound, uint32_t *reduce_threshold, double r_factor) {
+  uint64_t max_conflicts;
+  uint64_t deletions;
+  uint32_t r_threshold;
+  literal_t l;
+
+  assert(smt_status(core) == STATUS_SEARCHING || smt_status(core) == STATUS_INTERRUPTED);
+
+  max_conflicts = num_conflicts(core) + conflict_bound;
+  r_threshold = *reduce_threshold;
+
+  smt_bounded_process(core, max_conflicts);
+  while (smt_status(core) == STATUS_SEARCHING && num_conflicts(core) < max_conflicts) {
+    // reduce heuristic
+    if (num_learned_clauses(core) >= r_threshold) {
+      deletions = core->stats.learned_clauses_deleted;
+      reduce_clause_database(core);
+      r_threshold = (uint32_t) (r_threshold * r_factor);
+      trace_reduce(core, core->stats.learned_clauses_deleted - deletions);
+    }
+
+    // decision
+    l = select_unassigned_literal(core);
+    if (l == null_literal) {
+      // all variables assigned: Call final_check
+      smt_final_check(core);
+    } else {
+      decide_literal(core, l);
+      smt_bounded_process(core, max_conflicts);
+    }
+  }
+
+  *reduce_threshold = r_threshold;
+}
+
+/*
  * Polarity selection (implements branching heuristics)
  * - filter is given a literal l + core and must return either l or not l
  */
@@ -244,22 +290,31 @@ static literal_t theory_or_pos_branch(smt_core_t *core, literal_t l) {
  * CORE SOLVER
  */
 
-
 /*
  * Full solver:
  * - params: heuristic parameters.
  *   If params is NULL, the default settings are used.
  */
 static void solve(smt_core_t *core, const param_t *params) {
+  bool luby;
   uint32_t c_threshold, d_threshold; // Picosat-style
+  uint32_t u, v, period;             // for Luby-style
   uint32_t reduce_threshold;
 
   assert(smt_status(core) == STATUS_IDLE);
 
   c_threshold = params->c_threshold;
   d_threshold = c_threshold; // required by trace_start in slow_restart mode
+  luby = false;
+  u = 1;
+  v = 1;
+  period = c_threshold;
+
   if (params->fast_restart) {
     d_threshold = params->d_threshold;
+    // HACK to activate the Luby heuristic:
+    // c_factor must be 0.0 and fast_restart must be true
+    luby = params->c_factor == 0.0; 
   }
 
   reduce_threshold = (uint32_t) (num_prob_clauses(core) * params->r_fraction);
@@ -276,7 +331,11 @@ static void solve(smt_core_t *core, const param_t *params) {
     for (;;) {
       switch (params->branching) {
       case BRANCHING_DEFAULT:
-        search(core, c_threshold, &reduce_threshold, params->r_factor);
+	if (luby) {
+	  luby_search(core, c_threshold, &reduce_threshold, params->r_factor);
+	} else {
+	  search(core, c_threshold, &reduce_threshold, params->r_factor);
+	}
         break;
       case BRANCHING_NEGATIVE:
         special_search(core, c_threshold, &reduce_threshold, params->r_factor, negative_branch);
@@ -300,20 +359,35 @@ static void solve(smt_core_t *core, const param_t *params) {
       smt_restart(core);
       //      smt_partial_restart_var(core);
 
-      // inner restart: increase c_threshold
-      c_threshold = (uint32_t) (c_threshold * params->c_factor);
-
-      if (c_threshold >= d_threshold) {
-        d_threshold = c_threshold; // Minisat-style
-        if (params->fast_restart) {
-          // outer restart: reset c_threshold and increase d_threshold
-          c_threshold = params->c_threshold;
-          d_threshold = (uint32_t) (d_threshold * params->d_factor);
-        }
-
+      if (luby) {
+	// Luby-style restart
+	if ((u & -u) == v) {
+	  u ++;
+	  v = 1;
+	} else {
+	  v <<= 1;
+	}
+	c_threshold = v * period;
 	trace_restart(core);
+
       } else {
-	trace_inner_restart(core);
+	// Either Minisat or Picosat-like restart
+
+	// inner restart: increase c_threshold
+	c_threshold = (uint32_t) (c_threshold * params->c_factor);
+
+	if (c_threshold >= d_threshold) {
+	  d_threshold = c_threshold; // Minisat-style
+	  if (params->fast_restart) {
+	    // Picosat style
+	    // outer restart: reset c_threshold and increase d_threshold
+	    c_threshold = params->c_threshold;
+	    d_threshold = (uint32_t) (d_threshold * params->d_factor);
+	  }
+	  trace_restart(core);
+	} else {
+	  trace_inner_restart(core);
+	}
       }
     }
   }
@@ -336,6 +410,11 @@ smt_status_t check_context(context_t *ctx, const param_t *params) {
   simplex_solver_t *simplex;
   fun_solver_t *fsolver;
   uint32_t quota;
+
+  if (ctx->mcsat != NULL) {
+    mcsat_solve(ctx->mcsat, params);
+    return mcsat_status(ctx->mcsat);
+  }
 
   core = ctx->core;
   egraph = ctx->egraph;
@@ -438,9 +517,9 @@ smt_status_t check_context(context_t *ctx, const param_t *params) {
  * If ctx status is IDLE:
  * - the function calls 'start_search' and does one round of propagation.
  * - if this results in UNSAT, the function returns UNSAT
- * - if the precheck is interrupted, the function returns INTERRRUPTED
+ * - if the precheck is interrupted, the function returns INTERRUPTED
  * - otherwise the function returns UNKNOWN and sets the status to
- *   UNKWOWN.
+ *   UNKNOWN.
  *
  * IMPORTANT: call smt_clear or smt_cleanup to restore the context to
  * IDLE before doing anything else with this context.
@@ -670,7 +749,7 @@ void context_build_model(model_t *model, context_t *ctx) {
   uint32_t i, n;
   term_t t;
 
-  assert(smt_status(ctx->core) == STATUS_SAT || smt_status(ctx->core) == STATUS_UNKNOWN);
+  assert(smt_status(ctx->core) == STATUS_SAT || smt_status(ctx->core) == STATUS_UNKNOWN || mcsat_status(ctx->mcsat) == STATUS_SAT);
 
   /*
    * First build assignments in the satellite solvers
@@ -690,13 +769,22 @@ void context_build_model(model_t *model, context_t *ctx) {
     egraph_build_model(ctx->egraph, model_get_vtbl(model));
   }
 
+  /*
+   * Construct the mcsat model.
+   */
+  if (context_has_mcsat(ctx)) {
+    mcsat_build_model(ctx->mcsat, model);
+  }
+
   // scan the internalization table
   terms = ctx->terms;
   n = intern_tbl_num_terms(&ctx->intern);
   for (i=1; i<n; i++) { // first real term has index 1 (i.e. true_term)
-    t = pos_occ(i);
-    if (term_kind(terms, t) == UNINTERPRETED_TERM) {
-      build_term_value(ctx, model, t);
+    if (good_term_idx(terms, i)) {
+      t = pos_occ(i);
+      if (term_kind(terms, t) == UNINTERPRETED_TERM) {
+	build_term_value(ctx, model, t);
+      }
     }
   }
 

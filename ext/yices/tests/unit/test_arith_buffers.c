@@ -11,10 +11,10 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "utils/object_stores.h"
+#include "terms/arith_buffers.h"
 #include "terms/pprod_table.h"
 #include "terms/rationals.h"
-#include "terms/arith_buffers.h"
+#include "utils/object_stores.h"
 
 
 
@@ -445,7 +445,7 @@ static void test2(void) {
 }
 
 
-int main() {
+int main(void) {
   init_globals();
   test1();
   printf("\n\n");

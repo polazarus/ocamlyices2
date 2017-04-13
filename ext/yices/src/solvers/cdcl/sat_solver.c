@@ -17,16 +17,14 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-#include "utils/memalloc.h"
-#include "utils/int_array_sort.h"
-#include "utils/prng.h"
-
-#include "solvers/cdcl/sat_solver.h"
 #include "solvers/cdcl/sat_parameters.h"
+#include "solvers/cdcl/sat_solver.h"
+#include "utils/int_array_sort.h"
+#include "utils/memalloc.h"
+#include "utils/prng.h"
 
 #define DEBUG 0
 #define TRACE 0
-
 
 
 /*
@@ -2420,7 +2418,7 @@ static inline void set_var_mark(sat_solver_t *sol, bvar_t x) {
  * Process literal l during conflict resolution:
  * - if l is already marked, do nothing
  * - otherwise: mark it + if l has level < conflict level
- *   add l at the end of bufffer
+ *   add l at the end of buffer
  * - return 1 if l is to be resolved (l was not marked and has level == conflict level)
  * - return 0 otherwise
  */
@@ -3141,7 +3139,7 @@ uint32_t get_true_literals(sat_solver_t *solver, literal_t *a) {
 #if DEBUG
 
 /*
- * Inline functions used only here: thay can cause compilation warning
+ * Inline functions used only here: they can cause compilation warning
  * (clang is getting picky)
  */
 static inline uint32_t get_lv_capacity(literal_t *v) {

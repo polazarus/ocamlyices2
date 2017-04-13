@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-#include "utils/bitvectors.h"
 #include "model/rb_bvsets.h"
+#include "utils/bitvectors.h"
 
 #ifdef MINGW
 
@@ -300,7 +300,7 @@ static void test3(void) {
 /*
  * Main test
  */
-int main() {
+int main(void) {
   test1();
   test2();
   test3();

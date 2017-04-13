@@ -14,9 +14,8 @@
 #include <string.h>
 #include <assert.h>
 
-#include "utils/int_vectors.h"
 #include "frontend/yices/yices_help.h"
-
+#include "utils/int_vectors.h"
 
 
 /*
@@ -397,7 +396,7 @@ static const help_record_t help_data[] = {
     "Distinct",
     "   [expr1] ... [expr_k] must have compatible types\n"
     "\n"
-    "   (distinct t1 ... tk) is true if t1 ... tk are pairwise distinct\n",
+    "   (distinct t1 ... tk) is true if t1 ... tk are all different\n",
     NULL },
 
   // mk-tuple: index 35
@@ -425,7 +424,7 @@ static const help_record_t help_data[] = {
     "\n"
     "   (tuple-update t1 i e) is the tuple equal to t1 but with the i-th\n"
     "   component replaced by e\n",
-    "(tuple-update (mk-tuple x y) 2 1)   is equal to (mk-tuple x 1)\n" },
+    "(tuple-update (mk-tuple x y) 2 1)  is equal to (mk-tuple x 1)\n" },
 
   // update: index 38
   { HGENERIC,
@@ -550,14 +549,14 @@ static const help_record_t help_data[] = {
   // <=: index 55
   { HARITHMETIC,
     "(<= [expr1] [expr2])",
-    "Less than or equal",
+    "Less than or equal to",
     "   [expr1] and [expr2] must be arithmetic expressions\n",
     NULL },
 
   // >=: index 56
   { HARITHMETIC,
     "(>= [expr1] [expr2])",
-    "Greater than or equal",
+    "Greater than or equal to",
     "   [expr1] and [expr2] must be arithmetic expressions\n",
     NULL },
 
@@ -810,7 +809,7 @@ static const help_record_t help_data[] = {
     "\n"
     "(bv-zero-extend x n) adds n zero bits to the left of x\n",
     "(bv-zero-extend 0b011010 3) is equal to 0b000011010\n"
-    "(bv-zero-extend 0b111010 3) is equal to 0b000011010\n"
+    "(bv-zero-extend 0b111010 3) is equal to 0b000111010\n"
     "(bv-zero-extend 0b111010 0) is equal to 0b111010\n" },
 
   // bv-div: index 85
@@ -821,8 +820,8 @@ static const help_record_t help_data[] = {
     "\n"
     "(bv-div x y) is the quotient in the unsigned division of x by y\n"
     "\n"
-    "If y is 0b0...0 then the result is 0b1....1 (i.e., the largest unsigned\n"
-    "integer representable using n bits\n",
+    "If y is 0b0...0 then the result is 0b1...1 (i.e., the largest unsigned\n"
+    "integer representable using n bits)\n",
     "(bv-div 0b10001 0b00101)  is equal to 0b00011  (i.e., 17 div 5 = 3)\n" },
 
   // bv-rem: index 86
@@ -831,7 +830,7 @@ static const help_record_t help_data[] = {
     "Remainder in unsigned bitvector division",
     "   [expr1] and [expr2] must be bitvectors of the same size\n"
     "\n"
-    "(bv-rem x y) is the quotient in the unsigned division of x by y\n"
+    "(bv-rem x y) is the remainder in the unsigned division of x by y\n"
     "\n"
     "If y is 0b0...0 then the result is x\n"
     "(bv-rem 0b10001 0b00101)  is equal to 0b00010  (i.e., 17 mod 5 = 2)\n" },
@@ -855,7 +854,7 @@ static const help_record_t help_data[] = {
     "Remainder in signed bitvector division (rounding to 0)",
     "   [expr1] and [expr2] must be bitvectors of the same size\n"
     "\n"
-    "(bv-srem x y) is the quotient of the signed division of x by y\n"
+    "(bv-srem x y) is the remainder of the signed division of x by y\n"
     "x and y are interpreted as integers in 2s complement representation\n"
     "\n"
     "If y is 0b0...0 then the result is x\n",
@@ -867,7 +866,7 @@ static const help_record_t help_data[] = {
     "Remainder in signed bitvector division (rounding to -infinity)",
     "   [expr1] and [expr2] must be bitvectors of the same size\n"
     "\n"
-    "(bv-srem x y) is the quotient of the signed division of x by y\n"
+    "(bv-srem x y) is the remainder of the signed division of x by y\n"
     "x and y are interpreted as integers in 2s complement representation\n"
     "\n"
     "If y is 0b0...0 then the result is x\n",
@@ -909,7 +908,7 @@ static const help_record_t help_data[] = {
   // bv-ge: index 93
   { HBITVECTOR,
     "(bv-ge [expr1] [expr2])",
-    "Unsigned bitvector comparison: greater than or equal",
+    "Unsigned bitvector comparison: greater than or equal to",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-ge x y) is true if x >= y when x and y are interpreted as unsigned integers\n",
@@ -927,7 +926,7 @@ static const help_record_t help_data[] = {
   // bv-le: index 95
   { HBITVECTOR,
     "(bv-le [expr1] [expr2])",
-    "Unsigned bitvector comparison: less than or equal",
+    "Unsigned bitvector comparison: less than or equal to",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-le x y) is true if x <= y when x and y are interpreted as unsigned integers\n",
@@ -936,7 +935,7 @@ static const help_record_t help_data[] = {
   // bv-lt: index 96
   { HBITVECTOR,
     "(bv-lt [expr1] [expr2])",
-    "Unsigned bitvector comparison: less than or equal",
+    "Unsigned bitvector comparison: less than",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-lt x y) is true if x < y when x and y are interpreted as unsigned integers\n",
@@ -945,7 +944,7 @@ static const help_record_t help_data[] = {
   // bv-sge: index 97
   { HBITVECTOR,
     "(bv-sge [expr1] [expr2])",
-    "Signed bitvector comparison: greater than or equal",
+    "Signed bitvector comparison: greater than or equal to",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-sge x y) is true if x >= y when x and y are interpreted as signed integers\n"
@@ -965,7 +964,7 @@ static const help_record_t help_data[] = {
   // bv-sle: index 99
   { HBITVECTOR,
     "(bv-sle [expr1] [expr2])",
-    "Signed bitvector comparison: less than or equal",
+    "Signed bitvector comparison: less than or equal to",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-sle x y) is true if x <= y when x and y are interpreted as signed integers\n"
@@ -975,7 +974,7 @@ static const help_record_t help_data[] = {
   // bv-slt: index 100
   { HBITVECTOR,
     "(bv-slt [expr1] [expr2])",
-    "Signed bitvector comparison: less than or equal",
+    "Signed bitvector comparison: less than",
     "   [expr1] and [expr2] must be a bitvectors of the same size\n"
     "\n"
     "(bv-slt x y) is true if x < y when x and y are interpreted as signed integers\n"
@@ -989,7 +988,7 @@ static const help_record_t help_data[] = {
     "Enable/disable variable elimination",
     "If this parameter is true, Yices will simplify assertions by eliminating\n"
     "redundant variables\n",
-    "(and (= x (g a)) (/= (f x) (f b)))   is simplified to (/= (f (g a)) (f b))\n" },
+    "(and (= x (g a)) (/= (f x) (f b))) is simplified to (/= (f (g a)) (f b))\n" },
 
   // arith-elim: index 102
   { HPARAM,
@@ -997,14 +996,14 @@ static const help_record_t help_data[] = {
     "Enable/disable simplification by Gaussian elimination",
     "If this parameter is true, then Yices attempts to eliminate variables\n"
     "in arithmetic constraints\n",
-    "In an assertion such as (= (+ x (* 3 y) 4) 0)  Yices eliminates 'x' or 'y'\n" },
+    "In an assertion such as (= (+ x (* 3 y) 4) 0) Yices eliminates 'x' or 'y'\n" },
 
   // flatten: index 103
   { HPARAM,
     "(set-param flatten [boolean])",
     "Enable/disable flattening of disjunctions",
     "If this parameter is true, Yices will flatten nested 'or' and 'and'\n",
-    "(or (or a b c) (or a d e))  is rewritten to (or a b c d e)\n" },
+    "(or (or a b c) (or a d e)) is rewritten to (or a b c d e)\n" },
 
   // learn-eq: index 104
   { HPARAM,
@@ -1126,7 +1125,7 @@ static const help_record_t help_data[] = {
     "randomly. Parameter 'randomness' determines the fraction of random\n"
     "decisions.\n",
     "(set-param randomness 0)     always select decision variables based on activity\n"
-    "(set-param randomness 0.02)  1% of decisions are random\n" },
+    "(set-param randomness 0.02)  2% of decisions are random\n" },
 
   // random-seed: index 116
   { HPARAM,
@@ -1377,9 +1376,9 @@ static const help_record_t help_data[] = {
   { HBITVECTOR,
     "(bool-to-bv [expr_1] ... [expr_n])",
     "Convert a Boolean array to a bitvector",
-    "   [expr_1] ... [expr_n] must be Boolean expressions"
+    "   [expr_1] ... [expr_n] must be Boolean expressions\n"
     "\n"
-    "(bool-to-bv [expr_1] ... [expr_n]) construct a bitvector of n bits\n"
+    "(bool-to-bv [expr_1] ... [expr_n]) constructs a bitvector of n bits\n"
     "The low-order bit is [expr_n] and the high-order bit is [expr_1]\n",
     "(bool-to-bv true false false)  is equal to 0b100\n" },
 
@@ -1413,8 +1412,8 @@ static const help_record_t help_data[] = {
     "(show-implicant)",
     "Show an implicant build from the model",
     "The implicant is list of literals (atoms or negation of atoms)\n"
-    "that are all true in the current model and the conjunction\n"
-    "of these literals imply the assertion.\n",
+    "that are all true in the current model and such that the conjunction\n"
+    "of these literals implies the assertion.\n",
     NULL },
 
   // ef-flatten-iff: index 146
@@ -1441,9 +1440,17 @@ static const help_record_t help_data[] = {
   { HPARAM,
     "(set-param ef-gen-mode [mode])",
     "Select the generalization heuristic for the ef-solver",
-    "Currently, two generalization heuristics can be selected\n"
+    "Currently, four modes can be selected\n"
     "   none         --> no generalization\n"
-    "   substitution --> generalize by substitution\n",
+    "   substitution --> generalize by substitution\n"
+    "   projection   --> model-based quantifier elimination\n"
+    "   auto         --> either substitution or projection\n"
+    "                    depending on the universal variables\n"
+    "\n"
+    "The default setting is 'auto'. In this mode, Yices uses\n"
+    "model-based quantifier elimination if the problem contains\n"
+    "arithmetic variables or generalization by substitution if the\n"
+    "problem does not have arithmetic variables.\n",
     NULL },
 
   // ef-max-iters: index 149
@@ -1467,11 +1474,102 @@ static const help_record_t help_data[] = {
     "per universal constraints. If the bound is 0, learning is disabled).\n",
     NULL },
 
-  // END MARKER: index 151
+  // abs: index 151
+  { HARITHMETIC,
+    "(abs [expr])",
+    "Absolute value",
+    "   [expr] must be an arithmetic expression\n",
+    NULL },
+
+  // floor: index 152
+  { HARITHMETIC,
+    "(floor [expr])",
+    "Floor",
+    "   [expr] must be an arithmetic expression\n"
+    "\n"
+    "(floor x) is the largest integer smaller than or equal to x.\n"
+    "We then have (floor x) <= x < (floor x) + 1.\n",
+    NULL },
+
+  // ceil: index 153
+  { HARITHMETIC,
+    "(ceil [expr])",
+    "Ceiling",
+    "   [expr] must be an arithmetic expression\n"
+    "\n"
+    "(ceil x) is the smallest integer larger than or equal to x.\n"
+    "We then have (ceil x) - 1 < x <= (ceil x).\n",
+    NULL },
+
+  // div: index 154
+  { HARITHMETIC,
+    "(div [expr] [divider])",
+    "Integer division",
+    "   [expr] must be an arithmetic expression\n"
+    "   [divider] must be a non-zero arithmetic constant\n"
+    "\n"
+    "The divider and remainder are defined as follows:\n"
+    "\n"
+    "   (div x q) is an integer\n"
+    "   x = (div x q) * q + (mod x q)\n"
+    "   0 <= (mod x q) < (abs q)\n"
+    "\n"
+    "This implies that (div x q) = (ceil (/ x q)) if q is positive,\n"
+    "and (div x q) = (floor (/ x q)) is q is negative.\n"
+    "\n"
+    "Note: x and q are not required to be integer.\n",
+    "(div  5  3) =  1\n"
+    "(div  5 -3) = -2\n"
+    "(div -5  3) = -1\n"
+    "(div -5 -3) -  2\n" },
+
+  // mod: index 155
+  { HARITHMETIC,
+    "(mod [expr] [divider])",
+    "Remainder in integer division",
+    "   [expr] must be an arithmetic expression\n"
+    "   [divider] must be a non-zero arithmetic constant\n"
+    "\n"
+    "The remainder is defined by (mod x q) = x - q * (div x q).\n"
+    "It is non-negative and smaller than (abs q):\n"
+    "\n"
+    "    0 <= (mod x q) < (abs q).\n"
+    "\n"
+    "Try '(help div)' for more details.\n",
+    "(mod  5  3) = 2\n"
+    "(mod  5 -3) = 1\n"
+    "(mod -5  3) = 1\n"
+    "(mod -5 -3) = 2\n" },
+
+  // divides: index 156
+  { HARITHMETIC,
+    "(divides [constant] [expr])",
+    "Divisibility test",
+    "   [constant] must be an arithmetic constant\n"
+    "   [expr] must be an arithmetic expression\n"
+    "\n"
+    "The atom (divides q x) is true iff x is an integer multiple of q.\n"
+    "\n"
+    "Note: q and x are not required to be integer.\n",
+    "(divides 1/3 1)   is true\n"
+    "(divides 1/3 0.5) is false\n"
+    "(divides 0 0)     is true\n"
+    "(divides 0 x)     is false for any non-zero x\n" },
+
+  // is-int: index 157
+  { HARITHMETIC,
+    "(is-int [expr])",
+    "Integrality test",
+    "   [expr] must be an arithmetic expression\n"
+    "\n"
+    "The atom (is-int x) is true iff x is an integer.\n",
+    NULL },
+
+  // END MARKER: index 158
   { HMISC, NULL, NULL, NULL, NULL },
 };
 
-#define END_HELP_DATA 151
+#define END_HELP_DATA 158
 
 
 
@@ -1813,6 +1911,7 @@ static const help_index_t help_index[] = {
   { "=>", NULL, 46, help_basic },
   { ">", NULL, 54, help_basic },
   { ">=", NULL, 56, help_basic },
+  { "abs", NULL, 151, help_basic },
   { "and", NULL, 42, help_basic },
   { "arith-elim", NULL, 102, help_basic },
   { "arithmetic", "Arithmetic Operators", HARITHMETIC, help_for_category },
@@ -1874,6 +1973,7 @@ static const help_index_t help_index[] = {
   { "c-factor", NULL, 108, help_basic },
   { "c-threshold", NULL, 107, help_basic },
   { "cache-tclauses", NULL, 119, help_basic },
+  { "ceil", NULL, 153, help_basic },
   { "check", NULL, 5, help_basic },
   { "clause-decay", NULL, 118, help_basic },
   { "commands", "Command Summary", HCOMMAND, help_for_category },
@@ -1882,6 +1982,8 @@ static const help_index_t help_index[] = {
   { "define", "Declare or define a term", 2, help_variant },
   { "define-type", "Declare or define a type", 0, help_variant },
   { "distinct", NULL, 34, help_basic },
+  { "div", NULL, 154, help_basic },
+  { "divides", NULL, 156, help_basic },
   { "dyn-ack", NULL, 121, help_basic },
   { "dyn-ack-threshold", NULL, 127, help_basic },
   { "dyn-bool-ack", NULL, 122, help_basic },
@@ -1900,6 +2002,7 @@ static const help_index_t help_index[] = {
   { "false", NULL, 40, help_basic },
   { "fast-restarts", NULL, 106, help_basic },
   { "flatten", NULL, 103, help_basic },
+  { "floor", NULL, 152, help_basic },
   { "generic", "Generic Operators", HGENERIC, help_for_category },
   { "help", "Show help", 20, help_variant },
   { "icheck", NULL, 135, help_basic },
@@ -1908,6 +2011,7 @@ static const help_index_t help_index[] = {
   { "include", NULL, 11, help_basic },
   { "index", index_string, 0, help_special },
   { "int", NULL, 24, help_basic },
+  { "is-int", NULL, 157, help_basic },
   { "ite", NULL, 30, help_basic },
   { "keep-ite", NULL, 105, help_basic },
   { "learn-eq", NULL, 104, help_basic },
@@ -1918,6 +2022,7 @@ static const help_index_t help_index[] = {
   { "max-update-conflicts", NULL, 137, help_basic },
   { "mk-bv", NULL, 57, help_basic },
   { "mk-tuple", NULL, 35, help_basic },
+  { "mod", NULL, 155, help_basic },
   { "not", NULL, 43, help_basic },
   { "optimistic-fcheck", NULL, 140, help_basic },
   { "or", NULL, 41, help_basic },

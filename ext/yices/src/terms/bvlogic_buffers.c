@@ -11,10 +11,11 @@
 
 #include <assert.h>
 
-#include "utils/memalloc.h"
 #include "terms/bit_term_conversion.h"
 #include "terms/bv64_constants.h"
 #include "terms/bvlogic_buffers.h"
+#include "terms/term_utils.h"
+#include "utils/memalloc.h"
 
 
 
@@ -311,6 +312,101 @@ void bvlogic_buffer_set_low_mask(bvlogic_buffer_t *b, uint32_t k, uint32_t n) {
 }
 
 
+#if 1
+
+// EXPERIMENTAL
+
+/*
+ * Convert the sign in an interval abstraction to a bit
+ * - t = term for which we wan the sign bit
+ * - i = number of significant bits in t
+ * - if the sign is unknown, returns (select i t)
+ */
+static bit_t get_abs64_sign_bit(node_table_t *nodes, term_table_t *table, int32_t sign, term_t t, uint32_t i) {
+  bit_t s;
+
+  if (sign == sign_zero) {
+    s = false_bit;
+  } else if (sign == sign_one) {
+    s = true_bit;
+  } else if (sign != sign_undef) {
+    // sign is a Boolean term
+    s = convert_term_to_bit(table, nodes, sign, 1);
+  } else {
+    // not known
+    s = node_table_alloc_select(nodes, i, t);
+  }
+  return s;
+}
+
+
+/*
+ * Store term t into b using t's interval abstraction
+ * - n = number of bits in t
+ * - a = abstraction descriptor
+ * - a.nbits = the number of significant bits in t
+ * - a.sign = the most significant bit of t (or sign_undef)
+ */
+static void bvlogic_buffer_set_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  uint32_t i, m;
+  bit_t s;
+
+  assert(a->nbits > 0 && a->nbits <= n);
+
+  resize_bvlogic_buffer(b, n);
+
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    b->bit[i] = node_table_alloc_select(b->nodes, i, t);
+  }
+  // fill the rest with the sign bit
+  s = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    b->bit[i] = s;
+    i ++;
+  }
+}
+
+/*
+ * Store term t into b
+ * - t is a bitvector polynomial of 1 to 64bits
+ * - p is t's descriptor
+ */
+void bvlogic_buffer_set_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_set_abs64(b, table, &abs, t, n);
+}
+
+
+/*
+ * Store term t into b
+ * - t is a power product
+ * - p is t's descriptor
+ * - n = number of bits in t
+ */
+void bvlogic_buffer_set_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_set_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_set_bv(b, n, t);
+  }
+}
+
+#endif
+
+
 /*
  * SLICE ASSIGNMENT
  */
@@ -401,7 +497,89 @@ void bvlogic_buffer_set_slice_term_array(bvlogic_buffer_t *b, term_table_t *tabl
 }
 
 
+#if 1
 
+// EXPERIMENTAL
+
+/*
+ * Slice of t, using t's interval abstraction.
+ * - n = number of bits in t
+ * - a = abstraction descriptor
+ */
+static void bvlogic_buffer_set_slice_abs64(bvlogic_buffer_t *b, term_table_t *table, uint32_t i, uint32_t j, bv64_abs_t *a, term_t t) {
+  uint32_t k, m;
+  bit_t s;
+
+  assert(a->nbits > 0 && i <= j);
+
+  resize_bvlogic_buffer(b, j - i + 1);
+
+  k = 0;
+
+  m = a->nbits - 1;
+  if (m <= j) {
+    /*
+     * bits[i to m-1] taken from t
+     * bits[m to j] are equal to the sign bit
+     */
+    while (i < m) {
+      b->bit[k] = node_table_alloc_select(b->nodes, i, t);
+      k ++;
+      i ++;
+    }
+
+    s = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+    do {
+      b->bit[k] = s;
+      k ++;
+      i ++;
+    } while (i <= j);
+
+        
+  } else {
+    /*
+     * Nothing gained
+     */
+    do {
+      b->bit[k] = node_table_alloc_select(b->nodes, i, t);
+      k ++;
+      i ++;
+    } while (i <= j);
+  }
+}
+
+
+void bvlogic_buffer_set_slice_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, uint32_t i, uint32_t j, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+
+  assert(i <= j && j <= n);
+  bvlogic_buffer_set_slice_abs64(b, table, i, j, &abs, t);
+}
+
+
+void bvlogic_buffer_set_slice_pprod(bvlogic_buffer_t *b, term_table_t *table, uint32_t i, uint32_t j, term_t t, pprod_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT && pprod_term_desc(table, t) == p);
+
+  n = term_bitsize(table, t);
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    assert(i <= j && j <= n);
+    bvlogic_buffer_set_slice_abs64(b, table, i, j, &abs, t);
+  } else {
+    bvlogic_buffer_set_slice_bv(b, i, j, t);
+  }
+}
+
+#endif
 
 
 /*
@@ -660,6 +838,170 @@ static void bvlogic_buffer_xor_term_array(bvlogic_buffer_t *b, term_table_t *tab
 }
 
 
+#if 1
+
+// EXPERIMENTAL
+/*
+ * And/or/xor of a term t using its interval abstraction
+ * - n = number of bits in t
+ * - a = abstraction
+ */
+static void bvlogic_buffer_and_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  node_table_t *nodes;
+  bit_t *bit;
+  bit_t x;
+  uint32_t i, m;
+
+  assert(n == b->bitsize && 0 < n && n <= 64 && a->nbits > 0 && a->nbits <= n);
+  nodes = b->nodes;
+  bit = b->bit;
+
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    x = node_table_alloc_select(nodes, i, t);
+    bit[i] = bit_and2simplify(nodes, bit[i], x);
+  }
+  x = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    bit[i] = bit_and2simplify(nodes, bit[i], x);
+    i ++;
+  }  
+}
+
+static void bvlogic_buffer_or_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  node_table_t *nodes;
+  bit_t *bit;
+  bit_t x;
+  uint32_t i, m;
+
+  assert(n == b->bitsize && 0 < n && n <= 64 && a->nbits > 0 && a->nbits <= n);
+  nodes = b->nodes;
+  bit = b->bit;
+
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    x = node_table_alloc_select(nodes, i, t);
+    bit[i] = bit_or2simplify(nodes, bit[i], x);
+  }
+  x = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    bit[i] = bit_or2simplify(nodes, bit[i], x);
+    i ++;
+  }  
+}
+
+static void bvlogic_buffer_xor_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  node_table_t *nodes;
+  bit_t *bit;
+  bit_t x;
+  uint32_t i, m;
+
+  assert(n == b->bitsize && 0 < n && n <= 64 && a->nbits > 0 && a->nbits <= n);
+  nodes = b->nodes;
+  bit = b->bit;
+
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    x = node_table_alloc_select(nodes, i, t);
+    bit[i] = bit_xor2simplify(nodes, bit[i], x);
+  }
+  x = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    bit[i] = bit_xor2simplify(nodes, bit[i], x);
+    i ++;
+  }  
+}
+
+
+/*
+ * And/or/xor with a bitvector polynomial p
+ * - t is a bitvector term of 1 to 64 bits
+ * - p is t's descriptor
+ */
+static void bvlogic_buffer_and_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_and_abs64(b, table, &abs, t, n);
+}
+
+static void bvlogic_buffer_or_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_or_abs64(b, table, &abs, t, n);
+}
+
+static void bvlogic_buffer_xor_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_xor_abs64(b, table, &abs, t, n);
+}
+
+
+/*
+ * And/or/xor with a power product
+ * - t is a power product
+ * - p is t's descriptor
+ * - n = number of bits in t
+ */
+static void bvlogic_buffer_and_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_and_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_and_bv(b, n, t);
+  }
+}
+
+static void bvlogic_buffer_or_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_or_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_or_bv(b, n, t);
+  }
+}
+
+static void bvlogic_buffer_xor_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_xor_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_xor_bv(b, n, t);
+  }
+}
+
+
+#endif
 
 
 
@@ -667,7 +1009,7 @@ static void bvlogic_buffer_xor_term_array(bvlogic_buffer_t *b, term_table_t *tab
  * CONCATENATION
  *
  * left/right refer to b written in big-endian form: (b[n-1] ... b[0])
- * if v = v[m-1] ... v[0] is the added to b, then
+ * if v = v[m-1] ... v[0] is the vector added to b, then
  * - concat_left: v[m-1]...v[0] is added to the left of  b[n-1]
  * - concat_right: v[m-1]...v[0] is added to the right of  b[0]
  */
@@ -833,6 +1175,118 @@ static void bvlogic_buffer_concat_right_term_array(bvlogic_buffer_t *b, term_tab
 }
 
 
+#if 1
+// EXPERIMENTAL
+
+/*
+ * Concat using abstraction
+ */
+static void bvlogic_buffer_concat_left_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  uint32_t i, m, p;
+  bit_t s;
+  bit_t *bit;
+
+  assert(a->nbits > 0 && a->nbits <= n);
+
+  p = b->bitsize;
+  resize_bvlogic_buffer(b, n + p);
+
+  bit = b->bit;
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    bit[i + p] = node_table_alloc_select(b->nodes, i, t);
+  }
+  // sign bit
+  s = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    bit[i + p] = s;
+    i ++;
+  }
+}
+
+static void bvlogic_buffer_concat_right_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  uint32_t i, m, p;
+  bit_t s;
+  bit_t *bit;
+  
+  assert(a->nbits > 0 && a->nbits <= n);
+
+  p = b->bitsize;
+  resize_bvlogic_buffer(b, n + p);
+
+  bit = b->bit;
+  i = p;
+  while (i > 0) {
+    i --;
+    bit[n + i] = bit[i];
+  }
+  
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    bit[i] = node_table_alloc_select(b->nodes, i, t);
+  }
+  s = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    b->bit[i] = s;
+    i ++;
+  }
+
+}
+
+
+void bvlogic_buffer_concat_left_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_concat_left_abs64(b, table, &abs, t, n);
+}
+
+void bvlogic_buffer_concat_right_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_concat_right_abs64(b, table, &abs, t, n);
+}
+
+void bvlogic_buffer_concat_left_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_concat_left_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_concat_left_bv(b, n, t);
+  }
+}
+
+void bvlogic_buffer_concat_right_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_concat_right_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_concat_right_bv(b, n, t);
+  }
+}
+
+
+#endif
+
 /*
  * Repeat concat: concatenate b with itself (make n copies)
  * - n must be positive.
@@ -863,7 +1317,7 @@ void bvlogic_buffer_repeat_concat(bvlogic_buffer_t *b, uint32_t n) {
 /*
  * Sign-extend: extend b from p to n bits by appending the sign
  * bit (n - p) times
- * - n must be larger than or equal to b->bitsize = p, and p must be positive
+ * - n must be larger than or equal to b->bitsize = p, and p must be positivea
  */
 void bvlogic_buffer_sign_extend(bvlogic_buffer_t *b, uint32_t n) {
   uint32_t i, p;
@@ -1056,7 +1510,7 @@ static uint32_t shift_amount(uint32_t *c, uint32_t n, uint32_t m) {
     if (c[i] != 0) return n;
   }
 
-  // the shift amount is s: truncate to m if s is too laree
+  // the shift amount is s: truncate to m if s is too large
   return (s < m) ? s : m;
 }
 
@@ -1310,6 +1764,74 @@ static void bvlogic_buffer_comp_term_array(bvlogic_buffer_t *b, term_table_t *ta
 }
 
 
+#if 1
+// EXPERIMENTAL
+
+/*
+ * COMP with term t based on t's abstraction
+ * - n = number of bits in t
+ * - a = abstraction descriptor
+ */
+static void bvlogic_buffer_comp_abs64(bvlogic_buffer_t *b, term_table_t *table, bv64_abs_t *a, term_t t, uint32_t n) {
+  bit_t x;
+  uint32_t i, m;
+
+  assert(n == b->bitsize && 0 < n && n <= 64 && a->nbits > 0 && a->nbits <= n);
+
+  /*
+   * first: set b->bit[i] := (eq b->bit[i] a[i]):
+   */
+  m = a->nbits - 1;
+  for (i=0; i<m; i++) {
+    x = node_table_alloc_select(b->nodes, i, t);
+    b->bit[i] = bit_eq2simplify(b->nodes, b->bit[i], x);
+  }
+
+  // the rest is (eq b->bit[i] sign_bit of t)
+  x = get_abs64_sign_bit(b->nodes, table, a->sign, t, i);
+  while (i < n) {
+    b->bit[i] = bit_eq2simplify(b->nodes, b->bit[i], x);
+    i ++;
+  }
+
+  /*
+   * Compute the conjunction
+   */
+  resize_bvlogic_buffer(b, 1);
+  b->bit[0] = bit_and(b->nodes, b->bit, n);
+}
+
+
+/*
+ * Use abstraction for polynomial and power products
+ */
+static void bvlogic_buffer_comp_bvpoly64(bvlogic_buffer_t *b, term_table_t *table, term_t t, bvpoly64_t *p) {
+  bv64_abs_t abs;
+  uint32_t n;
+
+  assert(is_pos_term(t) && term_kind(table, t) == BV64_POLY && bvpoly64_term_desc(table, t) == p);
+
+  n = p->bitsize;
+  bv64_abs_poly(table, p, n, &abs);
+  bvlogic_buffer_comp_abs64(b, table, &abs, t, n);
+}
+
+static void bvlogic_buffer_comp_pprod(bvlogic_buffer_t *b, term_table_t *table, term_t t, pprod_t *p, uint32_t n) {
+  bv64_abs_t abs;
+
+  assert(is_pos_term(t) && term_kind(table, t) == POWER_PRODUCT &&
+	 pprod_term_desc(table, t) == p && term_bitsize(table, t) == n);
+
+  if (n <= 64) {
+    bv64_abs_pprod(table, p, n, &abs);
+    bvlogic_buffer_comp_abs64(b, table, &abs, t, n);
+  } else {
+    bvlogic_buffer_comp_bv(b, n, t);
+  }
+}
+
+
+#endif
 
 /*
  * OPERATIONS WITH BIT-VECTOR TERMS AS OPERANDS
@@ -1344,6 +1866,18 @@ void bvlogic_buffer_set_term(bvlogic_buffer_t *b, term_table_t *table, term_t t)
     d = composite_for_idx(table, i);
     bvlogic_buffer_set_term_array(b, table, d->arity, d->arg);
     break;
+
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_set_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_set_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
 
   default:
     n = bitsize_for_idx(table, i);
@@ -1384,6 +1918,17 @@ void bvlogic_buffer_set_slice_term(bvlogic_buffer_t *b, term_table_t *table, uin
     bvlogic_buffer_set_slice_term_array(b, table, i, j, d->arg);
     break;
 
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_set_slice_bvpoly64(b, table, i, j, t, bvpoly64_for_idx(table, k));
+    break;
+    
+  case POWER_PRODUCT:
+    bvlogic_buffer_set_slice_pprod(b, table, i, j, t, pprod_for_idx(table, k));
+    break;
+#endif
+    
   default:
     assert(j < bitsize_for_idx(table, k));
     bvlogic_buffer_set_slice_bv(b, i, j, t);
@@ -1425,6 +1970,18 @@ void bvlogic_buffer_and_term(bvlogic_buffer_t *b, term_table_t *table, term_t t)
     bvlogic_buffer_and_term_array(b, table, d->arity, d->arg);
     break;
 
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_and_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_and_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
+
   default:
     n = bitsize_for_idx(table, i);
     bvlogic_buffer_and_bv(b, n, t);
@@ -1460,6 +2017,18 @@ void bvlogic_buffer_or_term(bvlogic_buffer_t *b, term_table_t *table, term_t t) 
     bvlogic_buffer_or_term_array(b, table, d->arity, d->arg);
     break;
 
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_or_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_or_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
+
   default:
     n = bitsize_for_idx(table, i);
     bvlogic_buffer_or_bv(b, n, t);
@@ -1494,6 +2063,18 @@ void bvlogic_buffer_xor_term(bvlogic_buffer_t *b, term_table_t *table, term_t t)
     d = composite_for_idx(table, i);
     bvlogic_buffer_xor_term_array(b, table, d->arity, d->arg);
     break;
+
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_xor_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_xor_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
 
   default:
     n = bitsize_for_idx(table, i);
@@ -1533,6 +2114,18 @@ void bvlogic_buffer_comp_term(bvlogic_buffer_t *b, term_table_t *table, term_t t
     bvlogic_buffer_comp_term_array(b, table, d->arity, d->arg);
     break;
 
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_comp_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_comp_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
+
   default:
     n = bitsize_for_idx(table, i);
     bvlogic_buffer_comp_bv(b, n, t);
@@ -1571,6 +2164,18 @@ void bvlogic_buffer_concat_left_term(bvlogic_buffer_t *b, term_table_t *table, t
     bvlogic_buffer_concat_left_term_array(b, table, d->arity, d->arg);
     break;
 
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_concat_left_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_concat_left_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
+
   default:
     n = bitsize_for_idx(table, i);
     bvlogic_buffer_concat_left_bv(b, n, t);
@@ -1603,6 +2208,18 @@ void bvlogic_buffer_concat_right_term(bvlogic_buffer_t *b, term_table_t *table, 
     d = composite_for_idx(table, i);
     bvlogic_buffer_concat_right_term_array(b, table, d->arity, d->arg);
     break;
+
+#if 1
+    // EXPERIMENTAL
+  case BV64_POLY:
+    bvlogic_buffer_concat_right_bvpoly64(b, table, t, bvpoly64_for_idx(table, i));
+    break;
+
+  case POWER_PRODUCT: 
+    n = bitsize_for_idx(table, i);
+    bvlogic_buffer_concat_right_pprod(b, table, t, pprod_for_idx(table, i), n);
+    break;
+#endif
 
   default:
     n = bitsize_for_idx(table, i);

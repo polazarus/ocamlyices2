@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "terms/bv64_interval_abstraction.h"
 #include "terms/bv_constants.h"
 #include "terms/terms.h"
 
@@ -80,6 +81,14 @@ extern bool term_has_nonneg_finite_domain(term_table_t *tbl, term_t t);
 
 
 /*
+ * Check whether all elements in t's domain are non-positive
+ * - t must be a special if-then-else of arithmetic type
+ * - the domain of t is computed if required
+ */
+extern bool term_has_nonpos_finite_domain(term_table_t *tbl, term_t t);
+
+
+/*
  * Check whether all elements in t's domain are negative
  * - t must be a special if-then-else term of arithmetic type
  * - the domain of t is computed if required
@@ -118,7 +127,7 @@ extern void term_finite_domain_bounds(term_table_t *tbl, term_t t, term_t *lb, t
  * - if the function returns true, then x and y can't be equal in any interpretation
  * - if it returns false, we don't know.
  */
-extern bool disequal_terms(term_table_t *tbl, term_t x, term_t y);
+extern bool disequal_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite);
 
 
 /*
@@ -127,13 +136,13 @@ extern bool disequal_terms(term_table_t *tbl, term_t x, term_t y);
  * - two arithmetic terms
  */
 extern bool disequal_bitvector_terms(term_table_t *tbl, term_t x, term_t y);
-extern bool disequal_arith_terms(term_table_t *tbl, term_t x, term_t y);
+extern bool disequal_arith_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite);
 
 
 /*
  * Check whether a[i] can't equal b[i] for all i in 0 .. n-1
  */
-extern bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a, const term_t *b);
+extern bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a, const term_t *b, bool check_ite);
 
 
 /*
@@ -141,9 +150,19 @@ extern bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a,
  * this can be expensive: quadratic cost,
  * but should fail quickly on most examples
  */
-extern bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t *a);
+extern bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t *a, bool check_ite);
 
 
+/*
+ * INTEGRALITY CHECK
+ */
+
+/*
+ * Check whether t can't be an integer.
+ * This is incomplete.
+ * - returns true if t is a non-integer rational
+ */
+extern bool arith_term_is_not_integer(term_table_t *tbl, term_t t);
 
 
 /*
@@ -156,7 +175,16 @@ extern bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t 
  * - return true if the checks can determine that t >= 0
  * - return false otherwise
  */
-extern bool arith_term_is_nonneg(term_table_t *tbl, term_t t);
+extern bool arith_term_is_nonneg(term_table_t *tbl, term_t t, bool check_ite);
+
+
+/*
+ * Check whether t is negative or null. This is incomplete and
+ * deals only with simple cases.
+ * - return true if the checks can determine that t <= 0
+ * - return false otherwise
+ */
+extern bool arith_term_is_nonpos(term_table_t *tbl, term_t t, bool check_ite);
 
 
 /*
@@ -277,6 +305,31 @@ extern bool bveq_flattens(term_table_t *tbl, term_t t1, term_t t2, ivector_t *v)
 
 
 /*
+ * INTERVAL ABSTRACTION FOR BITVECTORS
+ */
+
+/*
+ * Interval for bitvector t
+ * - t must have no more than 64bits
+ * - the result is stored in the interval descriptor a
+ * - a contains lower/upper bounds, number of bits, sign bit 
+ *   (cf. bv64_interval_abstraction.h)
+ */
+extern void bv64_abstract_term(term_table_t *tbl, term_t t, bv64_abs_t *a);
+
+
+/*
+ * Abstraction of polynomial or power product
+ * - nbits = number of bits (must be between 1 amnd 64)
+ * - the result is stored in the interval descriptor a
+ */
+extern void bv64_abs_poly(term_table_t *tbl, bvpoly64_t *p, uint32_t nbits, bv64_abs_t *a);
+extern void bv64_abs_pprod(term_table_t *tbl, pprod_t *p, uint32_t nbits, bv64_abs_t *a);
+extern void bv64_abs_buffer(term_table_t *tbl, bvarith64_buffer_t *p, uint32_t nbits, bv64_abs_t *a);
+
+
+
+/*
  * EXPERIMENTAL CHECKS FOR SUBSUMPTIONS
  */
 
@@ -316,7 +369,7 @@ extern bool term_subsumes_array(term_table_t *tbl, term_t t1, uint32_t n, term_t
  * - otherwise returns false, and leave *x and *a unchanged.
  *
  * The following cases are handled:
- * - t is (eq a x) where x and a have unintepreted types
+ * - t is (eq a x) where x and a have uninterpreted types
  * - t is (arith-bineq x a) or (arith-eq0 x)
  * - t is (bveq x a)
  */

@@ -15,8 +15,8 @@
 #include <assert.h>
 
 #include "solvers/cdcl/gates_hash_table.h"
-#include "solvers/cdcl/smt_core_printer.h"
 #include "solvers/cdcl/gates_printer.h"
+#include "solvers/cdcl/smt_core_printer.h"
 
 
 /*
@@ -386,7 +386,7 @@ static void test3(void) {
 
 
 
-int main() {
+int main(void) {
   test1();
   test2();
   test3();

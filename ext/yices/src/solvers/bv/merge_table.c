@@ -9,8 +9,8 @@
  * MERGE TABLE: STORE EQUIVALENCE CLASSES OF VARIABLES
  */
 
-#include "utils/memalloc.h"
 #include "solvers/bv/merge_table.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -93,7 +93,7 @@ static void mtbl_undo_stack_push(mtbl_undo_stack_t *stack, int32_t x) {
  */
 
 /*
- * Initialize: emtpy stack
+ * Initialize: empty stack
  */
 static void init_mtbl_trail(mtbl_trail_t *stack) {
   stack->size = 0;

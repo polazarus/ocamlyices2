@@ -10,9 +10,9 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "utils/memalloc.h"
-#include "utils/int_array_sort.h"
 #include "utils/csets.h"
+#include "utils/int_array_sort.h"
+#include "utils/memalloc.h"
 
 #ifdef MINGW
 static inline long int random(void) {
@@ -541,7 +541,7 @@ static void do_tests(uint32_t n) {
   delete_cset(&c1);
 }
 
-int main() {
+int main(void) {
   do_tests(14);
   do_tests(31);
   do_tests(32);

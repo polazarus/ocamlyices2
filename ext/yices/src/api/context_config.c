@@ -12,9 +12,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/string_utils.h"
 #include "api/context_config.h"
-
+#include "utils/string_utils.h"
 
 
 /*
@@ -34,6 +33,15 @@ static const int32_t mode[NUM_MODES] = {
   CTX_MODE_PUSHPOP,
 };
 
+static const char * const solver_type_names[NUM_SOLVER_TYPES] = {
+  "dpllt",
+  "mcsat"
+};
+
+static const int32_t solver_type[NUM_SOLVER_TYPES] = {
+  CTX_SOLVER_TYPE_DPLLT,
+  CTX_SOLVER_TYPE_MCSAT
+};
 
 /*
  * Solver codes
@@ -62,6 +70,7 @@ static const int32_t solver_code[NUM_SOLVER_CODES] = {
  */
 typedef enum ctx_config_key {
   CTX_CONFIG_KEY_MODE,
+  CTX_CONFIG_KEY_SOLVER_TYPE,
   CTX_CONFIG_KEY_ARITH_FRAGMENT,
   CTX_CONFIG_KEY_UF_SOLVER,
   CTX_CONFIG_KEY_ARRAY_SOLVER,
@@ -78,6 +87,7 @@ static const char *const config_key_names[NUM_CONFIG_KEYS] = {
   "array-solver",
   "bv-solver",
   "mode",
+  "solver-type",
   "uf-solver",
 };
 
@@ -87,6 +97,7 @@ static const int32_t config_key[NUM_CONFIG_KEYS] = {
   CTX_CONFIG_KEY_ARRAY_SOLVER,
   CTX_CONFIG_KEY_BV_SOLVER,
   CTX_CONFIG_KEY_MODE,
+  CTX_CONFIG_KEY_SOLVER_TYPE,
   CTX_CONFIG_KEY_UF_SOLVER,
 };
 
@@ -108,10 +119,10 @@ static const int32_t logic2arch[NUM_SMT_LOGICS] = {
   CTX_ARCH_NOSOLVERS,  // NONE
 
   -1,                  // AX
-  -1,                  // BV
+  CTX_ARCH_BV,         // BV  same as QF_BV
   -1,                  // IDL
-  -1,                  // LIA
-  -1,                  // LRA
+  CTX_ARCH_SPLX,       // LIA
+  CTX_ARCH_SPLX,       // LRA same as QF_LRA
   -1,                  // LIRA
   -1,                  // NIA
   -1,                  // NRA
@@ -146,13 +157,13 @@ static const int32_t logic2arch[NUM_SMT_LOGICS] = {
   CTX_ARCH_EGFUN,      // QF_AX
   CTX_ARCH_BV,         // QF_BV
   CTX_ARCH_SPLX,       // QF_IDL
-  CTX_ARCH_SPLX,       // QF_RDL
   CTX_ARCH_SPLX,       // QF_LIA
   CTX_ARCH_SPLX,       // QF_LRA
   CTX_ARCH_SPLX,       // QF_LIRA
-  -1,                  // QF_NIA
-  -1,                  // QF_NRA
-  -1,                  // QF_NIRA
+  CTX_ARCH_MCSAT,      // QF_NIA
+  CTX_ARCH_MCSAT,      // QF_NRA
+  CTX_ARCH_MCSAT,      // QF_NIRA
+  CTX_ARCH_SPLX,       // QF_RDL
   CTX_ARCH_EG,         // QF_UF
   CTX_ARCH_EGFUNBV,    // QF_ABV
   CTX_ARCH_EGFUNSPLX,  // QF_ALIA
@@ -167,9 +178,9 @@ static const int32_t logic2arch[NUM_SMT_LOGICS] = {
   CTX_ARCH_EGSPLX,     // QF_UFLIA
   CTX_ARCH_EGSPLX,     // QF_UFLRA
   CTX_ARCH_EGSPLX,     // QF_UFLIRA
-  -1,                  // QF_UFNIA
-  -1,                  // QF_UFNRA
-  -1,                  // QF_UFNIRA
+  CTX_ARCH_MCSAT,      // QF_UFNIA
+  CTX_ARCH_MCSAT,      // QF_UFNRA
+  CTX_ARCH_MCSAT,      // QF_UFNIRA
   CTX_ARCH_EGSPLX,     // QF_UFRDL
   CTX_ARCH_EGFUNBV,    // QF_AUFBV
   CTX_ARCH_EGFUNSPLX,  // QF_AUFLIA
@@ -201,12 +212,14 @@ static const bool fragment2iflag[NUM_ARITH_FRAGMENTS+1] = {
 /*
  * Default configuration:
  * - enable PUSH/POP
+ * - solver type = DPLL(T)
  * - no logic specified
  * - arith fragment = LIRA
  * - all solvers set to defaults
  */
 static const ctx_config_t default_config = {
   CTX_MODE_PUSHPOP,       // mode
+  CTX_SOLVER_TYPE_DPLLT,  // DPLLT solver
   SMT_UNKNOWN,            // logic
   CTX_CONFIG_DEFAULT,     // uf
   CTX_CONFIG_DEFAULT,     // array
@@ -320,6 +333,15 @@ int32_t config_set_field(ctx_config_t *config, const char *key, const char *valu
       r = -2;
     } else {
       config->mode = v;
+    }
+    break;
+
+  case CTX_CONFIG_KEY_SOLVER_TYPE:
+    v = parse_as_keyword(value, solver_type_names, solver_type, NUM_SOLVER_TYPES);
+    if (v < 0) {
+      r = -2;
+    } else {
+      config->solver_type = v;
     }
     break;
 
@@ -492,10 +514,10 @@ static int32_t arch_add_arith(int32_t a, solver_code_t c) {
 
 /*
  * Check whether the architecture code a is compatible with mode
- * - current restriction: IFW and RFW don't support PUSH/POP or MULTIPLE CHECKS
+ * - current restriction: IFW, RFW, and MCSAT don't support PUSH/POP or MULTIPLE CHECKS
  */
 static bool arch_supports_mode(context_arch_t a, context_mode_t mode) {
-  return (a != CTX_ARCH_IFW && a != CTX_ARCH_RFW) || mode == CTX_MODE_ONECHECK;
+  return (a != CTX_ARCH_MCSAT && a != CTX_ARCH_IFW && a != CTX_ARCH_RFW) || mode == CTX_MODE_ONECHECK;
 }
 
 
@@ -553,6 +575,9 @@ int32_t decode_config(const ctx_config_t *config, smt_logic_t *logic, context_ar
     if (a < 0) {
       // not supported
       r = -2;
+    } else if (a == CTX_ARCH_MCSAT && config->mode != CTX_MODE_ONECHECK) {
+      // MCSAT doesn't support push/pop/multichecks
+      r = -3;
     } else {
       // good configuration
       *logic = logic_code;
@@ -561,10 +586,27 @@ int32_t decode_config(const ctx_config_t *config, smt_logic_t *logic, context_ar
       *qflag = qflag_for_logic(logic_code);
       *mode = config->mode;
     }
+
+  } else if (config->solver_type == CTX_SOLVER_TYPE_MCSAT) {
+    /*
+     * MCSAT solver/no logic specified
+     */
+    if (config->mode != CTX_MODE_ONECHECK) {
+      r = -3; // Can't currently have MCSAT with push/pop or multiple checks
+    } else {
+      *logic = SMT_UNKNOWN;
+      *arch = CTX_ARCH_MCSAT;
+      *mode = CTX_MODE_ONECHECK;
+      *iflag = false;
+      *qflag = false;
+      goto done;
+    }
+
   } else {
     /*
      * No logic specified.
      */
+
     a = CTX_ARCH_NOSOLVERS;
     if (config->uf_config == CTX_CONFIG_DEFAULT) {
       a = arch_add_egraph(a);
@@ -589,7 +631,7 @@ int32_t decode_config(const ctx_config_t *config, smt_logic_t *logic, context_ar
       *mode = config->mode;
     } else {
       // mode is not supported by the solvers
-      r = -2;
+      r = -3;
     }
   }
 
@@ -598,3 +640,14 @@ int32_t decode_config(const ctx_config_t *config, smt_logic_t *logic, context_ar
 }
 
 
+
+
+/*
+ * CHECK WHETHER A LOGIC IS SUPPORTED BY THE MCSAT SOLVER
+ */
+/*
+ * mcsat doesn't support arrays/quantifiers/bitvectors
+ */
+bool logic_is_supported_by_mcsat(smt_logic_t code) {
+  return !(logic_has_arrays(code) || logic_has_bv(code) || logic_has_quantifiers(code));
+}

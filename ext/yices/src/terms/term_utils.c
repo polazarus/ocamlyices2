@@ -12,32 +12,13 @@
 
 #include <assert.h>
 
+#include "terms/bv64_constants.h"
+#include "terms/term_utils.h"
+#include "utils/int_array_sort.h"
+#include "utils/int_hash_sets.h"
+#include "utils/int_vectors.h"
 #include "utils/memalloc.h"
 #include "utils/prng.h"
-#include "terms/bv64_constants.h"
-#include "utils/int_array_sort.h"
-#include "utils/int_vectors.h"
-#include "utils/int_hash_sets.h"
-#include "terms/term_utils.h"
-
-#if 0
-
-#include <stdio.h>
-#include <inttypes.h>
-#include "term_printer.h"
-
-static void print_finite_domain(FILE *f, term_table_t *tbl, finite_domain_t *d) {
-  uint32_t i, n;
-
-  n = d->nelems;
-  fputs("[", f);
-  for (i=0; i<n; i++) {
-    if (i > 0) fputs(" ", f);
-    print_term(f, tbl, d->data[i]);
-  }
-  fputs("]", f);
-}
-#endif
 
 #if 0
 
@@ -276,6 +257,26 @@ static bool finite_domain_is_nonneg(term_table_t *tbl, finite_domain_t *d) {
 
 
 /*
+ * Check whether all elements in domain d are <= 0
+ * - d must be an arithmetic domain (i.e., all elements in d are rational constants)
+ */
+static bool finite_domain_is_nonpos(term_table_t *tbl, finite_domain_t *d) {
+  uint32_t i, n;
+  term_t t;
+
+  n = d->nelems;
+  for (i=0; i<n; i++) {
+    t = d->data[i];
+    if (q_is_pos(rational_term_desc(tbl, t))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/*
  * Check whether all elements in domain d are negative
  * - d must be an arithmetic domain
  */
@@ -287,6 +288,26 @@ static bool finite_domain_is_neg(term_table_t *tbl, finite_domain_t *d) {
   for (i=0; i<n; i++) {
     t = d->data[i];
     if (q_is_nonneg(rational_term_desc(tbl, t))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/*
+ * Check whether all elements in domain d are non-integer
+ * - d must be an arithmetic domain
+ */
+static bool finite_domain_has_no_integers(term_table_t *tbl, finite_domain_t *d) {
+  uint32_t i, n;
+  term_t t;
+
+  n = d->nelems;
+  for (i=0; i<n; i++) {
+    t = d->data[i];
+    if (q_is_integer(rational_term_desc(tbl, t))) {
       return false;
     }
   }
@@ -309,6 +330,19 @@ bool term_has_nonneg_finite_domain(term_table_t *tbl, term_t t) {
 
 
 /*
+ * Check whether all elements in t's domain are non-positive
+ * - t must be a special if-then-else of arithmetic type
+ * - the domain of t is computed if required
+ */
+bool term_has_nonpos_finite_domain(term_table_t *tbl, term_t t) {
+  finite_domain_t *d;
+
+  d = special_ite_get_finite_domain(tbl, t);
+  return finite_domain_is_nonpos(tbl, d);
+}
+
+
+/*
  * Check whether all elements in t's domain are negative
  * - t must be a special if-then-else term of arithmetic type
  * - the domain of t is computed if required
@@ -318,6 +352,17 @@ bool term_has_negative_finite_domain(term_table_t *tbl, term_t t) {
 
   d = special_ite_get_finite_domain(tbl, t);
   return finite_domain_is_neg(tbl, d);
+}
+
+
+/*
+ * Check whether all elements in t's domain are non-integer
+ */
+bool term_has_non_integer_finite_domain(term_table_t *tbl, term_t t) {
+  finite_domain_t *d;
+
+  d = special_ite_get_finite_domain(tbl, t);
+  return finite_domain_has_no_integers(tbl, d);
 }
 
 
@@ -419,51 +464,95 @@ static void bitarray_lower_bound_unsigned(composite_term_t *a, bvconstant_t *c) 
 
 
 /*
+ * Find the number significant bits of a (in 2s complement)
+ * - returns m if a is the sign-extension of a smaller b of m bits
+ *   or n otherwise
+ * - a is an array of n Boolean terms
+ * - a[n-1] is the sign bit
+ * - this searches for the largest m <= n such that a[m-1] is not equal to a[n-1].
+ */
+static uint32_t bitarray_significant_bits(composite_term_t *a) {
+  uint32_t n;
+  term_t sign;
+
+  assert(a->arity > 0);
+
+  n = a->arity - 1;
+  sign = a->arg[n]; // sign bit
+  while (n > 0) {
+    if (a->arg[n - 1] != sign) break;
+    n --;
+  }
+  return n + 1;
+}
+
+
+/*
  * Upper/lower bound on a bitarray interpreted as a signed integer.
- *   a = a[0] + 2 a[1] + ... + 2^(n-2) a[n-2] - 2^(n-1) a[n-1]
+ * - a is an array of n bits. 
+ * - Let m be the number of significant bits in a, then we have
+ *   1 <= m <= n
+ *   bits a[m-1] .... a[n-1] are all equal (sign extension)
+ *   a = a[0] + 2 a[1] + ... + 2^(m-2) a[m-2] - 2^(m-1) a[m-1]
+ *
  * upper bound:
- *   for i=0 to n-2, replace a[i] by 1 if a[i] != 0
- *   replace the sign bit a[n-1] by 0 unless a[n-1] = 1.
+ *   for i=0 to m-2, replace a[i] by 1 if a[i] != 0
+ *   for i=m-1 to n-1, replace a[i] by 0 unless a[i] = 1.
+ *
  * lower bound:
- *   for i=0 to n-2, replace a[i] by 0 if a[i] != 1
- *   replace the sign bit a[n-1] by 1 unless a[n-1] = 0.
+ *   for i=0 to m-2, replace a[i] by 0 if a[i] != 1
+ *   for i=m-1 to n-1, replace a[i] by 1 unless a[i] = 0.
  */
 static void bitarray_upper_bound_signed(composite_term_t *a, bvconstant_t *c) {
-  uint32_t i, n;
+  uint32_t i, n, m;
 
   assert(a->arity > 0);
 
   n = a->arity;
   bvconstant_set_all_one(c, n);
 
-  for (i=0; i<n-1; i++) {
+  m = bitarray_significant_bits(a);
+  assert(0 < m && m <= n);
+
+  for (i=0; i<m-1; i++) {
     if (a->arg[i] == false_term) {
       bvconst_clr_bit(c->data, i);
     }
   }
 
+  // all bits from a->arg[i] to a->arg[n-1] are the same
   if (a->arg[i] != true_term) {
-    bvconst_clr_bit(c->data, i);
+    while (i < n) {
+      bvconst_clr_bit(c->data, i);
+      i ++;
+    }
   }
 }
 
 
 static void bitarray_lower_bound_signed(composite_term_t *a, bvconstant_t *c) {
-  uint32_t i, n;
+  uint32_t i, n, m;
 
   assert(a->arity > 0);
 
   n = a->arity;
   bvconstant_set_all_zero(c, n);
 
-  for (i=0; i<n-1; i++) {
+  m = bitarray_significant_bits(a);
+  assert(0 < m && m <= n);
+
+  for (i=0; i<m-1; i++) {
     if (a->arg[i] == true_term) {
       bvconst_set_bit(c->data, i);
     }
   }
 
+  // all bits from a->arg[i] to a->arg[n-1] are the same
   if (a->arg[i] != false_term) {
-    bvconst_set_bit(c->data, i);
+    while (i < n) {
+      bvconst_set_bit(c->data, i);
+      i ++;
+    }
   }
 }
 
@@ -519,33 +608,52 @@ static uint64_t bitarray_lower_bound_unsigned64(composite_term_t *a) {
 }
 
 
+
+#if 0
+
+// NOT USED ANYMORE
+
 /*
  * Upper/lower bound on a bitarray interpreted as a signed integer.
- *   a = a[0] + 2 a[1] + ... + 2^(n-2) a[n-2] - 2^(n-1) a[n-1]
+ *   a = a[0] + 2 a[1] + ... + 2^(n-2) a[n-2] - 2^(n-1) a[m-1]
+ *   where m = number of significant bits in a.
+ *
  * upper bound:
- *   for i=0 to n-2, replace a[i] by 1 if a[i] != 0
- *   replace the sign bit a[n-1] by 0 unless a[n-1] = 1.
+ *   for i=0 to m-2, replace a[i] by 1 if a[i] != 0
+ *   for i=m-1 to n-1, replace a[i] by 0 unless a[i] = 1.
+ *
  * lower bound:
- *   for i=0 to n-2, replace a[i] by 0 if a[i] != 1
- *   replace the sign bit a[n-1] by 1 unless a[n-1] = 0.
+ *   for i=0 to m-2, replace a[i] by 0 if a[i] != 1
+ *   for i=m-1 to n-1, replace a[i] by 1 unless a[i] = 0.
  */
 static uint64_t bitarray_upper_bound_signed64(composite_term_t *a) {
   uint64_t c;
-  uint32_t i, n;
+  uint32_t i, n, m;
 
   assert(0 < a->arity && a->arity <= 64);
 
   n = a->arity;
   c = mask64(n); // c = 0001...1
-  for (i=0; i<n-1; i++) {
+
+  m = bitarray_significant_bits(a);
+  assert(0 < m && m <= n);
+
+  for (i=0; i<m-1; i++) {
     if (a->arg[i] == false_term) {
       c = clr_bit64(c, i);
     }
   }
 
+  // i is equal to m-1
+  // All bits from a->arg[m-1] to a->arg[n-1] are the same
   if (a->arg[i] != true_term) {
-    c = clr_bit64(c, i); // clear the sign bit
+    while (i < n) {
+      c = clr_bit64(c, i);
+      i ++;
+    }
   }
+
+  assert(c == norm64(c, n));
 
   return c;
 }
@@ -553,27 +661,38 @@ static uint64_t bitarray_upper_bound_signed64(composite_term_t *a) {
 
 static uint64_t bitarray_lower_bound_signed64(composite_term_t *a) {
   uint64_t c;
-  uint32_t i, n;
+  uint32_t i, n, m;
 
   assert(0 < a->arity && a->arity <= 64);
 
   n = a->arity;
   c = 0;
 
-  for (i=0; i<n-1; i++) {
+  m = bitarray_significant_bits(a);
+  assert(0 < m && m <= n);
+
+  for (i=0; i<m-1; i++) {
     if (a->arg[i] == true_term) {
       c = set_bit64(c, i);
     }
   }
 
+  // i is equal to m-1.
+  // All bits from a->arg[m-1] to a->arg[n-1] are the same
   if (a->arg[i] != false_term) {
-    c = set_bit64(c, i); // set the sign bit
+    while (i < n) {
+      c = set_bit64(c, i);
+      i ++;
+    }
   }
+
+  assert(c == norm64(c, n));
+
 
   return c;
 }
 
-
+#endif
 
 
 /*
@@ -649,6 +768,68 @@ static bool disequal_bitarray_bvconst(composite_term_t *a, bvconst_term_t *c) {
 
 
 
+/*************************
+ *  CHECK NON-INTEGERS   *
+ ************************/
+
+/*
+ * Check whether p is of the form constant + sum of integer monomials
+ * where the constant is a non-integer rational.
+ */
+static bool non_integer_polynomial(term_table_t *tbl, polynomial_t *p) {
+  uint32_t i, n;
+
+  n = p->nterms;
+  if (n >= 1 && p->mono[0].var == const_idx && !q_is_integer(&p->mono[0].coeff)) {
+    // p has a non-integer constant term
+    for (i=1; i<n; i++) {
+      if (!is_integer_term(tbl, p->mono[i].var) ||
+	  !q_is_integer(&p->mono[i].coeff)) {
+	return false; // not an integer monomial 
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/*
+ * Check whether t can't be an integer.
+ * This is incomplete.
+ * - returns true if t is a non-integer rational
+ */
+bool arith_term_is_not_integer(term_table_t *tbl, term_t t) {
+  assert(is_arithmetic_term(tbl, t));
+
+  switch (term_kind(tbl, t)) {
+  case ARITH_CONSTANT:
+    return !q_is_integer(rational_term_desc(tbl, t));
+
+  case ARITH_ABS:
+    // x not an integer IMPLIES (abs x) not an integer
+    return arith_term_is_not_integer(tbl, arith_abs_arg(tbl, t));
+
+  case ARITH_POLY:
+    return non_integer_polynomial(tbl, poly_term_desc(tbl, t));
+
+  case ITE_SPECIAL:
+    return term_has_non_integer_finite_domain(tbl, t);
+
+  default:
+    return false;
+  }
+}
+
+/*
+ * Cheaper form: test whether x is a non-integer constant
+ * - incomplete
+ */
+static bool is_non_integer_term(term_table_t *tbl, term_t x) {
+  return term_kind(tbl, x) == ARITH_CONSTANT && !q_is_integer(rational_term_desc(tbl, x));
+}
+
+
 
 
 /******************************
@@ -669,16 +850,6 @@ static inline bool disequal_boolean_terms(term_t x, term_t y) {
 }
 
 
-
-/*
- * Test whether x can't be an integer
- * - incomplete
- */
-static bool is_non_integer_term(term_table_t *tbl, term_t x) {
-  return term_kind(tbl, x) == ARITH_CONSTANT && !q_is_integer(rational_term_desc(tbl, x));
-}
-
-
 /*
  * Arithmetic: x and y are both arithmetic terms
  *
@@ -694,7 +865,7 @@ static bool is_non_integer_term(term_table_t *tbl, term_t x) {
  *
  * TODO? we could do more when (x - y) is a polynomial with integer variables.
  */
-bool disequal_arith_terms(term_table_t *tbl, term_t x, term_t y) {
+bool disequal_arith_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite) {
   term_kind_t kx, ky;
 
   if (is_integer_term(tbl, x) && is_non_integer_term(tbl, y)) {
@@ -712,16 +883,18 @@ bool disequal_arith_terms(term_table_t *tbl, term_t x, term_t y) {
     return x != y; // because of hash consing.
   }
 
-  if (kx == ARITH_CONSTANT && ky == ITE_SPECIAL) {
-    return ! term_is_in_finite_domain(tbl, y, x);
-  }
+  if (check_ite) {
+    if (kx == ARITH_CONSTANT && ky == ITE_SPECIAL) {
+      return ! term_is_in_finite_domain(tbl, y, x);
+    }
 
-  if (kx == ITE_SPECIAL && ky == ARITH_CONSTANT) {
-    return !term_is_in_finite_domain(tbl, x, y);
-  }
+    if (kx == ITE_SPECIAL && ky == ARITH_CONSTANT) {
+      return !term_is_in_finite_domain(tbl, x, y);
+    }
 
-  if (kx == ITE_SPECIAL && ky == ITE_SPECIAL) {
-    return terms_have_disjoint_finite_domains(tbl, x, y);
+    if (kx == ITE_SPECIAL && ky == ITE_SPECIAL) {
+      return terms_have_disjoint_finite_domains(tbl, x, y);
+    }
   }
 
   if (kx == ARITH_POLY && ky == ARITH_POLY) {
@@ -877,7 +1050,7 @@ bool disequal_bitvector_terms(term_table_t *tbl, term_t x, term_t y) {
  * Tuple terms x and y are trivially distinct if they have components
  * x_i and y_i that are trivially distinct.
  */
-static bool disequal_tuple_terms(term_table_t *tbl, term_t x, term_t y) {
+static bool disequal_tuple_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite) {
   composite_term_t *tuple_x, *tuple_y;
   uint32_t i, n;
 
@@ -887,7 +1060,7 @@ static bool disequal_tuple_terms(term_table_t *tbl, term_t x, term_t y) {
   n = tuple_x->arity;
   assert(n == tuple_y->arity);
   for (i=0; i<n; i++) {
-    if (disequal_terms(tbl, tuple_x->arg[i], tuple_y->arg[i])) {
+    if (disequal_terms(tbl, tuple_x->arg[i], tuple_y->arg[i], check_ite)) {
       return true;
     }
   }
@@ -899,7 +1072,7 @@ static bool disequal_tuple_terms(term_table_t *tbl, term_t x, term_t y) {
  * (update f x1 ... xn a) is trivially distinct from (update f x1 ... xn b)
  * if a is trivially distinct from b.
  */
-static bool disequal_update_terms(term_table_t *tbl, term_t x, term_t y) {
+static bool disequal_update_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite) {
   composite_term_t *update_x, *update_y;
   int32_t i, n;
 
@@ -914,14 +1087,14 @@ static bool disequal_update_terms(term_table_t *tbl, term_t x, term_t y) {
     if (update_x->arg[i] != update_y->arg[i]) return false;
   }
 
-  return disequal_terms(tbl, update_x->arg[i], update_y->arg[i]);
+  return disequal_terms(tbl, update_x->arg[i], update_y->arg[i], check_ite);
 }
 
 
 /*
  * Top level check: x and y must be valid terms of compatible types
  */
-bool disequal_terms(term_table_t *tbl, term_t x, term_t y) {
+bool disequal_terms(term_table_t *tbl, term_t x, term_t y, bool check_ite) {
   term_kind_t kind;
 
   if (is_boolean_term(tbl, x)) {
@@ -931,7 +1104,7 @@ bool disequal_terms(term_table_t *tbl, term_t x, term_t y) {
 
   if (is_arithmetic_term(tbl, x)) {
     assert(is_arithmetic_term(tbl, y));
-    return disequal_arith_terms(tbl, x, y);
+    return disequal_arith_terms(tbl, x, y, check_ite);
   }
 
   if (is_bitvector_term(tbl, x)) {
@@ -950,9 +1123,9 @@ bool disequal_terms(term_table_t *tbl, term_t x, term_t y) {
   case CONSTANT_TERM:
     return disequal_constant_terms(x, y);
   case TUPLE_TERM:
-    return disequal_tuple_terms(tbl, x, y);
+    return disequal_tuple_terms(tbl, x, y, check_ite);
   case UPDATE_TERM:
-    return disequal_update_terms(tbl, x, y);
+    return disequal_update_terms(tbl, x, y, check_ite);
   default:
     return false;
   }
@@ -961,11 +1134,11 @@ bool disequal_terms(term_table_t *tbl, term_t x, term_t y) {
 
 
 // check whether a[i] cannot be equal to b[i] for one i
-bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a, const term_t *b) {
+bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a, const term_t *b, bool check_ite) {
   uint32_t i;
 
   for (i=0; i<n; i++) {
-    if (disequal_terms(tbl, a[i], b[i])) return true;
+    if (disequal_terms(tbl, a[i], b[i], check_ite)) return true;
   }
 
   return false;
@@ -973,12 +1146,12 @@ bool disequal_term_arrays(term_table_t *tbl, uint32_t n, const term_t *a, const 
 
 // check whether all elements of a are disequal
 // this is expensive: quadratic cost, but should fail quickly on most examples
-bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t *a) {
+bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t *a, bool check_ite) {
   uint32_t i, j;
 
   for (i=0; i<n; i++) {
     for (j=i+1; j<n; j++) {
-      if (! disequal_terms(tbl, a[i], a[j])) return false;
+      if (! disequal_terms(tbl, a[i], a[j], check_ite)) return false;
     }
   }
 
@@ -998,7 +1171,7 @@ bool pairwise_disequal_terms(term_table_t *tbl, uint32_t n, const term_t *a) {
  * - return true if the checks can determine that t >= 0
  * - return false otherwise
  */
-bool arith_term_is_nonneg(term_table_t *tbl, term_t t) {
+bool arith_term_is_nonneg(term_table_t *tbl, term_t t, bool check_ite) {
   assert(is_arithmetic_term(tbl, t));
 
   switch (term_kind(tbl, t)) {
@@ -1006,10 +1179,54 @@ bool arith_term_is_nonneg(term_table_t *tbl, term_t t) {
     return q_is_nonneg(rational_term_desc(tbl, t));
 
   case ITE_SPECIAL:
-    return term_has_nonneg_finite_domain(tbl, t);
+    return check_ite && term_has_nonneg_finite_domain(tbl, t);
 
   case ARITH_POLY:
     return polynomial_is_nonneg(poly_term_desc(tbl, t));
+
+  case ARITH_ABS:
+  case ARITH_MOD:
+    return true;
+
+  case ARITH_FLOOR:
+    // (floor t) >= 0 IFF t >= 0
+    return arith_term_is_nonneg(tbl, arith_floor_arg(tbl, t), check_ite);
+
+  case ARITH_CEIL:
+    // t>=0 IMPLIES (ceil t) >= 0
+    return arith_term_is_nonneg(tbl, arith_ceil_arg(tbl, t), check_ite);
+
+  default:
+    return false;
+  }
+}
+
+/*
+ * Check whether t is negative or null. This is incomplete and
+ * deals only with simple cases.
+ * - return true if the checks can determine that t <= 0
+ * - return false otherwise
+ */
+bool arith_term_is_nonpos(term_table_t *tbl, term_t t, bool check_ite) {
+  assert(is_arithmetic_term(tbl, t));
+
+  switch (term_kind(tbl, t)) {
+  case ARITH_CONSTANT:
+    return q_is_nonpos(rational_term_desc(tbl, t));
+
+  case ITE_SPECIAL:
+    return check_ite && term_has_nonpos_finite_domain(tbl, t);
+
+  case ARITH_POLY:
+    return polynomial_is_nonpos(poly_term_desc(tbl, t));
+
+  case ARITH_FLOOR:
+    // t <= 0 IMPLIES (floor t) <= 0
+    return arith_term_is_nonpos(tbl, arith_floor_arg(tbl, t), check_ite);
+
+  case ARITH_CEIL:
+    // (ceil t) <= 0 IFF t <= 0
+    return arith_term_is_nonpos(tbl, arith_ceil_arg(tbl, t), check_ite);
 
   default:
     return false;
@@ -1279,26 +1496,16 @@ uint64_t lower_bound_unsigned64(term_table_t *tbl, term_t t) {
  * Upper bound on t, interpreted as a signed integer
  */
 uint64_t upper_bound_signed64(term_table_t *tbl, term_t t) {
+  bv64_abs_t abs;
   uint64_t c;
   uint32_t n;
 
   assert(is_bitvector_term(tbl, t));
 
-  switch (term_kind(tbl, t)) {
-  case BV64_CONSTANT:
-    c = bvconst64_term_desc(tbl, t)->value;
-    break;
-
-  case BV_ARRAY:
-    c = bitarray_upper_bound_signed64(bvarray_term_desc(tbl, t));
-    break;
-
-  default:
-    n = term_bitsize(tbl, t);
-    c = max_signed64(n);
-    break;
-  }
-
+  bv64_abstract_term(tbl, t, &abs);
+  n = term_bitsize(tbl, t);
+  c = norm64((uint64_t) abs.high, n);
+  
   return c;
 }
 
@@ -1307,26 +1514,16 @@ uint64_t upper_bound_signed64(term_table_t *tbl, term_t t) {
  * Lower bound on t, interpreted as a signed integer
  */
 uint64_t lower_bound_signed64(term_table_t *tbl, term_t t) {
+  bv64_abs_t abs;
   uint64_t c;
   uint32_t n;
 
   assert(is_bitvector_term(tbl, t));
 
-  switch (term_kind(tbl, t)) {
-  case BV64_CONSTANT:
-    c = bvconst64_term_desc(tbl, t)->value;
-    break;
-
-  case BV_ARRAY:
-    c = bitarray_lower_bound_signed64(bvarray_term_desc(tbl, t));
-    break;
-
-  default:
-    n = term_bitsize(tbl, t);
-    c = min_signed64(n);
-    break;
-  }
-
+  bv64_abstract_term(tbl, t, &abs);
+  n = term_bitsize(tbl, t);
+  c = norm64((uint64_t) abs.low, n);
+  
   return c;
 }
 
@@ -1762,6 +1959,231 @@ bool bveq_flattens(term_table_t *tbl, term_t t1, term_t t2, ivector_t *v) {
 }
 
 
+/*****************************************
+ *  INTERVAL ABSTRACTION FOR BITVECTORS  *
+ ****************************************/
+
+/*
+ * Compute the abstraction of t^d then multiply a by that
+ * - the result is stored in a
+ * - returned value: true means that a has some information
+ *   (i.e., more precise than the full abstraction for n bits)
+ * - if the returned value is false, then the default abstraction
+ *   is copied in a
+ */
+static bool bv64_mulpower_abs(term_table_t *tbl, term_t t, uint32_t d, uint32_t n, bv64_abs_t *a) {
+  bv64_abs_t aux;
+  bool nontrivial;
+
+  assert(is_bitvector_term(tbl, t) && n == term_bitsize(tbl, t));
+  assert(1 <= n && n <= 64 && d >= 1);
+
+  bv64_abstract_term(tbl, t, &aux);
+  nontrivial = bv64_abs_nontrivial(&aux, n);
+  if (d>1 && nontrivial) {
+    bv64_abs_power(&aux, d);
+    nontrivial = bv64_abs_nontrivial(&aux, n);
+  }
+  if (nontrivial) {
+    bv64_abs_mul(a, &aux);
+    nontrivial = bv64_abs_nontrivial(a, n);
+  }
+  if (!nontrivial) {
+    bv64_abs_default(a, n);
+  }
+
+  return nontrivial;
+}
+
+
+/*
+ * Compute the abstraction of c * t then add that to a
+ * - store the result in a
+ * - return true is the result has some information (more
+ *   precise than the full abstraction for n bits)
+ * - return false otherwise and set a to the default 
+ *   abstraction for n bits
+ */
+static bool bv64_addmul_abs(term_table_t *tbl, term_t t, uint64_t c, uint32_t n, bv64_abs_t *a) {
+  bv64_abs_t aux;
+  bool nontrivial;
+
+  assert(is_bitvector_term(tbl, t) && n == term_bitsize(tbl, t));
+  assert(1 <= n && n <= 64 && c == norm64(c, n));
+
+  bv64_abstract_term(tbl, t, &aux);
+  nontrivial = bv64_abs_nontrivial(&aux, n);
+  if (c != 1 && nontrivial) {
+    bv64_abs_mul_const(&aux, c, n);
+    nontrivial = bv64_abs_nontrivial(&aux, n);
+  }
+  if (nontrivial) {
+    bv64_abs_add(a, &aux);
+    nontrivial = bv64_abs_nontrivial(a, n);
+  }
+  if (!nontrivial) {
+    bv64_abs_default(a, n);
+  }
+
+  return nontrivial;
+}
+
+
+/*
+ * Abstraction for a power product
+ * - stops as soon as the abstraction is too imprecise
+ * - nbits = number of bits
+ *
+ * NOTE: we assume that no term in the power product is zero.
+ */
+void bv64_abs_pprod(term_table_t *tbl, pprod_t *p, uint32_t nbits, bv64_abs_t *a) {
+  uint32_t i, n;
+
+  bv64_abs_one(a);
+
+  n = p->len;
+  for (i=0; i<n; i++) {
+    if (!bv64_mulpower_abs(tbl, p->prod[i].var, p->prod[i].exp, nbits, a)) {
+      break;
+    }
+  }
+}
+
+
+/*
+ * Compute the abstraction of c * r then add it to a
+ * - nbits = number of bits in c and r
+ * - return true if the result is not trivial
+ * - return false otherwise and set a to the default abstraction
+ */
+static bool bv64_addmul_pprod_abs(term_table_t *tbl, pprod_t *r, uint64_t c, uint32_t nbits, bv64_abs_t *a) {
+  bv64_abs_t aux;
+  bool nontrivial;
+
+  assert(r != empty_pp);
+
+  if (pp_is_var(r)) {
+    bv64_abstract_term(tbl, var_of_pp(r), &aux);
+  } else {
+    bv64_abs_pprod(tbl, r, nbits, &aux);
+  }
+  nontrivial = bv64_abs_nontrivial(&aux, nbits);
+  if (c != 1 && nontrivial) {
+    bv64_abs_mul_const(&aux, c, nbits);
+    nontrivial = bv64_abs_nontrivial(&aux, nbits);
+  }
+  if (nontrivial) {
+    bv64_abs_add(a, &aux);
+    nontrivial = bv64_abs_nontrivial(a, nbits);
+  }
+  if (!nontrivial) {
+    bv64_abs_default(a, nbits);
+  }
+
+  return nontrivial;
+}
+
+
+/*
+ * Abstraction for a polynomial
+ * - stops as soon as the abstraction is too imprecise
+ * - nbits = number of bits
+ */
+void bv64_abs_poly(term_table_t *tbl, bvpoly64_t *p, uint32_t nbits, bv64_abs_t *a) {
+  uint32_t i, n;
+
+  assert(p->bitsize == nbits);
+
+  n = p->nterms;
+  i = 0;
+  if (p->mono[i].var == const_idx) {
+    bv64_abs_constant(a, p->mono[i].coeff, nbits);
+    i ++;
+  } else {
+    bv64_abs_zero(a);
+  }
+
+  while (i < n) {
+    if (!bv64_addmul_abs(tbl, p->mono[i].var, p->mono[i].coeff, nbits, a)) {
+      break;
+    }
+    i ++;
+  }
+}
+
+/*
+ * Abstraction for an bvarith buffer
+ * - stops as soon as the abstraction is too imprecise
+ * - nbits = number of bits
+ */
+void bv64_abs_buffer(term_table_t *tbl, bvarith64_buffer_t *b, uint32_t nbits, bv64_abs_t *a) {
+  uint32_t i, n;
+  bvmlist64_t *q;
+
+  assert(b->bitsize == nbits);
+
+  n = b->nterms;
+  q = b->list;
+  i = 0;
+  
+  // the constant is first 
+  if (q->prod == empty_pp) {
+    bv64_abs_constant(a, q->coeff, nbits);
+    i ++;
+    q = q->next;
+  } else {
+    bv64_abs_zero(a);
+  }
+
+  while (i<n) {
+    if (!bv64_addmul_pprod_abs(tbl, q->prod, q->coeff, nbits, a)) {
+      break;
+    }
+    i ++;
+    q = q->next;
+  }  
+}
+
+
+/*
+ * Interval abstraction of a bitvector term t
+ * - t must be of type (bitvector n) with n <= 64
+ * - the result is stored in *a
+ */
+void bv64_abstract_term(term_table_t *tbl, term_t t, bv64_abs_t *a) {
+  uint32_t n;  
+
+  assert(is_bitvector_term(tbl, t));
+
+  n = term_bitsize(tbl, t);
+  assert(1 <= n && n <= 64);
+
+  switch (term_kind(tbl, t)) {
+  case BV64_CONSTANT:
+    assert(bvconst64_term_desc(tbl, t)->bitsize == n);
+    bv64_abs_constant(a, bvconst64_term_desc(tbl, t)->value, n);
+    break;
+
+  case BV_ARRAY:
+    assert(bvarray_term_desc(tbl, t)->arity == n);
+    bv64_abs_array(a, false_term, bvarray_term_desc(tbl, t)->arg, n);
+    break;
+
+  case POWER_PRODUCT:
+    bv64_abs_pprod(tbl, pprod_term_desc(tbl, t), n, a);
+    break;
+
+  case BV64_POLY:
+    bv64_abs_poly(tbl, bvpoly64_term_desc(tbl, t), n, a);
+    break;
+
+  default:
+    bv64_abs_default(a, n);
+    break;
+  }
+}
+
+
 
 
 /*********************************************
@@ -1846,7 +2268,7 @@ static void delete_arith_cnstr(arith_constraint_t *cnstr) {
  *
  * When this function is called, we know that p occurs in an
  * atom of the form (p == 0) or (p >= 0). Then we can assume
- * that p is not a constant polynomial (otherwise the aotm would
+ * that p is not a constant polynomial (otherwise the atom would
  * be reduced to true or false  by the term manager).
  */
 static void arith_cnstr_set_poly(arith_constraint_t *cnstr, polynomial_t *p) {
@@ -2063,8 +2485,8 @@ static bool arith_cnstr_same_poly(arith_constraint_t *cnstr1, arith_constraint_t
 
 /*
  * Table to check whether two constraints on t are incompatible
- * - each row correspond to a constraint [t op a] for different ops
- * - each column correspond to a constraint [t op b] for different ops
+ * - each row corresponds to a constraint [t op a] for different ops
+ * - each column corresponds to a constraint [t op b] for different ops
  * - the content of the table is a check on constants a and b:
  *   such that ([t op a] /\ [t op b]) is false whenever the check holds
  * - example [t >= a] /\ [t = b] is false if b < a
@@ -2245,9 +2667,9 @@ bool term_subsumes_array(term_table_t *tbl, term_t t1, uint32_t n, term_t *a) {
 
 
 
-/*
- * EQUALITY DECOMPOSITION
- */
+/****************************
+ *  EQUALITY DECOMPOSITION  *
+ ***************************/
 
 /*
  * Check whether t is equivalent to (x == a) where x is a term and a is a constant
@@ -2295,7 +2717,7 @@ bool is_term_eq_const(term_table_t *tbl, term_t t, term_t *x, term_t *a) {
 
 
 /*
- * Variant: check whether t is of the form (x == a) where is uninterpreted and
+ * Variant: check whether t is of the form (x == a) where x is uninterpreted and
  * a is a constant.
  */
 bool is_unint_eq_const(term_table_t *tbl, term_t t, term_t *x, term_t *a) {
@@ -2314,9 +2736,9 @@ bool is_unint_eq_const(term_table_t *tbl, term_t t, term_t *x, term_t *a) {
 
 
 
-/*
- * UNIT-TYPE REPRESENTATIVES
- */
+/*******************************
+ *  UNIT-TYPE REPRESENTATIVES  *
+ ******************************/
 
 /*
  * Representative of a singleton type tau:
@@ -2393,9 +2815,9 @@ term_t get_unit_type_rep(term_table_t *table, type_t tau) {
 
 
 
-/*
- * VARIABLES
- */
+/**************
+ * VARIABLES  *
+ *************/
 
 /*
  * Clone variable v:

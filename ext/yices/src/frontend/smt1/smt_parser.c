@@ -20,15 +20,14 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "utils/refcount_strings.h"
+#include "api/yices_extensions.h"
+#include "frontend/smt1/smt_lexer.h"
 #include "frontend/smt1/smt_parse_tables.h"
 #include "frontend/smt1/smt_parser.h"
-#include "frontend/smt1/smt_lexer.h"
-
 #include "parser_utils/term_stack_error.h"
+#include "utils/refcount_strings.h"
 
 #include "yices.h"
-#include "api/yices_extensions.h"
 
 
 /*
@@ -1283,7 +1282,7 @@ static int32_t smt_parse(parser_t *parser, smt_benchmark_t *bench, state_t start
 
     case push_b17_goto_s0:
       /*
-       * This is talen in :extrapreds ((P T1 ... Tn))
+       * This is taken in :extrapreds ((P T1 ... Tn))
        * but not in :extrapreds ((P))
        * so it indicates predicates with arity > 0.
        */

@@ -70,7 +70,7 @@ typedef enum smt_status {
   STATUS_SAT,
   STATUS_UNSAT,
   STATUS_INTERRUPTED,
-  STATUS_ERROR,
+  STATUS_ERROR
 } smt_status_t;
 
 
@@ -110,6 +110,73 @@ typedef struct type_vector_s {
 } type_vector_t;
 
 
+
+/***********************
+ *  TERM CONSTRUCTORS  *
+ **********************/
+
+/*
+ * These codes are part of the term exploration API.
+ */
+typedef enum term_constructor {
+  YICES_CONSTRUCTOR_ERROR = -1, // to report an error
+
+  // atomic terms
+  YICES_BOOL_CONSTANT,       // boolean constant
+  YICES_ARITH_CONSTANT,      // rational constant
+  YICES_BV_CONSTANT,         // bitvector constant
+  YICES_SCALAR_CONSTANT,     // constant of uninterpreted/scalar
+  YICES_VARIABLE,            // variable in quantifiers
+  YICES_UNINTERPRETED_TERM,  // (i.e., global variables, can't be bound)
+
+  // composite terms
+  YICES_ITE_TERM,            // if-then-else
+  YICES_APP_TERM,            // application of an uninterpreted function
+  YICES_UPDATE_TERM,         // function update
+  YICES_TUPLE_TERM,          // tuple constructor
+  YICES_EQ_TERM,             // equality
+  YICES_DISTINCT_TERM,       // distinct t_1 ... t_n
+  YICES_FORALL_TERM,         // quantifier
+  YICES_LAMBDA_TERM,         // lambda
+  YICES_NOT_TERM,            // (not t)
+  YICES_OR_TERM,             // n-ary OR
+  YICES_XOR_TERM,            // n-ary XOR
+
+  YICES_BV_ARRAY,            // array of boolean terms
+  YICES_BV_DIV,              // unsigned division
+  YICES_BV_REM,              // unsigned remainder
+  YICES_BV_SDIV,             // signed division
+  YICES_BV_SREM,             // remainder in signed division (rounding to 0)
+  YICES_BV_SMOD,             // remainder in signed division (rounding to -infinity)
+  YICES_BV_SHL,              // shift left (padding with 0)
+  YICES_BV_LSHR,             // logical shift right (padding with 0)
+  YICES_BV_ASHR,             // arithmetic shift right (padding with sign bit)
+  YICES_BV_GE_ATOM,          // unsigned comparison: (t1 >= t2)
+  YICES_BV_SGE_ATOM,         // signed comparison (t1 >= t2)
+  YICES_ARITH_GE_ATOM,       // atom (t1 >= t2) for arithmetic terms: t2 is always 0
+  YICES_ARITH_ROOT_ATOM,     // atom (0 <= k <= root_count(p)) && (x r root(p, k)) for r in <, <=, ==, !=, >, >=
+
+
+  YICES_ABS,                 // absolute value
+  YICES_CEIL,                // ceil
+  YICES_FLOOR,               // floor
+  YICES_RDIV,                // real division (as in x/y)
+  YICES_IDIV,                // integer division
+  YICES_IMOD,                // modulo
+  YICES_IS_INT_ATOM,         // integrality test: (is-int t)
+  YICES_DIVIDES_ATOM,        // divisibility test: (divides t1 t2)
+  
+  // projections
+  YICES_SELECT_TERM,         // tuple projection
+  YICES_BIT_TERM,            // bit-select: extract the i-th bit of a bitvector
+
+  // sums
+  YICES_BV_SUM,              // sum of pairs a * t where a is a bitvector constant (and t is a bitvector term)
+  YICES_ARITH_SUM,           // sum of pairs a * t where a is a rational (and t is an arithmetic term)
+
+  // products
+  YICES_POWER_PRODUCT        // power products: (t1^d1 * ... * t_n^d_n)
+} term_constructor_t;
 
 
 /**********************
@@ -163,7 +230,7 @@ typedef enum yval_tag {
   YVAL_SCALAR,
   YVAL_TUPLE,
   YVAL_FUNCTION,
-  YVAL_MAPPING,
+  YVAL_MAPPING
 } yval_tag_t;
 
 // Node descriptor
@@ -179,6 +246,27 @@ typedef struct yval_vector_s {
   yval_t *data;
 } yval_vector_t;
 
+
+
+/*************************
+ * MODEL GENERALIZATION  *
+ ************************/
+
+/*
+ * These codes define a generalization algorithm for functions
+ *      yices_generalize_model
+ * and  yices_generalize_model_array
+ *
+ * There are currently two algorithms: generalization by
+ * substitution and generalization by projection.
+ * The default is to select the algorithm based on variables
+ * to eliminate.
+ */
+typedef enum yices_gen_mode {
+  YICES_GEN_DEFAULT,
+  YICES_GEN_BY_SUBST,
+  YICES_GEN_BY_PROJ
+} yices_gen_mode_t;
 
 
 
@@ -241,6 +329,8 @@ typedef enum error_code {
   BVTYPE_REQUIRED,         // added 2013/05/27
   BAD_TERM_DECREF,         // added 2013/10/03
   BAD_TYPE_DECREF,         // added 2013/10/03
+  INVALID_TYPE_OP,         // added 2014/12/03
+  INVALID_TERM_OP,         // added 2014/12/04
 
   /*
    * Parser errors
@@ -289,6 +379,9 @@ typedef enum error_code {
   CTX_ARITH_SOLVER_EXCEPTION,
   CTX_BV_SOLVER_EXCEPTION,
   CTX_ARRAY_SOLVER_EXCEPTION,
+  CTX_SCALAR_NOT_SUPPORTED,   // added 2015/03/26
+  CTX_TUPLE_NOT_SUPPORTED,    // added 2015/03/26 
+  CTX_UTYPE_NOT_SUPPORTED,    // added 2015/03/26
 
 
   /*
@@ -301,16 +394,15 @@ typedef enum error_code {
   /*
    * Errors in context configurations and search parameter settings
    */
-  CTX_INVALID_CONFIG,
+  CTX_INVALID_CONFIG = 500,
   CTX_UNKNOWN_PARAMETER,
   CTX_INVALID_PARAMETER_VALUE,
   CTX_UNKNOWN_LOGIC,
 
-
   /*
    * Error codes for model queries
    */
-  EVAL_UNKNOWN_TERM,
+  EVAL_UNKNOWN_TERM = 600,
   EVAL_FREEVAR_IN_TERM,
   EVAL_QUANTIFIER,
   EVAL_LAMBDA,
@@ -322,30 +414,40 @@ typedef enum error_code {
   /*
    * Error codes for model construction
    */
-  MDL_UNINT_REQUIRED,
+  MDL_UNINT_REQUIRED = 700,
   MDL_CONSTANT_REQUIRED,
   MDL_DUPLICATE_VAR,
   MDL_FTYPE_NOT_ALLOWED,
-  MDL_CONSTRUCTION_FAILED,
-
+  MDL_CONSTRUCTION_FAILED,  
 
   /*
    * Error codes in DAG/node queries
    */
-  YVAL_INVALID_OP,
+  YVAL_INVALID_OP = 800,
   YVAL_OVERFLOW,
 
+  /*
+   * Error codes for model generalization
+   */
+  MDL_GEN_TYPE_NOT_SUPPORTED = 900,
+  MDL_GEN_NONLINEAR,
+  MDL_GEN_FAILED,
+
+  /*
+   * MCSAT error codes
+   */
+  MCSAT_ERROR_UNSUPPORTED_THEORY = 1000,
 
   /*
    * Input/output and system errors
    */
-  OUTPUT_ERROR = 500,
+  OUTPUT_ERROR = 9000,
 
   /*
    * Catch-all code for anything else.
    * This is a symptom that a bug has been found.
    */
-  INTERNAL_EXCEPTION = 9999,
+  INTERNAL_EXCEPTION = 9999
 } error_code_t;
 
 
@@ -395,7 +497,7 @@ typedef enum error_code {
  *  DUPLICATE_VARIABLE         term1
  *  INCOMPATIBLE_BVSIZES       term1, type1, term2, type2
  *  EMPTY_BITVECTOR            none
- *  ARITHCCONSTANT_REQUIRED    term1
+ *  ARITHCONSTANT_REQUIRED    term1
  *  INVALID_MACRO              badval
  *  TOO_MANY_MACRO_PARAMS      badval
  *  TYPE_VAR_REQUIRED          type1
@@ -449,6 +551,9 @@ typedef enum error_code {
  *  CTX_ARITH_SOLVER_EXCEPTION
  *  CTX_BV_SOLVER_EXCEPTION
  *  CTX_ARRAY_SOLVER_EXCEPTION
+ *  CTX_SCALAR_NOT_SUPPORTED,
+ *  CTX_TUPLE_NOT_SUPPORTED,
+ *  CTX_UTYPE_NOT_SUPPORTED,
  *
  *  CTX_INVALID_OPERATION
  *  CTX_OPERATION_NOT_SUPPORTED

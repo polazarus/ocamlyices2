@@ -1,5 +1,5 @@
 /*
- * The Yices SMT Solver. Copyright 2014 SRI International.
+ * The Yices SMT Solver. Copyright 2015 SRI International.
  *
  * This program may only be used subject to the noncommercial end user
  * license agreement which is downloadable along with this program.
@@ -43,6 +43,8 @@
 #include "io/tracer.h"
 #include "frontend/smt2/smt2_expressions.h"
 
+#include "exists_forall/ef_client.h"
+#include "mcsat/options.h"
 
 /*
  * New exception codes
@@ -96,10 +98,12 @@ enum smt2_errors {
 
   SMT2_SYMBOL_REDEF_SORT,                  // name not allowed in (declare-sort <name> ...)  or (define-sort <name> ...)
   SMT2_SYMBOL_REDEF_FUN,                   // name not allowed in (define-fun <name> ..) or (declare-fun <name> ...)
+
+  SMT2_TERM_NOT_INTEGER,                   // type error for (to_real xxx) when xxx is not an integer expression
 };
 
 
-#define NUM_SMT2_EXCEPTIONS (SMT2_SYMBOL_REDEF_FUN+1)
+#define NUM_SMT2_EXCEPTIONS (SMT2_TERM_NOT_INTEGER+1)
 
 
 /*
@@ -153,11 +157,12 @@ enum smt2_opcodes {
   SMT2_INDEXED_APPLY,                   // [indexed-apply <symbol> <numeral> ... <numeral> <term> ... <term>]
   SMT2_SORTED_APPLY,                    // [sorted-apply <symbol> <sort> <term> ... <term> ]
   SMT2_SORTED_INDEXED_APPLY,            // [sorted-indexed-apply <symbol> <numeral> ... <numeral> <sort> <term> ... <term> ]
-  // not implemented yet
+  // more arithmetic operators
+  SMT2_MK_TO_REAL,
+  // more of them: not implemented yet
   SMT2_MK_DIV,
   SMT2_MK_MOD,
   SMT2_MK_ABS,
-  SMT2_MK_TO_REAL,
   SMT2_MK_TO_INT,
   SMT2_MK_IS_INT,
   SMT2_MK_DIVISIBLE,
@@ -294,7 +299,7 @@ typedef struct smt2_cmd_stats_s {
  * - we delay the processing of assertions until the call to check_sat().
  *   So every call to smt2_assert(t) just adds t to the assertion vector.
  *
- * The solver is initialized in incremental node by calling init_smt2(false, ..).
+ * The solver is initialized in incremental mode by calling init_smt2(false, ..).
  * In this mode, push/pop are supported. Some preprocessing is disabled
  * (e.g., symmetry breaking).
  *
@@ -324,12 +329,26 @@ typedef struct smt2_globals_s {
   bool benchmark_mode;
   bool global_decls;
 
+  // smt-lib version: added 2016/05/24
+  // possible values are 0 (not set) or 2000 (version 2.0) or 2500 (version 2.5)
+  uint32_t smtlib_version;
+
   // number of calls to push after the ctx is unsat
   uint32_t pushes_after_unsat;
 
   // logic name
   char *logic_name;
 
+  // set to true to use the mcsat solver
+  bool mcsat;
+  // options for the mcsat solver
+  mcsat_options_t mcsat_options;
+
+  // exists_forall fields
+  // true indicates we will be using the exists_forall solver
+  bool efmode;
+  ef_client_t ef_client_globals;
+  
   // output/diagnostic channels
   FILE *out;                  // default = stdout
   FILE *err;                  // default = stderr
@@ -351,6 +370,11 @@ typedef struct smt2_globals_s {
   bool produce_assignments;   // default = false
   uint32_t random_seed;       // default = 0
   uint32_t verbosity;         // default = 0
+
+  // timeout
+  uint32_t timeout;           // default = 0 (no timeout)
+  bool timeout_initialized;   // initially false. true once init_timeout is called
+  bool interrupted;           // true if the most recent call to check_sat timed out
 
   // internals
   attr_vtbl_t *avtbl;        // global attribute table
@@ -401,11 +425,16 @@ extern smt2_globals_t __smt2_globals;
  * - benchmark: if true, the input is assumed to be an SMT-LIB 2.0 benchmark
  *   (i.e., a set of assertions followed by a single call to check-sat)
  *   In this mode, destructive simplifications are allowed.
+ * - timeout = timeout in seconds. If this is zero, no timeout is used.
  * - print_success = initial setting of the :print-success option.
  * - this is called after yices_init so all Yices internals are ready
  */
-extern void init_smt2(bool benchmark, bool print_success);
+extern void init_smt2(bool benchmark, uint32_t timeout, bool print_success);
 
+/*
+ * Enable the mcsat solver
+ */
+extern void smt2_enable_mcsat(void);
 
 /*
  * Force verbosity level to k
@@ -414,6 +443,11 @@ extern void init_smt2(bool benchmark, bool print_success);
  */
 extern void smt2_set_verbosity(uint32_t k);
 
+/*
+ * Enable a trace tag for tracing.
+ * - must be called after init_smt2
+ */
+extern void smt2_enable_trace_tag(const char* tag);
 
 /*
  * Show all statistics on the
@@ -694,7 +728,6 @@ extern void smt2_syntax_error(lexer_t *lex, int32_t expected_token);
  * - tstack->error_op = erroneous operation
  */
 extern void smt2_tstack_error(tstack_t *stack, int32_t exception);
-
 
 
 #endif /* __SMT2_COMMANDS_H */

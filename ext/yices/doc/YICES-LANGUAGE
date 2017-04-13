@@ -1,3 +1,13 @@
+======================================================================
+
+ The Yices SMT Solver. Copyright 2014 SRI International.
+
+ This program may only be used subject to the noncommercial end user
+ license agreement which is downloadable along with this program.
+
+======================================================================
+
+
 YICES LANGUAGE
 
 This is a summary of the commands and input language of the Yices 2 solver.
@@ -60,6 +70,8 @@ This is a summary of the commands and input language of the Yices 2 solver.
 	+	-	*	/	^
 	<	<=	>	>=
 
+        abs     floor   ceil    div     mod     divides to-int
+
 	mk-bv	bv-add	bv-sub	bv-mul	bv-neg  bv-pow
 	bv-not	bv-and	bv-or	bv-xor	bv-nand	bv-nor	bv-xnor
 	bv-shift-left0 	bv-shift-left1	bv-shift-right0	bv-shift-right1
@@ -75,8 +87,8 @@ This is a summary of the commands and input language of the Yices 2 solver.
 	reset		dump-context	exit	echo	include
 	show-model	eval		set-param	show-param
 	show-params     show-stats      reset-stats     set-timeout
-        dump-context    help            ef-solve        export-to-dimacs
-
+        help            ef-solve        export-to-dimacs
+	show-implicant
 
 
 2) Syntax
@@ -110,6 +122,7 @@ This is a summary of the commands and input language of the Yices 2 solver.
             | ( help <string> )
 	    | ( ef-solve )
 	    | ( export-to-dimacs <string> )
+	    | ( show-implicant )
             | EOS
 
 
@@ -196,8 +209,9 @@ This is a summary of the commands and input language of the Yices 2 solver.
 
 3.4) A tuple type is written (tuple tau_1 ... tau_n) where tau_i's are types
 
+
 3.5) A function type is written (-> tau_1 ... tau_n sigma) where the tau_i's
-     and sigma are types. This is the typed of functions of domain
+     and sigma are types. This is the type of functions of domain
      tau_1 x ... x tau_n and range sigma.
 
      There's no distinct array type constructor. Arrays are functions.
@@ -258,21 +272,82 @@ This is a summary of the commands and input language of the Yices 2 solver.
      (and the generic = and /= operations).
 
 
+4.4) More arithmetic operations:
 
-4.4) tuple constructor: (mk-tuple <term_1> ... <term_n>) with n>=1
+       (abs x)        absolute value of x
+ 
+       (floor x)      largest integer less than or equal to x
+       (ceil x)       smallest integer more than or equal to x
 
-     projection: (select <tuple> i) is the i-th component of term
+       (div x k)      integer division by a constant k
+       (mod x k)      modulo operation
+
+       (divides k x)  divisibility test
+       (is-int x)     integrality test
+
+
+      Floor and ceiling satisfy the following constraints:
+
+          (floor x) <= x < (floor x) + 1
+
+       (ceil x) - 1 <= x < (ceil x)
+
+
+      For the division and modulo operations, the divider k must be
+      a non-zero arithmetic constant. The division and remainder are
+      defined as follows:
+
+        (div x k) is an integer
+
+        x = (div x k) * k  + (mod x k)
+
+        0 <= (mod x k) < (abs k)
+
+      Another way to look at this is:
+
+        (div x k) = (floor (/ x k))   if k > 0
+        (div x k) =  (ceil (/ x k))   if k < 0
+
+      This follows the SMT-LIB convention for the theory Ints, except
+      that the Yices versions are not restricted to integers. Both div
+      and mod are defined for any real x and non-zero constant k. 
+      For example,  (div 1/3 1/6)  is  2.
+     
+
+      The atom (divides k x) is true if x is an integer multiple of k,
+      that is, we have:
+
+          (divides k x)  iff  (exists (n::int) x = k * n)
+
+      The divider k must be a constant (but it can be zero). If k is zero,
+      (divides k x) is true iff x is zero. As in the div/mod operations,
+      both k and x can be any real, not only integer.
+
+      The atom (is-int x) it true if x is an integer. It can be defined
+      using any of the following equivalences:
+
+          (is-int x)   iff  (divides 1 x)
+          (is-int x)   iff  (= x (floor x))
+          (is-int x)   iff  (= x (ceil x)) 
+
+
+
+4.5) tuple constructor: (mk-tuple <term_1> ... <term_n>) with n>=1
+
+     projection: (select <tuple> i) is the i-th component of the term <tuple>.
+
           <tuple> must have type (tuple tau_1 ... tau_n)
-      and i must be between 1 and n
+
+     and i must be between 1 and n
 
      tuple update: (tuple-update <tuple> i <term>) is <tuple> with
      the i-th component replaced by <term>
 
 
-4.5) function update: (update <function> (<arg_1> ... <arg_n>) <new_value>)
+4.6) function update: (update <function> (<arg_1> ... <arg_n>) <new_value>)
 
 
-4.6) bitvector functions:
+4.7) bitvector functions:
 
      a) bitvector constant from an integer
 
@@ -337,9 +412,13 @@ This is a summary of the commands and input language of the Yices 2 solver.
         Requires 0 <= j <= i <= (size of x) - 1.
 
 
-     f) bv-concat takes two arguments
+     f) bv-concat takes one or more arguments.
+
+        Example: (bv-concat 0b000 0b111 0b00001) is the same as 0b00011100001
+ 
 
      g) (bv-repeat x n) is n copies of x concatenated together. n must be > 0.
+
 
      h) (bv-sign-extend x n): add n times the sign bit to the left of x (n must be >= 0)
         (bv-zero-extend x n): add n times '0' to the left of x (n must be >= 0)
@@ -353,6 +432,7 @@ This is a summary of the commands and input language of the Yices 2 solver.
         (bv-lt x y): x < y
 
         x and y are interpreted as non-negative integers (both must have the same size)
+
 
      j) signed bit-vector comparisons
 
@@ -407,9 +487,9 @@ This is a summary of the commands and input language of the Yices 2 solver.
       m)  Conversion between Boolean and bitvector terms
 
           (bool-to-bv b_1 ... b_n): build a bitvector from n Boolean terms
-          the result is a bitvector of n bits equal to [b_n .... b_1]:
-          - b_1 = low-order bit
-          - b_n = high-order bit
+          the result is a bitvector of n bits equal to [b_1 .... b_n]:
+          - b_1 = high-order bit
+          - b_n = low-order bit
 
           (bit u i): extract the i-th bit of bitvector u (as a Boolean term)
 	  - if u has type (bitvector n) then i must be an integer constant
@@ -432,7 +512,6 @@ This is a summary of the commands and input language of the Yices 2 solver.
 
    (define-type name <type-definition>) : create a new type called 'name' equal
                                           to the <type-definition>
-
 
    (define name :: <type>): create a new uninterpreted constant (i.e., global variable) of the
                             given <type> called <name>
@@ -462,7 +541,7 @@ This is a summary of the commands and input language of the Yices 2 solver.
    (echo <string>):  prints <string> on stdout
 
    (include <string>):  <string> must be the name of a file that contains Yices commands
-   	    		this reads and execute all the commands in that file
+   	    		this reads and executes all the commands in that file
 
    (set-param <parameter-name> <parameter-value>):
                  assign a value to one parameter (parameters control simplification
@@ -496,6 +575,9 @@ This is a summary of the commands and input language of the Yices 2 solver.
        the DIMACS CNF format. <string> is a file name where the result is
        written.
 
+   (show-implicant): show an implicant built from the model.
+       The implicant is a list of literals that are true in the current model,
+       and the conjunction of these literals implies the assertions.
 
 
 6) Parameters
@@ -864,3 +946,105 @@ The following parameters can be set using (set-param ...) and examined using (sh
      reconciliation procedure.
 
 
+6.7) Parameters for the Exists/Forall Solver
+
+     The following parameters are used by the exists/forall solver
+
+       ef-flatten-iff        Boolean       Enable flattening of iff
+   
+       ef-flatten-ite        Boolean       Enable flattening of if-then-else terms
+
+       ef-max-iters          Integer       Maximal number of iterations
+
+       ef-gen-mode                         Generalization mode
+
+       ef-max-samples        Integer       Maximal number of samples for learning
+                                           initial constraints
+
+
+     If ef-flatten-iff is true, then the following rewriting rules are
+     applied to the assertions when (ef-solve) is called:
+
+       In a disjunction, (iff p q) is converted to  (or (and p q) (and (not p) (not q)))
+
+       In a conjunction, (iff p q) is converted to  (and (=> p q) (=> q p))
+
+
+     If ef-flatten-ite is true, the following rules are applied
+
+       In a disjunction, (ite p q r) is converted to (or (and p q) (and (not p) r))
+
+       In a conjunction, (ite p q r) is converted to (and (=> p q) (=> (not p) r))
+
+
+    An exists/forall problem is of the following form 
+
+        Exists x. Forall y. P(x, y)
+
+    where x and y represents lists of variables and P(x, y) is quantifier free.
+    The generic algorithm for solving such problems is as follows:
+
+         i := 0
+         C_0(x) := learned initial constraints on x
+         repeat
+           find x_i that satisfies C_i(x)
+           if no such x_i is found
+              return unsat
+
+           find y_i that satisfies 'not P(x_i, y)'
+           if no such y_i is found
+              then x_i is a solution 
+              return sat
+
+           generalize from y_i:
+           compute a new constraint G_i(x) such that  
+              1) G_i(x_i) is true
+              2) G_i(x) => (Exist y. not P(x, y))
+
+           prepare for the next iteration:
+           C_i+1(x) := C_i(x) and not G_i(x)
+           i := i+1
+
+         end
+
+     Parameter 'ex-max-iters' puts a limit on the number of times the
+     'repeat' loop above is executed.  By default, the limit is 100.
+     It can be increased to say 1000 as follows
+
+         (set-param ef-max-iters 1000).
+
+     If the limit is reached without a solution, then (ef-solve) 
+     returns 'unknown'.
+
+
+     Parameter 'ef-gen-mode' specifies the generalization algorithm
+     for constructing G_i(x) in each iteration.
+
+     Four modes are possible:
+
+         none         --> no generalization
+         substitution --> generalization by substitution
+         projection   --> model-based quantifier elimination
+         auto         --> either substitution or projection depending on
+                          the type of the universal variables y.
+
+     No generalization means that G_i(x) is just the constraint (x = x_i).
+
+     In generalization by substitution G_i(x) is the constraint  (not P(x, y_i))
+
+     In generalization by projection, we first compute an implicant of 
+     (not P(x, y)) from the model defined by (x_i, y_i). This implicant is a
+     conjunction of literals involving variables x and y. Then a cheap form of
+     quantifier elimination is applied to these literals to eliminate the 
+     variables y. G_i(x) is the result of this quantifier-elimination procedure.
+         
+     The default setting for 'ef-gen-mode' is 'auto'. In this mode, Yices uses
+     model-based quantifier elimination if the universal variables y contain
+     arithmetic variables. Otherwise, Yices uses generalization by substitution.
+
+
+     Parameter 'ef-max-samples' is used by a heuristic to learn the initial
+     constraints C_0(x)  on the existential variables. The heuristic is
+     based on sampling (random) values for the universal variables y and
+     substituting these values for y in P(x, y). Parameter ef-max-samples
+     is an upper bound on the number of samples in this process.

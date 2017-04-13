@@ -22,14 +22,14 @@
 #include <inttypes.h>
 #include <gmp.h>
 
+#include "api/context_config.h"
+#include "api/smt_logic_codes.h"
+#include "api/yices_globals.h"
+#include "context/context.h"
 #include "frontend/smt1/smt_lexer.h"
 #include "frontend/smt1/smt_parser.h"
 #include "frontend/smt1/smt_term_stack.h"
-#include "context/context.h"
-#include "api/smt_logic_codes.h"
-#include "api/context_config.h"
 
-#include "api/yices_globals.h"
 #include "yices.h"
 #include "yices_exit_codes.h"
 
@@ -51,24 +51,24 @@
 #define CHECK_MODEL 0
 
 #if COMMAND_LINE_OPTIONS
-#include "utils/timeout.h"
-#include "model/model_printer.h"
+#include "io/model_printer.h"
 #include "utils/command_line.h"
+#include "utils/timeout.h"
 #if CHECK_MODEL
-#include "model/model_eval.h"
 #include "io/term_printer.h"
+#include "model/model_eval.h"
 #endif
 #endif
 
 #if SHOW_STATISTICS || COMMAND_LINE_OPTIONS
+#include "solvers/simplex/simplex.h"
 #include "utils/cputime.h"
 #include "utils/memsize.h"
-#include "solvers/simplex/simplex.h"
 #endif
 
 #if SHOW_STATISTICS
-#include "solvers/funs/fun_solver.h"
 #include "solvers/bv/bvsolver.h"
+#include "solvers/funs/fun_solver.h"
 #endif
 
 
@@ -121,6 +121,9 @@ static const char * const code2error[NUM_INTERNALIZATION_ERRORS] = {
   "formula contains free variables",
   "logic not supported",
   "context does not support UF",
+  "context does not support scalar types",
+  "context does not support tuples",
+  "context does not support uninterpreted types",
   "context does not support arithmetic",
   "context does not support bitvectors",
   "context does not support function equalities",
@@ -624,12 +627,20 @@ static void show_simplex_stats(simplex_stats_t *stat) {
   if (stat->num_make_intfeasible > 0 || stat->num_dioph_checks > 0) {
     fprintf(stderr, "Integer arithmetic\n");
     fprintf(stderr, " make integer feasible   : %"PRIu32"\n", stat->num_make_intfeasible);
-    fprintf(stderr, " branch & bound          : %"PRIu32"\n", stat->num_branch_atoms);
-    fprintf(stderr, " gcd conflicts           : %"PRIu32"\n", stat->num_gcd_conflicts);
+    fprintf(stderr, " branch atoms            : %"PRIu32"\n", stat->num_branch_atoms);
+    fprintf(stderr, "bound strengthening\n");
+    fprintf(stderr, " conflicts               : %"PRIu32"\n", stat->num_bound_conflicts);
+    fprintf(stderr, " recheck conflicts       : %"PRIu32"\n", stat->num_bound_recheck_conflicts);
+    fprintf(stderr, "integrality tests\n");
+    fprintf(stderr, " conflicts               : %"PRIu32"\n", stat->num_itest_conflicts);
+    fprintf(stderr, " bound conflicts         : %"PRIu32"\n", stat->num_itest_bound_conflicts);
+    fprintf(stderr, " recheck conflicts       : %"PRIu32"\n", stat->num_itest_recheck_conflicts);
+    fprintf(stderr, "diohpantine solver\n");
+    fprintf(stderr, " gcd conflicts           : %"PRIu32"\n", stat->num_dioph_gcd_conflicts);
     fprintf(stderr, " dioph checks            : %"PRIu32"\n", stat->num_dioph_checks);
     fprintf(stderr, " dioph conflicts         : %"PRIu32"\n", stat->num_dioph_conflicts);
-    fprintf(stderr, " bound conflicts         : %"PRIu32"\n", stat->num_bound_conflicts);
-    fprintf(stderr, " recheck conflicts       : %"PRIu32"\n", stat->num_recheck_conflicts);
+    fprintf(stderr, " bound conflicts         : %"PRIu32"\n", stat->num_dioph_bound_conflicts);
+    fprintf(stderr, " recheck conflicts       : %"PRIu32"\n", stat->num_dioph_recheck_conflicts);
   }
 }
 
@@ -656,7 +667,7 @@ static void show_bvsolver_stats(bv_solver_t *solver) {
 /*
  * Statistics + result, after the search
  */
-static void print_results() {
+static void print_results(void) {
   smt_core_t *core;
   egraph_t *egraph;
   simplex_solver_t *simplex;
@@ -726,7 +737,7 @@ static void print_results() {
 /*
  * STATISTICS DISABLED: JUST PRINT THE RESULT
  */
-static void print_results() {
+static void print_results(void) {
   uint32_t resu;
 
   resu = context.core->status;

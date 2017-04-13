@@ -11,9 +11,9 @@
 
 #include <assert.h>
 
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
 #include "terms/rational_hash_maps.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -405,7 +405,7 @@ void copy_xq_hmap(xq_hmap_t *hmap1, xq_hmap_t *hmap2) {
     hmap1->data = tmp;
     hmap1->size = n2;
     hmap1->resize_threshold = (uint32_t) (n2 * XQ_HMAP_RESIZE_RATIO);
-    hmap2->cleanup_threshold = (uint32_t) (n2 * XQ_HMAP_CLEANUP_RATIO);
+    hmap1->cleanup_threshold = (uint32_t) (n2 * XQ_HMAP_CLEANUP_RATIO);
   }
 
   r = hmap2->data;

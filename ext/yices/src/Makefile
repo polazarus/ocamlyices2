@@ -3,7 +3,7 @@
 #                                                                       #
 #  This program may only be used subject to the noncommercial end user  #
 #  license agreement which is downloadable along with this program.     #
-#########################################################################                
+#########################################################################
 
 #
 # src/Makefile
@@ -83,43 +83,59 @@ static_smt_distdir := $(BUILD)/static_smt_dist
 #
 # Source files for the dynamic library (libyices.so)
 #
-base_src_c := \
+core_src_c := \
 	api/context_config.c \
 	api/search_parameters.c \
 	api/smt_logic_codes.c \
 	api/yices_api.c \
 	api/yices_error.c \
 	api/yval.c \
+	context/common_conjuncts.c \
 	context/conditional_definitions.c \
 	context/context.c \
 	context/context_simplifier.c \
 	context/context_solver.c \
 	context/context_statistics.c \
+	context/context_utils.c \
+	context/divmod_table.c \
 	context/eq_abstraction.c \
 	context/eq_learner.c \
 	context/internalization_table.c \
+	context/ite_flattener.c \
 	context/pseudo_subst.c \
+	context/shared_terms.c \
 	context/symmetry_breaking.c \
+	exists_forall/ef_client.c \
+	exists_forall/ef_analyze.c \
+	exists_forall/ef_parameters.c \
+	exists_forall/ef_problem.c \
+	exists_forall/efsolver.c \
 	frontend/smt2/attribute_values.c \
 	frontend/yices/yices_lexer.c \
 	frontend/yices/yices_parser.c \
+	io/concrete_value_printer.c \
+	io/model_printer.c \
 	io/pretty_printer.c \
 	io/reader.c \
 	io/term_printer.c \
 	io/tracer.c \
 	io/type_printer.c \
 	io/yices_pp.c \
+	io/writer.c \
 	model/abstract_values.c \
-	model/concrete_value_printer.c \
+	model/arith_projection.c \
 	model/concrete_values.c \
 	model/fresh_value_maker.c \
 	model/fun_maps.c \
 	model/fun_trees.c \
+	model/generalization.c \
 	model/literal_collector.c \
 	model/map_to_model.c \
 	model/model_eval.c \
-	model/model_printer.c \
+	model/model_queries.c \
 	model/models.c \
+	model/presburger.c \
+	model/projection.c \
 	model/term_to_val.c \
 	model/val_to_term.c \
 	parser_utils/lexer.c \
@@ -148,9 +164,6 @@ base_src_c := \
 	solvers/egraph/egraph_explanations.c \
 	solvers/egraph/egraph_utils.c \
 	solvers/egraph/theory_explanations.c \
-	solvers/exists_forall/ef_analyze.c \
-	solvers/exists_forall/ef_problem.c \
-	solvers/exists_forall/efsolver.c \
 	solvers/floyd_warshall/dl_vartable.c \
 	solvers/floyd_warshall/idl_floyd_warshall.c \
 	solvers/floyd_warshall/rdl_floyd_warshall.c \
@@ -158,12 +171,14 @@ base_src_c := \
 	solvers/simplex/arith_atomtable.c \
 	solvers/simplex/arith_vartable.c \
 	solvers/simplex/diophantine_systems.c \
+	solvers/simplex/integrality_constraints.c \
 	solvers/simplex/matrices.c \
 	solvers/simplex/offset_equalities.c \
 	solvers/simplex/simplex.c \
 	terms/balanced_arith_buffers.c \
 	terms/bit_expr.c \
 	terms/bit_term_conversion.c \
+	terms/bv64_interval_abstraction.c \
 	terms/bv64_constants.c \
 	terms/bv64_polynomials.c \
 	terms/bvarith64_buffers.c \
@@ -174,11 +189,13 @@ base_src_c := \
 	terms/bvlogic_buffers.c \
 	terms/bvpoly_buffers.c \
 	terms/bv_polynomials.c \
+	terms/bv_slices.c \
 	terms/conditionals.c \
 	terms/elim_subst.c \
 	terms/extended_rationals.c \
 	terms/free_var_collector.c \
 	terms/full_subst.c \
+	terms/ite_stack.c \
 	terms/mpq_aux.c \
 	terms/poly_buffer.c \
 	terms/poly_buffer_terms.c \
@@ -191,6 +208,7 @@ base_src_c := \
 	terms/renaming_context.c \
 	terms/subst_cache.c \
 	terms/subst_context.c \
+	terms/term_explorer.c \
 	terms/term_manager.c \
 	terms/terms.c \
 	terms/term_sets.c \
@@ -236,6 +254,8 @@ base_src_c := \
 	utils/ptr_heap.c \
 	utils/ptr_partitions.c \
 	utils/ptr_queues.c \
+	utils/ptr_sets.c \
+	utils/ptr_sets2.c \
 	utils/ptr_stack.c \
 	utils/ptr_vectors.c \
 	utils/refcount_int_arrays.c \
@@ -250,6 +270,50 @@ base_src_c := \
 	utils/uint_rbtrees.c \
 	utils/use_vectors.c
 
+
+#
+# Optional: mcsat solver
+#
+mcsat_src_c := \
+	mcsat/tracing.c \
+	mcsat/solver.c \
+	mcsat/variable_db.c \
+	mcsat/variable_queue.c \
+	mcsat/value.c \
+	mcsat/model.c \
+	mcsat/trail.c \
+	mcsat/conflict.c \
+	mcsat/gc.c \
+	mcsat/utils/int_mset.c \
+	mcsat/utils/int_lset.c \
+	mcsat/utils/scope_holder.c \
+	mcsat/utils/statistics.c \
+	mcsat/uf/uf_plugin.c \
+	mcsat/uf/app_reps.c \
+	mcsat/uf/uf_feasible_set_db.c \
+	mcsat/bool/clause_db.c \
+	mcsat/bool/cnf.c \
+	mcsat/bool/bcp_watch_manager.c \
+	mcsat/bool/bool_plugin.c \
+	mcsat/nra/nra_plugin.c \
+	mcsat/nra/nra_plugin_internal.c \
+	mcsat/nra/nra_plugin_explain.c \
+	mcsat/nra/libpoly_utils.c \
+	mcsat/nra/poly_constraint.c \
+	mcsat/nra/feasible_set_db.c \
+	mcsat/ite/ite_plugin.c \
+	mcsat/watch_list_manager.c \
+	mcsat/preprocessor.c \
+	mcsat/options.c
+
+#
+# Fake mcsat module: do nothing. Used to make the compilation go through.
+#
+no_mcsat_src_c := \
+	mcsat/no_mcsat.c \
+	mcsat/options.c
+
+
 #
 # Other source files for libyices.a
 # That's all the code needed by the main binaries
@@ -261,6 +325,7 @@ extra_src_c := \
 	context/context_printer.c \
 	context/dump_context.c \
 	context/internalization_printer.c \
+	frontend/common.c \
 	frontend/smt1/smt_lexer.c \
 	frontend/smt1/smt_parser.c \
 	frontend/smt1/smt_term_stack.c \
@@ -286,12 +351,12 @@ extra_src_c := \
 	solvers/cdcl/gates_printer.c \
 	solvers/cdcl/sat_solver.c \
 	solvers/cdcl/smt_core_printer.c \
-	solvers/egraph/egraph_eq_stats.c \
 	solvers/egraph/egraph_printer.c \
 	solvers/floyd_warshall/idl_fw_printer.c \
 	solvers/floyd_warshall/rdl_fw_printer.c \
 	solvers/funs/fun_solver_printer.c \
 	solvers/simplex/dsolver_printer.c \
+	solvers/simplex/int_constraint_printer.c \
 	solvers/simplex/simplex_printer.c \
 	solvers/simplex/simplex_prop_table.c \
 	terms/arith_buffers.c \
@@ -305,6 +370,19 @@ extra_src_c := \
 	utils/timeout.c \
 	utils/union_find.c
 
+
+#
+# base: core + mcsat if MCSAT is enabled or core + fake mcsat
+# 
+ifeq ($(ENABLE_MCSAT),yes)
+base_src_c := $(core_src_c) $(mcsat_src_c)
+else
+base_src_c := $(core_src_c) $(no_mcsat_src_c)
+endif
+
+#
+# all sources: base + extra
+#
 src_c := $(base_src_c) $(extra_src_c)
 
 
@@ -321,14 +399,13 @@ bin_src_c := \
 #
 # Auto-generated version file
 #
-version_c := api/yices_version.c
+version_c := api/yices_$(YICES_MODE)_version.c
 
 #
 # All auto-generated files
 #
 auto_generated := \
-	$(vesion_c) \
-	api/yices_version.c \
+	$(version_c) \
 	frontend/yices/yices_hash_keywords.h \
 	frontend/smt1/smt_hash_keywords.h \
 	frontend/smt2/smt2_hash_tokens.h \
@@ -380,7 +457,7 @@ static_binaries := $(addprefix $(static_bindir)/,$(notdir $(bin_src_c:%.c=%$(EXE
 # the library has full versioned name libyices.so.2.X.Y
 # soname: libyices.so.2.X
 #
-# For Free BSD: the convention seems to call the file libyices.so.2.X
+# For Free BSD: the convention seems to be libyices.so.2.X
 #
 ifeq ($(POSIXOS),freebsd)
 libyices_so := libyices.so.$(MAJOR).$(MINOR)
@@ -397,10 +474,17 @@ libyices_soname := libyices.so.$(MAJOR).$(MINOR)
 # version and compatibility numbers for Darwin
 # install name: /usr/local/lib/libyices.2.dylib
 #
+# 2014/10/22: changed install name to use the $(prefix)
+# set by configure.
+#
+# TODO?: we should use $(libdir) instead of $(prefix)/lib but
+# this clashes with the $(libdir) set at the beginning of this
+# Makefile.
+#
 libyices_dylib := libyices.$(MAJOR).dylib
 libyices_curr_version := $(MAJOR).$(MINOR).$(PATCH_LEVEL)
 libyices_compat_version := $(MAJOR).$(MINOR).0
-libyices_install_name := /usr/local/lib/libyices.$(MAJOR).dylib
+libyices_install_name := $(prefix)/lib/libyices.$(MAJOR).dylib
 
 #
 # Cygwin and mingw:
@@ -426,6 +510,14 @@ libyices_def=libyices.def
 ###########################
 
 #
+# Whether we have support for mcsat
+#
+ifeq ($(ENABLE_MCSAT),yes)
+  CPPFLAGS+=-DHAVE_MCSAT
+endif
+
+
+#
 # OS-dependent compilation flags + which dynamic libraries to build
 #    libyices_dynamic = dynamic library for make lib
 #    static_libyices_dynamic = dynamic library for make static-lib
@@ -447,7 +539,7 @@ ifeq ($(POSIXOS),cygwin)
   static_libyices_dynamic=$(static_bindir)/$(libyices_dll)
 else
 ifeq ($(POSIXOS),mingw)
-  CPPFLAGS := $(CPPFLAGS) -DMINGW
+  CPPFLAGS := $(CPPFLAGS) -DMINGW -D__USE_MINGW_ANSI_STDIO
   PIC=
   STATIC=-static -static-libgcc
   BIN_LDFLAGS= -Wl,--stack,8388608
@@ -475,7 +567,7 @@ else
 ifeq ($(POSIXOS),linux)
   PIC=-fPIC
   STATIC=-static
-  CPPFLAGS := $(CPPFLAGS) -DLINUX
+  CPPFLAGS := $(CPPFLAGS) -DLINUX -U_FORTIFY_SOURCE
   CFLAGS += -fvisibility=hidden
   BIN_LDFLAGS=
   libyices_dynamic=$(libdir)/$(libyices_so)
@@ -515,23 +607,16 @@ endif
 CPPFLAGS := -I. -Iinclude $(CPPFLAGS)
 
 #
-# Warning levels
-# in devel mode we get a lot of Warnings about inlined stuff
-# (this is caused by the inlined functions in asserts).
+# Warning levels: dropped the flag -Winiline in all build modes.
+# Can't keep up with gcc/clang.
 #
-ifeq ($(YICES_MODE),devel)
 CFLAGS += -Wall -Wredundant-decls
-else
-CFLAGS += -Wall -Winline -Wredundant-decls
-endif
 
+#
+# Format string issues on Windows/mingw
+#
 ifeq ($(POSIXOS),mingw)
-  ifeq ($(findstring -mno-cygwin, $(CFLAGS)), -mno-cygwin)
-   # For compilation on mingw using the -mno-cygwin flag,
-   # we disable -Wformat warning because mingw uses non-standard
-   # formats in printf that cause useless warnings.
-   CFLAGS += -Wno-format
-  endif
+  CFLAGS += -Wno-format
 endif
 
 
@@ -554,6 +639,18 @@ endif
 # in the configure script. The script sets variable $(NO_STACK_PROTECTOR)
 # properly.
 #
+# Related issue reported by Richard Corden (January 18, 2016)
+# Ubuntu sets -D_FORTIFY_SOURCE=2 by default (to detect buffer overflows
+# and other security issues). This causes link-time issues again:
+#   undefined reference to __longjmp_chk.
+# The fix is to add -U_FORTIFY_SOURCE when we compile on linux
+#
+# To link with google gperftools:
+#  on Linux we add the flag -Wl,--no-as-needed otherwise the profiler
+#  library may not be linked with the binaries. (Because some
+#  Linux distributions set -Wl,--as-needed by default).
+#
+#
 ifeq ($(YICES_MODE),release)
 CFLAGS := $(CFLAGS) -O3 -fomit-frame-pointer $(NO_STACK_PROTECTOR)
 CPPFLAGS := $(CPPFLAGS) -DNDEBUG
@@ -574,7 +671,20 @@ ifeq ($(findstring $(YICES_MODE),valgrind quantify purify),$(YICES_MODE))
 CFLAGS := $(CFLAGS) -O3 -g
 CPPFLAGS := $(CPPFLAGS) -DNDEBUG
 else
+ifeq ($(YICES_MODE),gperftools)
+CFLAGS := $(CFLAGS) -O3 -g
+CPPFLAGS := $(CPPFLAGS) -DNDEBUG
+ifeq ($(POSIXOS),linux)
+  LIBS += -Wl,--no-as-needed -lprofiler
+else
+  LIBS += -lprofiler
+endif
+else
+#
+# debug mode
+#
 CFLAGS := $(CFLAGS) -g
+endif
 endif
 endif
 endif
@@ -621,6 +731,12 @@ else
   STATIC_CPPFLAGS := $(CPPFLAGS)
 endif
 
+ifneq ($(STATIC_LIBPOLY_INCLUDE_DIR),)
+  STATIC_CPPFLAGS := -I$(STATIC_LIBPOLY_INCLUDE_DIR) $(CPPFLAGS)
+else
+  STATIC_CPPFLAGS := $(CPPFLAGS)
+endif
+
 ifeq ($(POSIXOS),cygwin)
   STATIC_CPPFLAGS += -DNOYICES_DLL
 else
@@ -633,13 +749,16 @@ endif
 #
 # LIBS for compiling in static mode
 #
-# We need to remove -lgmp from LIBS in static mode, otherwise adding
+# We need to remove -lgmp and -lpoly from LIBS in static mode, otherwise adding
 # $(STATIC_GMP) does not work on Darwin and cygwin
 # We also use $(NOGMP_LIBS) to build yices_sat.
 #
-NOGMP_LIBS := $(subst -lgmp,,$(LIBS))
-STATIC_LIBS := $(STATIC_GMP) $(NOGMP_LIBS)
-PIC_LIBS := $(PIC_GMP) $(NOGMP_LIBS)
+# Important: make sure the GMP library is last (if some
+# archives/libraries in NOGMP_LIBS depend on GMP).
+#
+NOGMP_LIBS := $(subst -lpoly,,$(subst -lgmp,,$(LIBS)))
+STATIC_LIBS := $(NOGMP_LIBS) $(STATIC_LIBPOLY) $(STATIC_GMP)
+PIC_LIBS := $(NOGMP_LIBS) $(PIC_LIBPOLY) $(PIC_GMP)
 
 
 
@@ -714,11 +833,14 @@ frontend/smt2/smt2_hash_symbols.h: frontend/smt2/smt2_symbols.txt
 #
 # Object files
 #
+$(version_obj): $(version_c)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PIC) -c $(version_c) -o $(version_obj)
+
 $(objdir)/%.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PIC) -c $< -o $@
 
-$(static_version_obj): api/yices_version.c
-	$(CC) -DYICES_STATIC $(STATIC_CPPFLAGS) $(CFLAGS) -c api/yices_version.c -o $(static_version_obj)
+$(static_version_obj): $(version_c)
+	$(CC) -DYICES_STATIC $(STATIC_CPPFLAGS) $(CFLAGS) -c $(version_c) -o $(static_version_obj)
 
 $(static_objdir)/%.o: %.c
 	$(CC) $(STATIC_CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -743,20 +865,20 @@ $(static_libyices):  $(static_obj) $(static_version_obj)
 
 # for yices_sat: we don't need gmp
 $(bindir)/yices_sat$(EXEEXT): $(objdir)/frontend/yices_sat.o $(libyices)
-	$(LNK) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) \
+	$(LNK) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) \
 	   -o $@ $< $(libyices) $(NOGMP_LIBS)
 
 $(static_bindir)/yices_sat$(EXEEXT): $(static_objdir)/frontend/yices_sat.o $(static_libyices)
-	$(LNK) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) $(STATIC) \
+	$(LNK) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) $(STATIC) \
 	   -o $@ $< $(static_libyices) $(NOGMP_LIBS)
 
 # for all other executables
 $(bindir)/%$(EXEEXT): $(objdir)/frontend/%.o $(libyices)
-	$(LNK) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) \
+	$(LNK) $(CFLAGS) $(LDFLAGS) $(BIN_LDFLAGS) \
 	   -o $@ $< $(libyices) $(LIBS)
 
 $(static_bindir)/%$(EXEEXT): $(static_objdir)/frontend/%.o $(static_libyices)
-	$(LNK) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(BIND_LDFLAGS) $(STATIC) \
+	$(LNK) $(CFLAGS) $(LDFLAGS) $(BIND_LDFLAGS) $(STATIC) \
 	  -o $@ $< $(static_libyices) $(STATIC_LIBS)
 
 
@@ -776,14 +898,17 @@ $(libdir)/$(libyices_so): $(base_obj) $(version_obj)
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ \
 	-Wl,-soname,$(libyices_soname) -Wl,--no-undefined \
 	$(base_obj) $(version_obj) $(LIBS) -lc
+ifeq ($(YICES_MODE),release)
 	$(STRIP) -x $@
+endif
 
 $(static_libdir)/$(libyices_so): $(base_obj) $(version_obj)
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ \
 	-Wl,-soname,$(libyices_soname) -Wl,--no-undefined \
 	$(base_obj) $(version_obj) $(PIC_LIBS) -lc
+ifeq ($(YICES_MODE),release)
 	$(STRIP) -x $@
-
+endif
 
 #
 # DLL on cygwin
@@ -804,14 +929,18 @@ $(bindir)/$(libyices_dll): $(base_obj) $(version_obj)
 	-Wl,--out-implib=$(libdir)/$(libyices_implib) \
 	-Wl,--no-undefined \
 	$(base_obj) $(version_obj) $(LIBS)
+ifeq ($(YICES_MODE),release)
 	$(STRIP) $@
+endif
 
 $(static_bindir)/$(libyices_dll): $(static_base_obj) $(static_version_obj)
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -o $@ \
 	-Wl,--out-implib=$(static_libdir)/$(libyices_implib) \
 	-Wl,--no-undefined \
 	$(static_base_obj) $(static_version_obj) $(PIC_LIBS)
+ifeq ($(YICES_MODE),release)
 	$(STRIP) -x $@
+endif
 
 
 #
@@ -833,7 +962,9 @@ $(bindir)/$(libyices_mingw_dll): $(base_obj) $(version_obj)
 	-Wl,--output-def,$(libdir)/$(libyices_def) \
 	-Wl,--no-undefined \
 	$(base_obj) $(version_obj) $(LIBS)
+ifneq ($(YICES_MODE),debug)
 	$(STRIP) $@
+endif
 
 $(static_bindir)/$(libyices_mingw_dll): $(static_base_obj) $(static_version_obj)
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -static-libgcc -o $@ \
@@ -841,7 +972,9 @@ $(static_bindir)/$(libyices_mingw_dll): $(static_base_obj) $(static_version_obj)
 	-Wl,--output-def,$(static_libdir)/$(libyices_def) \
 	-Wl,--no-undefined \
 	$(static_base_obj) $(static_version_obj) $(PIC_LIBS)
+ifneq ($(YICES_MODE),debug)
 	$(STRIP) $@
+endif
 
 
 #
@@ -860,7 +993,9 @@ $(libdir)/$(libyices_dylib): $(base_obj) $(version_obj)
 	-Wl,-headerpad_max_install_names \
 	-Wl,-dead_strip \
 	$(base_obj) $(version_obj) $(LIBS)
+ifeq ($(YICES_MODE),release)
 	$(STRIP) -x $@
+endif
 
 $(static_libdir)/$(libyices_dylib): $(base_obj) $(version_obj)
 	$(CC) $(CFLAGS) $(LDFLAGS) -dynamiclib -o $@ \
@@ -870,7 +1005,9 @@ $(static_libdir)/$(libyices_dylib): $(base_obj) $(version_obj)
 	-Wl,-headerpad_max_install_names \
 	-Wl,-dead_strip \
 	$(base_obj) $(version_obj) $(PIC_LIBS)
+ifeq ($(YICES_MODE),release)
 	$(STRIP) -x $@
+endif
 
 # All objects
 obj: $(obj) $(bin_obj)
@@ -914,17 +1051,19 @@ dist: bin lib
 	cp include/*.h $(distdir)/include
 	mkdir $(distdir)/bin
 	cp $(bindir)/yices_main$(EXEEXT) $(distdir)/bin/yices$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices$(EXEEXT)
 	cp $(bindir)/yices_smtcomp$(EXEEXT) $(distdir)/bin/yices-smt$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-smt$(EXEEXT)
 	cp $(bindir)/yices_smt2$(EXEEXT) $(distdir)/bin/yices-smt2$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-smt$(EXEEXT)
 	cp $(bindir)/yices_sat$(EXEEXT) $(distdir)/bin/yices-sat$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-sat$(EXEEXT)
 	cp $(bindir)/*.dll $(distdir)/bin || true
 	mkdir $(distdir)/lib
 	cp $(libdir)/* $(distdir)/lib
+ifneq ($(YICES_MODE),debug)
+	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-smt$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-smt2$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(distdir)/bin/yices-sat$(EXEEXT)
 	rm -f $(distdir)/lib/libyices.a
+endif
 
 static-dist: static-bin static-lib
 	rm -r -f $(static_distdir)/*
@@ -932,18 +1071,19 @@ static-dist: static-bin static-lib
 	cp include/*.h $(static_distdir)/include
 	mkdir $(static_distdir)/bin
 	cp $(static_bindir)/yices_main$(EXEEXT) $(static_distdir)/bin/yices$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices$(EXEEXT)
 	cp $(static_bindir)/yices_smtcomp$(EXEEXT) $(static_distdir)/bin/yices-smt$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-smt$(EXEEXT)
 	cp $(static_bindir)/yices_smt2$(EXEEXT) $(static_distdir)/bin/yices-smt2$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-smt2$(EXEEXT)
 	cp $(static_bindir)/yices_sat$(EXEEXT) $(static_distdir)/bin/yices-sat$(EXEEXT)
-	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-sat$(EXEEXT)
 	cp $(static_bindir)/*.dll $(static_distdir)/bin || true
 	mkdir $(static_distdir)/lib
 	cp $(static_libdir)/* $(static_distdir)/lib
+ifneq ($(YICES_MODE),debug)
+	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-smt$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-smt2$(EXEEXT)
+	$(STRIP) $(STRIPFLAGS) $(static_distdir)/bin/yices-sat$(EXEEXT)
 	rm -f $(static_distdir)/lib/libyices.a
-
+endif
 
 smt-dist: bin
 	rm -r -f $(smt_distdir)/*
@@ -974,26 +1114,28 @@ clean:
 .PHONY: clean
 
 
+ifeq ($(MAKE_RESTARTS),)
 #
-# rules to avoid triggering the .DEFAULT rule if .h or .c files have been deleted
+# Rules to keep going if .h or .c files have been deleted.  This
+# allows Make to rebuild an out-of-date dependency file 'source.d'
+# that refers to an 'oldstuff.h' that has been deleted.  We want to
+# fail on the next restart if 'oldstuff.h' is still referenced in some
+# existing 'source.c'.
 #
 %.h:
-	@ echo
-	@ echo "$@ missing"
-	@ echo
-
+	@ echo "*** Warning: header file $@ is missing ***"
 
 %.c:
-	@ echo
-	@ echo "Missing source file: $@"
-	@ echo
+	@ echo "*** Warning: source file $@ is missing ***"
+
+endif
 
 
 #
 # For debugging of Makefile and configuration:
 # print the options as set by this Makefile
 #
-.DEFAULT:
+show-details:
 	@ echo
 	@ echo "*** src/Mafefile ***"
 	@ echo
@@ -1024,6 +1166,10 @@ clean:
 	@ echo "  STATIC_GMP_INCLUDE_DIR = $(STATIC_GMP_INCLUDE_DIR)"
 	@ echo "  PIC_GMP = $(PIC_GMP)"
 	@ echo "  PIC_GMP_INCLUDE_DIR = $(PIC_GMP_INCLUDE_DIR)"
-	@ echo
+	@ echo "  ENABLE_MCSAT = $(ENABLE_MCSAT)"
+	@ echo "  STATIC_LIBPOLY = $(STATIC_LIBPOLY)"
+	@ echo "  STATIC_LIBPOLY_INCLUDE_DIR = $(STATIC_LIBPOLY_INCLUDE_DIR)"
+	@ echo "  PIC_LIBPOLY = $(PIC_LIBPOLY)"
+	@ echo "  PIC_LIBPOLY_INCLUDE_DIR = $(PIC_LIBPOLY_INCLUDE_DIR)"
 
 

@@ -15,8 +15,8 @@
 #include <assert.h>
 #include <inttypes.h>
 
-#include "utils/memalloc.h"
 #include "utils/cputime.h"
+#include "utils/memalloc.h"
 
 #ifdef MINGW
 
@@ -397,7 +397,7 @@ static void compare(int32_t *a, int32_t n) {
 }
 
 
-int main() {
+int main(void) {
   int32_t *a;
   int32_t n, j;
 

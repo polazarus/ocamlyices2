@@ -1,10 +1,10 @@
-# -*-Makefile-*- (emacs mode)
+# -*-makefile-gmake-*- (emacs mode)
 #########################################################################
 #  The Yices SMT Solver. Copyright 2014 SRI International.              #
 #                                                                       #
 #  This program may only be used subject to the noncommercial end user  #
 #  license agreement which is downloadable along with this program.     #
-#########################################################################                
+#########################################################################
 
 
 #
@@ -73,10 +73,11 @@ MKVERSION=./utils/make_source_version
 #
 srcdir = src
 srcsubdirs = \
-    include io terms utils solvers solvers/floyd_warshall solvers/funs \
-    solvers/bv solvers/egraph solvers/exists_forall solvers/cdcl \
-    solvers/simplex parser_utils model scratch api frontend frontend/smt1 \
-    frontend/dimacs frontend/yices frontend/smt2 context
+    io terms utils solvers solvers/floyd_warshall solvers/funs \
+    solvers/bv solvers/egraph solvers/cdcl solvers/simplex \
+    parser_utils model scratch api frontend frontend/smt1 \
+    frontend/yices frontend/smt2 context exists_forall \
+    mcsat mcsat/uf  mcsat/bool mcsat/ite mcsat/nra mcsat/utils
 
 testdir = tests/unit
 regressdir = tests/regress
@@ -106,6 +107,10 @@ dyn_bindir := $(build_dir)/bin
 static_objdir := $(build_dir)/static_obj
 static_libdir := $(build_dir)/static_lib
 static_bindir := $(build_dir)/static_bin
+
+dyn_objsubdirs := $(srcsubdirs:%=$(dyn_objdir)/%)
+static_objsubdirs := $(srcsubdirs:%=$(static_objdir)/%)
+
 
 #
 # Binary distributions:
@@ -151,10 +156,9 @@ $(build_dir):
 
 $(dyn_objdir):
 	$(MKDIR_P) $(dyn_objdir)
-	for subdir in $(srcsubdirs); \
-	do \
-		$(MKDIR_P) $(dyn_objdir)/$$subdir; \
-	done
+
+$(dyn_objsubdirs): $(dyn_objdir)
+	$(MKDIR_P) $@
 
 $(dyn_libdir):
 	$(MKDIR_P) $(dyn_libdir)
@@ -163,11 +167,10 @@ $(dyn_bindir):
 	$(MKDIR_P) $(dyn_bindir)
 
 $(static_objdir):
-	$(MKDIR_P) $(dyn_objdir)
-	for subdir in $(srcsubdirs); \
-	do \
-		$(MKDIR_P) $(static_objdir)/$$subdir; \
-	done
+	$(MKDIR_P) $(static_objdir)
+
+$(static_objsubdirs): $(static_objdir)
+	$(MKDIR_P) $@
 
 $(static_libdir):
 	$(MKDIR_P) $(static_libdir)
@@ -182,8 +185,8 @@ $(static_distdir):
 	$(MKDIR_P) $(static_distdir)
 
 
-build_subdirs: $(build_dir) $(dyn_objdir) $(dyn_libdir) $(dyn_bindir) \
-	 $(static_objdir) $(static_libdir) $(static_bindir)
+build_subdirs: $(build_dir) $(dyn_objsubdirs) $(dyn_libdir) $(dyn_bindir) \
+	 $(static_objsubdirs) $(static_libdir) $(static_bindir)
 
 .PHONY: build_subdirs
 
@@ -225,7 +228,7 @@ static-bin: build_subdirs version
 # are copied into yices_version.c.
 #
 version:
-	$(MKVERSION) $(template) src/api/yices_version.c $(YICES_VERSION) $(YICES_MODE) $(ARCH)
+	$(MKVERSION) $(template) src/api/yices_$(YICES_MODE)_version.c $(YICES_VERSION) $(YICES_MODE) $(ARCH)
 
 .PHONY: version
 
@@ -252,6 +255,7 @@ static-test: build_subdirs version
 # Regressions
 #
 check: regress
+static-check: static-regress
 
 regress: build_subdirs version
 	@ echo "=== Building binaries ==="
@@ -269,7 +273,7 @@ static-regress: build_subdirs version
 
 
 .PHONY: all obj static-obj lib static-lib bin static-bin test static-test \
-    regress static-regress
+    regress static-regress check static-check
 
 
 #
@@ -410,49 +414,65 @@ static-tarfile: $(distributions) doc
 #   $(dist_dir)/lib     into $(libdir)
 #   $(dist_dir)/include into $(includedir)
 #
-# Note: bindir, libdir, includedir are set by the configure script,
-# and are imported from $(YICES_MAKE_INCLUDE)
+# Note: the default bindir, libdir, includedir are set by the
+# configure script, and are imported from $(YICES_MAKE_INCLUDE).
+# These defaults can be changed by using 'make install prefix=...'
+#
+# We also (try to) support the DESTDIR convention.
 #
 # The reason we don't want to force compilation in 'make install' is
 # that we typically need to do 'sudo make install' but we don't want
 # to compile with 'sudo make binary-distribution'.  That can easily
 # fail if the source and build directory or file permissions are
-# wrong or lead to other problems.
+# wrong, or lead to other problems.
 #
 install: install-$(POSIXOS)
 
 install-default: $(build_dir) $(dist_dir)
-	$(MKDIR_P) $(bindir)
-	$(MKDIR_P) $(libdir)
-	$(MKDIR_P) $(includedir)
-	$(INSTALL) -m 664 $(dist_dir)/include/* $(includedir)
-	$(INSTALL) $(dist_dir)/bin/* $(bindir)
-	$(INSTALL) $(dist_dir)/lib/* $(libdir)
+	$(MKDIR_P) $(DESTDIR)$(bindir)
+	$(MKDIR_P) $(DESTDIR)$(libdir)
+	$(MKDIR_P) $(DESTDIR)$(includedir)
+	$(INSTALL) -m 664 $(dist_dir)/include/* $(DESTDIR)$(includedir)
+	$(INSTALL) $(dist_dir)/bin/* $(DESTDIR)$(bindir)
+	$(INSTALL) $(dist_dir)/lib/* $(DESTDIR)$(libdir)
 
+
+ifeq ($(DESTDIR),)
+#
+# DESTDIR is empty, we create symbolic links and run ldconfig as part of install
+#
 install-darwin: install-default
-	(cd $(libdir) && $(LN_S) -f libyices.$(MAJOR).dylib libyices.dylib)
+	(cd $(DESTDIR)$(libdir) && $(LN_S) -f libyices.$(MAJOR).dylib libyices.dylib)
 
 install-solaris: install-default
-	$(LDCONFIG) -n $(libdir) && (cd $(libdir) && $(LN_S) -f libyices.so.$(YICES_VERSION) libyices.so)
+	$(LDCONFIG) -n $(DESTDIR)$(libdir) && (cd $(DESTDIR)$(libdir) && $(LN_S) -f libyices.so.$(YICES_VERSION) libyices.so)
 
 install-linux install-unix: install-default
-	$(LDCONFIG) -n $(libdir) && (cd $(libdir) && $(LN_S) -f libyices.so.$(YICES_VERSION) libyices.so)
+	$(LDCONFIG) -n $(DESTDIR)$(libdir) && (cd $(DESTDIR)$(libdir) && $(LN_S) -f libyices.so.$(YICES_VERSION) libyices.so)
 
-# on FreeBSD: the library file is libyices.so.X.Y and lconfig does not take -n
+# on FreeBSD: the library file is libyices.so.X.Y and ldconfig does not take -n
 install-freebsd: install-default
-	$(LDCONFIG) -m $(libdir) && (cd $(libdir) && $(LN_S) -f libyices.so.$(MAJOR).$(MINOR) libyices.so)
+	$(LDCONFIG) -m $(DESTDIR)$(libdir) && (cd $(DESTDIR)$(libdir) && $(LN_S) -f libyices.so.$(MAJOR).$(MINOR) libyices.so)
+
+else
+#
+# DESTDIR is non-empty: skip the symbolic links and ldconfig
+#
+install-darwin install-solaris install-linux install-unix install-freebsd: install-default
+
+endif
 
 
 #
 # cygwin and mingw install: copy the DLLs in $(bindir)
 #
 install-cygwin: $(build_dir) $(dist_dir)
-	$(MKDIR_P) $(bindir)
-	$(MKDIR_P) $(libdir)
-	$(MKDIR_P) $(includedir)
-	$(INSTALL) -m 664 $(dist_dir)/include/* $(includedir)
-	$(INSTALL) $(dist_dir)/bin/* $(bindir)
-	$(INSTALL) $(dist_dir)/lib/*.a $(libdir)
+	$(MKDIR_P) $(DESTDIR)$(bindir)
+	$(MKDIR_P) $(DESTDIR)$(libdir)
+	$(MKDIR_P) $(DESTDIR)$(includedir)
+	$(INSTALL) -m 664 $(dist_dir)/include/* $(DESTDIR)$(includedir)
+	$(INSTALL) $(dist_dir)/bin/* $(DESTDIR)$(bindir)
+	$(INSTALL) $(dist_dir)/lib/*.a $(DESTDIR)$(libdir)
 
 install-mingw: install-cygwin
 
@@ -472,43 +492,38 @@ srcdist_tarfile= yices-$(YICES_VERSION)-src.tar.gz
 #
 # Build the source tar file
 #
-# NOTE: tar czf ... may fail if the file system is NFS mounted
-# and there's synchronization issues between NFS client and NFS server
-# - the symptom is an error from tar:
-#   'file xxx changed as we read it'
-# - This can be fixed by adding 'sleep xxx' before tar in the
-#   rule below
-#
 # NOTE: chmod -R .. may fail on some Solaris versions
 # - a workaround is to use a GNU/fileutils version of chmod
 #   instead of SUN's own version
 # - on CSL ungoliant: make sure /csl/bin is in the path before /bin
 #   and /usr/bin
 #
+# For tests: we copy all unit tests and the regression tests in
+# arrays/bv/efsmt/mantis/wd.
+#
 source-distribution: $(distributions) doc
 	@ echo "=== Building $(srcdist_tarfile) ==="
 	rm -f -r $(srcdist_dir)
 	$(MKDIR_P) $(srcdist_dir)
-	$(MKDIR_P) $(srcdist_dir)/autoconf
-	$(MKDIR_P) $(srcdist_dir)/configs
-	$(MKDIR_P) $(srcdist_dir)/src
-	$(MKDIR_P) $(srcdist_dir)/doc
-	$(MKDIR_P) $(srcdist_dir)/doc/manual
-	$(MKDIR_P) $(srcdist_dir)/etc
-	$(MKDIR_P) $(srcdist_dir)/utils
-	$(MKDIR_P) $(srcdist_dir)/examples
 	cp install-sh config.guess configure configure.ac config.sub gmaketest $(srcdist_dir)
-	cp README Makefile Makefile.build make.include.in $(srcdist_dir)
+	cp Makefile Makefile.build make.include.in $(srcdist_dir)
+	$(MKDIR_P) $(srcdist_dir)/autoconf
+	cp autoconf/* $(srcdist_dir)/autoconf
+	$(MKDIR_P) $(srcdist_dir)/configs
+	$(MKDIR_P) $(srcdist_dir)/etc
+	cp etc/README.source $(srcdist_dir)/README
 	cp etc/LICENSE etc/NOTICES $(srcdist_dir)
 	cp etc/* $(srcdist_dir)/etc
-	cp autoconf/* $(srcdist_dir)/autoconf
+	$(MKDIR_P) $(srcdist_dir)/src
 	rsync -R `find src/ -name "Makefile" -or -name "*.c" -or -name "*.h" -or -name "*.txt"` $(srcdist_dir)
-	cp -R tests $(srcdist_dir)
-	cp doc/NOTES doc/YICES-LANGUAGE doc/GMP doc/manual/manual.pdf \
+	$(MKDIR_P) $(srcdist_dir)/doc
+	$(MKDIR_P) $(srcdist_dir)/doc/manual
+	cp doc/COMPILING doc/NOTES doc/YICES-LANGUAGE doc/GMP doc/manual/manual.pdf \
            $(srcdist_dir)/doc
 	cp doc/manual/*.pdf doc/manual/*.tex doc/manual/*.bib \
            doc/manual/*.cls doc/manual/*.sty doc/manual/*.eps doc/manual/*.fig \
 	   $(srcdist_dir)/doc/manual
+	$(MKDIR_P) $(srcdist_dir)/utils
 	cp utils/gmp-hack.h utils/mingw-build utils/setup-vs2010 utils/setup-vs2013 \
 	   utils/yices_parser.txt utils/yices_input_tables.h \
 	   utils/smt_parser.txt utils/smt_input_tables.h \
@@ -518,9 +533,17 @@ source-distribution: $(distributions) doc
 	   utils/lib_name utils/gmp_version utils/yices_version \
            utils/remove_trailing_whitespaces \
            $(srcdist_dir)/utils
-	for file in `ls examples | $(EGREP) '\.ys$$|\.txt$$|\.smt$$|\.c$$|\.smt2$$' ` ; do \
+	$(MKDIR_P) $(srcdist_dir)/examples
+	for file in `ls examples | $(EGREP) '\.ys$$|\.c$$|\.smt2$$' ` ; do \
 	  cp examples/$$file $(srcdist_dir)/examples ; \
 	done || true
+	$(MKDIR_P) $(srcdist_dir)/tests
+	cp -R tests/unit $(srcdist_dir)/tests
+	$(MKDIR_P) $(srcdist_dir)/tests/regress
+	for t in regress/arrays regress/bv regress/efsmt regress/mantis regress/wd ; do \
+	   cp -R tests/$$t $(srcdist_dir)/tests/regress ; \
+	done
+	cp tests/regress/check.sh $(srcdist_dir)/tests/regress
 	chmod -R og+rX $(srcdist_dir)
 	COPYFILE_DISABLE=1 tar -czf $(distributions)/$(srcdist_tarfile) $(srcdist_dir)
 	chmod -R og+rX $(distributions)
@@ -600,6 +623,14 @@ show-details:
 	@ echo
 	@ echo "  PIC_GMP = $(PIC_GMP)"
 	@ echo "  PIC_GMP_INCLUDE_DIR = $(PIC_GMP_INCLUDE_DIR)"
+	@ echo
+	@ echo "  ENABLE_MCSAT = $(ENABLE_MCSAT)"
+	@ echo
+	@ echo "  STATIC_LIBPOLY = $(STATIC_LIBPOLY)"
+	@ echo "  STATIC_LIBPOLY_INCLUDE_DIR = $(STATIC_LIBPOLY_INCLUDE_DIR)"
+	@ echo
+	@ echo "  PIC_LIBPOLY = $(PIC_LIBPOLY)"
+	@ echo "  PIC_LIBPOLY_INCLUDE_DIR = $(PIC_LIBPOLY_INCLUDE_DIR)"
 	@ echo
 
 

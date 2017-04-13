@@ -30,17 +30,11 @@ typedef struct strmap_rec_s {
 } strmap_rec_t;
 
 
-/*
- * Deleted records are marked by setting key to DELETED_KEY.
- * Empty recors have key = NULL.
- */
-#define DELETED_KEY ((char *) 1)
-
 
 /*
  * Table = array of 2^k records for some k
  * - nelems = number of records present (used)
- * - ndeleted = number of deleter records
+ * - ndeleted = number of deleted records
  */
 typedef struct strmap_s {
   strmap_rec_t *data;
