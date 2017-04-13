@@ -3,7 +3,7 @@
 #                                                                       #
 #  This program may only be used subject to the noncommercial end user  #
 #  license agreement which is downloadable along with this program.     #
-#########################################################################                
+#########################################################################
 
 #
 # Top-level Makefile
@@ -36,7 +36,7 @@ YICES_TOP_DIR=$(shell pwd)
 # - P should not work anymore with libyices 2.1.0 or 3.0.0
 #
 MAJOR = 2
-MINOR = 2
+MINOR = 5
 PATCH_LEVEL = 2
 
 YICES_VERSION = $(MAJOR).$(MINOR).$(PATCH_LEVEL)
@@ -212,7 +212,7 @@ endif
 # Check build mode
 #
 default_mode=release
-allowed_modes=release debug devel profile gcov valgrind purify quantify
+allowed_modes=release debug devel profile gcov valgrind purify quantify gperftools
 MODE ?= $(default_mode)
 
 YICES_MODE := $(filter $(allowed_modes), $(MODE))
@@ -253,7 +253,7 @@ checkgmake:
 # lib, obj, etc. so that the Makefile will work event if directories
 # or files with these names are present.
 #
-.DEFAULT doc all bin lib obj dist static-bin static-lib static-obj static-dist: checkgmake
+.DEFAULT doc all bin lib obj dist static-bin static-lib static-obj static-dist install test static-test: checkgmake
 	@ echo "Mode:     $(YICES_MODE)"
 	@ echo "Platform: $(ARCH)"
 	@ $(MAKE) -f Makefile.build \
@@ -271,5 +271,6 @@ checkgmake:
 
 
 .PHONY: checkgmake show-config doc all bin lib obj dist \
-        static-bin static-lib static-obj static-dist
+        static-bin static-lib static-obj static-dist install \
+        test static-test
 

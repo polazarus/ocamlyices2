@@ -13,12 +13,11 @@
 #include <setjmp.h>
 #include <inttypes.h>
 
-#include "frontend/yices/yices_tstack_ops.h"
+#include "api/yices_globals.h"
+#include "frontend/yices/yices_lexer.h"
 #include "frontend/yices/yices_parse_tables.h"
 #include "frontend/yices/yices_parser.h"
-#include "frontend/yices/yices_lexer.h"
-#include "api/yices_globals.h"
-
+#include "frontend/yices/yices_tstack_ops.h"
 #include "parser_utils/term_stack_error.h"
 
 
@@ -1050,6 +1049,48 @@ static int32_t yices_parse(parser_t *parser, state_t start, FILE *err) {
 
     case bit_next_push_e3_goto_e0:
       tstack_push_op(tstack, MK_BIT, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case floor_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_FLOOR, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case ceil_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_CEIL, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case abs_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_ABS, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case idiv_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_IDIV, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case mod_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_MOD, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case divides_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_DIVIDES, &loc);
+      parser_push_state(stack, e3);
+      state = e0;
+      goto loop;
+
+    case is_int_next_push_e3_goto_e0:
+      tstack_push_op(tstack, MK_IS_INT, &loc);
       parser_push_state(stack, e3);
       state = e0;
       goto loop;

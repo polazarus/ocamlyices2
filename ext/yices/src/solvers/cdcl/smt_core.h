@@ -40,11 +40,13 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
+#include "io/tracer.h"
 #include "solvers/cdcl/smt_core_base_types.h"
 #include "utils/bitvectors.h"
 #include "utils/int_vectors.h"
-#include "io/tracer.h"
+
 #include "yices_types.h"
 
 
@@ -95,7 +97,7 @@ enum {
 
 typedef struct clause_s clause_t;
 
-typedef size_t link_t;
+typedef uintptr_t link_t;
 
 struct clause_s {
   link_t link[2];
@@ -111,12 +113,12 @@ typedef struct learned_clause_s {
 /*
  * Tagging/untagging of link pointers
  */
-#define LINK_TAG ((size_t) 0x1)
+#define LINK_TAG ((uintptr_t) 0x1)
 #define NULL_LINK ((link_t) 0)
 
 static inline link_t mk_link(clause_t *c, uint32_t i) {
-  assert((i & ~LINK_TAG) == 0 && (((size_t) c) & LINK_TAG) == 0);
-  return (link_t)(((size_t) c) | ((size_t) i));
+  assert((i & ~LINK_TAG) == 0 && (((uintptr_t) c) & LINK_TAG) == 0);
+  return (link_t)(((uintptr_t) c) | ((uintptr_t) i));
 }
 
 static inline clause_t *clause_of(link_t lnk) {
@@ -282,7 +284,7 @@ typedef struct {
  * - tag = 10: literal
  * - tag = 11: generic explanation from a theory solver
  */
-typedef size_t antecedent_t;
+typedef uintptr_t antecedent_t;
 
 enum {
   clause0_tag = 0,
@@ -300,7 +302,7 @@ static inline literal_t literal_antecedent(antecedent_t a) {
 }
 
 static inline clause_t *clause_antecedent(antecedent_t a) {
-  return (clause_t *) (a & ~((size_t) 0x3));
+  return (clause_t *) (a & ~((uintptr_t) 0x3));
 }
 
 // clause index: 0 or 1, low order bit of a
@@ -309,31 +311,31 @@ static inline uint32_t clause_index(antecedent_t a) {
 }
 
 static inline void *generic_antecedent(antecedent_t a) {
-  return (void *) (a & ~((size_t) 0x3));
+  return (void *) (a & ~((uintptr_t) 0x3));
 }
 
 static inline antecedent_t mk_literal_antecedent(literal_t l) {
-  return (((size_t) l) << 2) | literal_tag;
+  return (((uintptr_t) l) << 2) | literal_tag;
 }
 
 static inline antecedent_t mk_clause0_antecedent(clause_t *cl) {
-  assert((((size_t) cl) & 0x3) == 0);
-  return ((size_t) cl) | clause0_tag;
+  assert((((uintptr_t) cl) & 0x3) == 0);
+  return ((uintptr_t) cl) | clause0_tag;
 }
 
 static inline antecedent_t mk_clause1_antecedent(clause_t *cl) {
-  assert((((size_t) cl) & 0x3) == 0);
-  return ((size_t) cl) | clause1_tag;
+  assert((((uintptr_t) cl) & 0x3) == 0);
+  return ((uintptr_t) cl) | clause1_tag;
 }
 
 static inline antecedent_t mk_clause_antecedent(clause_t *cl, int32_t idx) {
-  assert((((size_t) cl) & 0x3) == 0);
-  return ((size_t) cl) | (idx & 1);
+  assert((((uintptr_t) cl) & 0x3) == 0);
+  return ((uintptr_t) cl) | (idx & 1);
 }
 
 static inline antecedent_t mk_generic_antecedent(void *g) {
-  assert((((size_t) g) & 0x3) == 0);
-  return ((size_t) g) | generic_tag;
+  assert((((uintptr_t) g) & 0x3) == 0);
+  return ((uintptr_t) g) | generic_tag;
 }
 
 
@@ -344,11 +346,11 @@ static inline antecedent_t mk_generic_antecedent(void *g) {
  *   keep the two lower bits 00
  */
 static inline void *mk_i32_expl(int32_t x) {
-  return (void *) (((size_t) ((uint32_t) x))<<2);
+  return (void *) (((uintptr_t) ((uint32_t) x))<<2);
 }
 
 static inline int32_t i32_of_expl(void *g) {
-  return (int32_t) (((size_t) g) >> 2);
+  return (int32_t) (((uintptr_t) g) >> 2);
 }
 
 
@@ -555,9 +557,9 @@ typedef struct atom_table_s {
  *
  * 13) void clear(void *solver)
  *   - new function added June 12, 2014. Whenever smt_clear is called
- *     the smt_core progates it to the theory solver by calling this function.
+ *     the smt_core propagates it to the theory solver by calling this function.
  *     Smt_clear is called in a state where solver->status is SAT or UNKNOWN,
- *     the theory solver must restore its internal state to what it was on enty
+ *     the theory solver must restore its internal state to what it was on entry
  *     to the previous call to final_check (this should be used by the Egraph
  *     to remove all temporary equalities introduced during model reconciliation).
  *
@@ -817,9 +819,11 @@ typedef enum smt_status {
   STATUS_SAT,
   STATUS_UNSAT,
   STATUS_INTERRUPTED,
+  STATUS_ERROR, // not used by the context operations/only by yices_api
 } smt_status_t;
 #endif
 
+#define NUM_SMT_STATUSES (STATUS_ERROR+1)
 
 /*
  * Optional features: stored as bits in the solver option_flag
@@ -1484,7 +1488,7 @@ static inline bval_t bvar_base_value(smt_core_t *s, bvar_t x) {
 /*
  * Get the polarity bit of x = low-order bit of value[x]
  * - if x is assigned, polarity = current value (0 means true, 1 means false)
- * - if x is unassigned, polarity = preferrred value
+ * - if x is unassigned, polarity = preferred value
  */
 static inline uint32_t bvar_polarity(smt_core_t *s, bvar_t x) {
   assert(0 <= x && x < s->nvars);
@@ -1630,7 +1634,7 @@ extern void smt_restart(smt_core_t *s);
 
 
 /*
- * Variant of retart: attempt to reuse the assignment trail
+ * Variant of restart: attempt to reuse the assignment trail
  * - find the unassigned variable x of highest activity
  * - keep all current decisions that have a higher activity than x
  */
@@ -1638,7 +1642,7 @@ extern void smt_partial_restart(smt_core_t *s);
 
 
 /*
- * Another variant of retart: attempt to reuse the assignment trail
+ * Another variant of restart: attempt to reuse the assignment trail
  * - find the unassigned variable x of highest activity
  * - keep all current decision levels that have at least one
  *   variable with a higher activity than x
@@ -1708,6 +1712,24 @@ extern void smt_checkpoint(smt_core_t *s);
  *
  */
 extern void smt_process(smt_core_t *s);
+
+
+/*
+ * Variant of smt_process with a conflict bound.
+ *
+ * After a conflict is resolved, this function checks whether the
+ * total number of conflicts so far exceeds max_conflicts. If so
+ * it exits.
+ *
+ * The returned value indicates whether this function exited in
+ * a stable state or on an early exit:
+ * - true means state state reached
+ * - false means max_conflicts reached.
+ *
+ * If this function returns false, the caller can't assume that
+ * it is safe to make a decision.
+ */
+extern bool smt_bounded_process(smt_core_t *s, uint64_t max_conflicts);
 
 
 /*

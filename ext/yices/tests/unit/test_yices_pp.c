@@ -13,8 +13,8 @@
 #include <stdint.h>
 #include <gmp.h>
 
-#include "terms/rationals.h"
 #include "io/yices_pp.h"
+#include "terms/rationals.h"
 
 // pretty printer
 static yices_pp_t printer;
@@ -104,7 +104,7 @@ static void test_list2(void) {
 }
 
 
-int main() {
+int main(void) {
   init_rationals();
   mpz_init(z0);
   mpz_set_str(z0, "12345678900987654321", 10);

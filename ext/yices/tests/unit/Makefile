@@ -91,7 +91,7 @@ ifeq ($(POSIXOS),cygwin)
   LDFLAGS += -Wl,--stack,8388608
 else
 ifeq ($(POSIXOS),mingw)
-  CPPFLAGS := $(CPPFLAGS) -DMINGW -DNOYICES_DLL
+  CPPFLAGS := $(CPPFLAGS) -DMINGW -DNOYICES_DLL -D__USE_MINGW_ANSI_STDIO
   PIC=
   STATIC=-static
   LDFLAGS += -Wl,--stack,8388608
@@ -133,19 +133,11 @@ endif
 
 
 #
-# Warning levels
+# Warning levels: for the unit tests we don't use -Winline
 #
-CFLAGS += -Wall -Winline -Wredundant-decls
+CFLAGS += -Wall -Wredundant-decls
 ifeq ($(POSIXOS),mingw)
-  ifeq ($(findstring -mno-cygwin, $(CFLAGS)), -mno-cygwin)
-   #
-   # compilation on mingw using the -mno-cygwin flag
-   # We disable -Wformat because mingw uses non-standard
-   # formats in printf/fprintf that do not seem to be
-   # understood by gcc and cause useless warnings.
-   #
-   CFLAGS += -Wno-format
-  endif
+  CFLAGS += -Wno-format
 endif
 
 
@@ -153,12 +145,12 @@ endif
 # Compilation flags dependent on MODE
 #
 ifeq ($(YICES_MODE),release)
-  CFLAGS := $(CFLAGS) -O3 -fomit-frame-pointer
+  CFLAGS := $(CFLAGS) -O3 -fomit-frame-pointer $(NO_STACK_PROTECTOR)
   CPPFLAGS := $(CPPFLAGS) -DNDEBUG
 else
 ifeq ($(YICES_MODE),devel)
-CFLAGS := $(CFLAGS) -O3 -fomit-frame-pointer $(NO_STACK_PROTECTOR)
-CPPFLAGS := $(CPPFLAGS) -DNDEBUG
+  CFLAGS := $(CFLAGS) -O3 -fomit-frame-pointer $(NO_STACK_PROTECTOR)
+  CPPFLAGS := $(CPPFLAGS) -DNDEBUG
 else
 ifeq ($(YICES_MODE),profile)
   CFLAGS := $(CFLAGS) -O3 -pg
@@ -233,7 +225,9 @@ endif
 # We need to remove -lgmp from LIBS in static mode, otherwise adding
 # $(STATIC_GMP) does not work on Darwin and cygwin
 #
-STATIC_LIBS := $(STATIC_GMP) $(subst -lgmp,,$(LIBS))
+# Also, we want $(STATIC_GMP) last in this list
+#
+STATIC_LIBS := $(subst -lgmp,,$(LIBS)) $(STATIC_GMP) 
 
 
 # Dependency file
@@ -253,19 +247,26 @@ include $(dep)
 include $(static_dep)
 
 
+# Objects
+$(objdir)/%.o: %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PIC) -c $< -o $@
+
+$(static_objdir)/%.o: %.c
+	$(CC) $(STATIC_CPPFLAGS) $(CFLAGS) -c $< -o $@
+
 
 # All test binaries, using dynamic GMP library
 all: $(tests)
 
-$(bindir)/%$(EXEEXT): %.c $(libyices)
-	$(LNK) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $<  $(libyices) $(LIBS)
+$(bindir)/%$(EXEEXT): $(objdir)/%.o $(libyices)
+	$(LNK) $(CFLAGS) $(LDFLAGS) -o $@ $<  $(libyices) $(LIBS)
 
 
 # Test binaries compiled statically
 all-static: $(static_tests)
 
-$(static_bindir)/%$(EXEEXT): %.c $(static_libyices)
-	$(LNK) $(STATIC_CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(STATIC) -o $@ $<  $(static_libyices) $(STATIC_LIBS)
+$(static_bindir)/%$(EXEEXT): $(static_objdir)/%.o $(static_libyices)
+	$(LNK) $(CFLAGS) $(LDFLAGS) $(STATIC) -o $@ $<  $(static_libyices) $(STATIC_LIBS)
 
 
 .PHONY: all all-static

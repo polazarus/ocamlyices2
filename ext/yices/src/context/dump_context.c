@@ -10,17 +10,18 @@
  * Moved the code here to clean-up yices_reval.c
  */
 
+#include "context/context.h"
+#include "context/context_printer.h"
+#include "context/dump_context.h"
 #include "io/term_printer.h"
 #include "io/type_printer.h"
+#include "solvers/bv/bvsolver_printer.h"
+#include "solvers/cdcl/gates_printer.h"
+#include "solvers/cdcl/smt_core_printer.h"
+#include "solvers/egraph/egraph_printer.h"
 #include "solvers/floyd_warshall/idl_fw_printer.h"
 #include "solvers/floyd_warshall/rdl_fw_printer.h"
 #include "solvers/simplex/simplex_printer.h"
-#include "solvers/cdcl/gates_printer.h"
-#include "solvers/bv/bvsolver_printer.h"
-#include "solvers/egraph/egraph_printer.h"
-#include "solvers/cdcl/smt_core_printer.h"
-#include "context/context_printer.h"
-#include "context/dump_context.h"
 
 #ifndef NDEBUG
 #include "api/yices_globals.h"

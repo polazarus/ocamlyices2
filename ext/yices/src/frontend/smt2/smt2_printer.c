@@ -11,8 +11,8 @@
 
 #include <inttypes.h>
 
-#include "io/type_printer.h"
 #include "frontend/smt2/smt2_printer.h"
+#include "io/type_printer.h"
 
 
 /*
@@ -64,6 +64,10 @@ static void smt2_pp_rational(yices_pp_t *printer, rational_t *q) {
   q_clear(&den);
 }
 
+static void smt2_pp_algebraic(yices_pp_t *printer, void *a) {
+  pp_algebraic(printer, a);
+}
+
 
 /*
  * For uninterpreted constants: always print an abstract name
@@ -100,6 +104,9 @@ void smt2_pp_object(yices_pp_t *printer, value_table_t *table, value_t c) {
   case RATIONAL_VALUE:
     smt2_pp_rational(printer, &table->desc[c].rational);
     break;
+  case ALGEBRAIC_VALUE:
+    smt2_pp_algebraic(printer, table->desc[c].ptr);
+    break;
   case BITVECTOR_VALUE:
     smt2_pp_bitvector(printer, table->desc[c].ptr);
     break;
@@ -130,7 +137,7 @@ void smt2_pp_object(yices_pp_t *printer, value_table_t *table, value_t c) {
  *    ...
  *   (default z))
  */
-static void smt2_pp_function_header(yices_pp_t *printer, value_table_t *table, value_t c, type_t tau, const char *name) {
+static void smt2_pp_function_header(yices_pp_t *printer, value_table_t *table, value_t c, type_t tau) {
   pp_open_block(printer, PP_OPEN_FUNCTION);
   pp_id(printer, "@fun_", c);
   pp_open_block(printer, PP_OPEN_TYPE);
@@ -152,7 +159,7 @@ void smt2_pp_function(yices_pp_t *printer, value_table_t *table, value_t c, bool
   assert(0 <= c && c < table->nobjects && table->kind[c] == FUNCTION_VALUE);
   fun = table->desc[c].ptr;
 
-  smt2_pp_function_header(printer, table, c, fun->type, fun->name);
+  smt2_pp_function_header(printer, table, c, fun->type);
 
   m = fun->arity;
   n = fun->map_size;
@@ -182,12 +189,10 @@ void smt2_pp_function(yices_pp_t *printer, value_table_t *table, value_t c, bool
 
 /*
  * Expand update c and print it as a function
- * - name = function name to use
- * - if name is NULL, replace it by "@fun_c"
+ * - the name "@fun_c"
  * - if show_default is true, also print the default value
  */
-void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, char *name, value_t c, bool show_default) {
-  char fake_name[20];
+void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, value_t c, bool show_default) {
   map_hset_t *hset;
   value_map_t *mp;
   value_t def;
@@ -199,12 +204,7 @@ void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, cha
   hset = table->hset1;
   assert(hset != NULL);
 
-  if (name == NULL) {
-    sprintf(fake_name, "@fun_%"PRId32, c);
-    name = fake_name;
-  }
-
-  smt2_pp_function_header(printer, table, c, tau, name);
+  smt2_pp_function_header(printer, table, c, tau);
 
   /*
    * hset->data contains an array of mapping objects
@@ -215,7 +215,7 @@ void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, cha
   for (i=0; i<n; i++) {
     pp_open_block(printer, PP_OPEN_EQ);
     pp_open_block(printer, PP_OPEN_PAR);
-    pp_string(printer, name);
+    smt2_pp_fun_name(printer, c);
 
     mp = vtbl_map(table, hset->data[i]);
     assert(mp->arity == m);
@@ -254,7 +254,7 @@ void smt2_pp_queued_functions(yices_pp_t *printer, value_table_t *table, bool sh
       smt2_pp_function(printer, table, v, show_default);
     } else {
       assert(object_is_update(table, v));
-      smt2_normalize_and_pp_update(printer, table, NULL, v, show_default);
+      smt2_normalize_and_pp_update(printer, table, v, show_default);
     }
   }
   vtbl_empty_queue(table);

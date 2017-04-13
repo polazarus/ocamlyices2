@@ -22,16 +22,15 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "context/context_types.h"
+#include "solvers/cdcl/smt_core.h"
+#include "solvers/egraph/diseq_stacks.h"
+#include "solvers/egraph/egraph.h"
 #include "terms/types.h"
+#include "utils/bitvectors.h"
+#include "utils/int_hash_map2.h"
 #include "utils/int_vectors.h"
 #include "utils/ptr_vectors.h"
-#include "utils/bitvectors.h"
-#include "solvers/egraph/diseq_stacks.h"
-#include "utils/int_hash_map2.h"
-
-#include "solvers/cdcl/smt_core.h"
-#include "solvers/egraph/egraph.h"
-#include "context/context.h"
 
 
 
@@ -270,7 +269,7 @@ typedef struct fun_solver_s {
    * (Note: all variables have the same type).
    * - base_value[i] can be an egraph class of type sigma: in this
    *   case. We set base_value[i] = label of some class (>= 0)
-   * - base_value[i] can be a fresh object of type sigam (i.e., a fresh
+   * - base_value[i] can be a fresh object of type sigma (i.e., a fresh
    *   particle in the pstore. We encode this by setting base_value[i] = -(k+1)
    *   for some non-negative index k.
    *

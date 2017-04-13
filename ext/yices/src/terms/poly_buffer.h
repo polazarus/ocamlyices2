@@ -23,8 +23,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "terms/polynomials.h"
 #include "solvers/simplex/matrices.h"
+#include "terms/polynomials.h"
 
 
 /*
@@ -142,17 +142,39 @@ static inline void poly_buffer_clear_const(poly_buffer_t *buffer) {
 
 
 
-
 /*
  * Add polynomials:
- * - addmul means add      a * p
- * - submul means subtract a * p
+ * - p is given as an array of n monomials
+ * - n = number of monomials in p
+ *
+ * addmul means add a * p to buffer
+ * submul maans subtract a * p from buffer
  */
-extern void poly_buffer_add_poly(poly_buffer_t *buffer, polynomial_t *p);
-extern void poly_buffer_sub_poly(poly_buffer_t *buffer, polynomial_t *p);
-extern void poly_buffer_addmul_poly(poly_buffer_t *buffer, polynomial_t *p, rational_t *a);
-extern void poly_buffer_submul_poly(poly_buffer_t *buffer, polynomial_t *p, rational_t *a);
+extern void poly_buffer_add_monarray(poly_buffer_t *buffer, monomial_t *p, uint32_t n);
+extern void poly_buffer_sub_monarray(poly_buffer_t *buffer, monomial_t *p, uint32_t n);
+extern void poly_buffer_addmul_monarray(poly_buffer_t *buffer, monomial_t *p, uint32_t n, rational_t *a);
+extern void poly_buffer_submul_monarray(poly_buffer_t *buffer, monomial_t *p, uint32_t n, rational_t *a);
 
+
+
+/*
+ * Same operations with p given as a polynomial object
+ */
+static inline  void poly_buffer_add_poly(poly_buffer_t *buffer, polynomial_t *p) {
+  poly_buffer_add_monarray(buffer, p->mono, p->nterms);
+}
+
+static inline void poly_buffer_sub_poly(poly_buffer_t *buffer, polynomial_t *p) {
+  poly_buffer_sub_monarray(buffer, p->mono, p->nterms);
+}
+
+static inline void poly_buffer_addmul_poly(poly_buffer_t *buffer, polynomial_t *p, rational_t *a) {
+  poly_buffer_addmul_monarray(buffer, p->mono, p->nterms, a);
+}
+
+static inline void poly_buffer_submul_poly(poly_buffer_t *buffer, polynomial_t *p, rational_t *a) {
+  poly_buffer_submul_monarray(buffer, p->mono, p->nterms, a);
+}
 
 
 /*
@@ -280,11 +302,27 @@ static inline bool poly_buffer_is_pos_constant(poly_buffer_t *buffer) {
 }
 
 /*
+ * Check whether the buffer is constant and non-negative
+ */
+static inline bool poly_buffer_is_nonneg_constant(poly_buffer_t *buffer) {
+  return buffer->nterms == 0 || (buffer->nterms == 1 && buffer->mono[0].var == const_idx &&
+          q_is_nonneg(&buffer->mono[0].coeff));
+}
+
+/*
  * Check whether the buffer is constant and negative
  */
 static inline bool poly_buffer_is_neg_constant(poly_buffer_t *buffer) {
   return buffer->nterms == 1 && buffer->mono[0].var == const_idx &&
     q_is_neg(&buffer->mono[0].coeff);
+}
+
+/*
+ * Check whether the buffer is constant and negative
+ */
+static inline bool poly_buffer_is_nonpos_constant(poly_buffer_t *buffer) {
+  return buffer->nterms == 1 && buffer->mono[0].var == const_idx &&
+    q_is_nonpos(&buffer->mono[0].coeff);
 }
 
 

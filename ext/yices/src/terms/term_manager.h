@@ -42,13 +42,16 @@
  * Internal buffers: allocated lazily too
  * - arith_buffer = for arithmetic polynomials
  * - bvarith_buffer = for bit-vector polynomials
- * - bvarith64_buffer = for bit-vector polynomials (64bit coefficients)
  * - bvlogic_buffer = for other bit-vector constructs
+ * - pp_buffer = for power products
  *
  * Auxiliary objects:
  * - r0: rational buffer
  * - bv0, bv1, bv2: buffers to store bitvector constants
  * - vector0: vector of integers
+ *
+ * Options:
+ * - simplify_ite = true if ite simplication is enabled
  */
 typedef struct term_manager_s {
   term_table_t *terms;
@@ -58,7 +61,9 @@ typedef struct term_manager_s {
   rba_buffer_t *arith_buffer;
   bvarith_buffer_t *bvarith_buffer;
   bvarith64_buffer_t *bvarith64_buffer;
+  //  bvarith64_buffer_t *bvarith64_aux_buffer; // NOT USED
   bvlogic_buffer_t *bvlogic_buffer;
+  pp_buffer_t *pp_buffer;
 
   object_store_t *bvarith_store;
   object_store_t *bvarith64_store;
@@ -69,6 +74,8 @@ typedef struct term_manager_s {
   bvconstant_t bv1;
   bvconstant_t bv2;
   ivector_t vector0;
+
+  bool simplify_ite;
 } term_manager_t;
 
 
@@ -134,8 +141,7 @@ extern rba_buffer_t *term_manager_get_arith_buffer(term_manager_t *manager);
 extern bvarith_buffer_t *term_manager_get_bvarith_buffer(term_manager_t *manager);
 extern bvarith64_buffer_t *term_manager_get_bvarith64_buffer(term_manager_t *manager);
 extern bvlogic_buffer_t *term_manager_get_bvlogic_buffer(term_manager_t *manager);
-
-
+extern pp_buffer_t *term_manager_get_pp_buffer(term_manager_t *manager);
 
 
 /*
@@ -173,6 +179,13 @@ extern term_t mk_or(term_manager_t *manager, uint32_t n, term_t a[]);
 extern term_t mk_and(term_manager_t *manager, uint32_t n, term_t a[]);
 extern term_t mk_xor(term_manager_t *manager, uint32_t n, term_t a[]);
 
+
+/*
+ * Variants: do not modify a
+ */
+extern term_t mk_or_safe(term_manager_t *manager, uint32_t n, const term_t a[]);
+extern term_t mk_and_safe(term_manager_t *manager, uint32_t n, const term_t a[]);
+extern term_t mk_xor_safe(term_manager_t *manager, uint32_t n, const term_t a[]);
 
 
 
@@ -369,11 +382,67 @@ extern term_t mk_arith_lt(term_manager_t *manager, term_t t1, term_t t2);   // t
  * Variants: direct construction/simplification from a term table
  * These functions normalize b then create an atom
  * - side effect: b is reset
+ * If simplify_ite is true, simplifications are enabled
  */
-extern term_t mk_direct_arith_geq0(term_table_t *tbl, rba_buffer_t *b);  // b >= 0
-extern term_t mk_direct_arith_leq0(term_table_t *tbl, rba_buffer_t *b);  // b <= 0
-extern term_t mk_direct_arith_gt0(term_table_t *tbl, rba_buffer_t *b);   // b > 0
-extern term_t mk_direct_arith_lt0(term_table_t *tbl, rba_buffer_t *b);   // b < 0
+extern term_t mk_direct_arith_geq0(term_table_t *tbl, rba_buffer_t *b, bool simplify_ite);  // b >= 0
+extern term_t mk_direct_arith_leq0(term_table_t *tbl, rba_buffer_t *b, bool simplify_ite);  // b <= 0
+extern term_t mk_direct_arith_gt0(term_table_t *tbl, rba_buffer_t *b, bool simplify_ite);   // b > 0
+extern term_t mk_direct_arith_lt0(term_table_t *tbl, rba_buffer_t *b, bool simplify_ite);   // b < 0
+extern term_t mk_direct_arith_eq0(term_table_t *tbl, rba_buffer_t *b, bool simplify_ite);   // b == 0
+
+
+/*
+ * Arithmetic root atom.
+ */
+extern term_t mk_arith_root_atom(term_manager_t* manager, uint32_t k, term_t x, term_t p, root_atom_rel_t r);
+
+/*
+ * Arithmetic root atom (b is a buffer that can be cleared and used for computation).
+ */
+extern term_t mk_direct_arith_root_atom(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, root_atom_rel_t r, bool simplify_ite);
+
+
+/*
+ * Arithmetic root atoms.
+ */
+extern term_t mk_arith_root_atom_lt(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+extern term_t mk_arith_root_atom_leq(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+extern term_t mk_arith_root_atom_eq(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+extern term_t mk_arith_root_atom_neq(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+extern term_t mk_arith_root_atom_gt(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+extern term_t mk_arith_root_atom_geq(term_manager_t *manager, uint32_t k, term_t x, term_t p);
+
+
+/*
+ * Arithmetic root atoms (direct versions).
+ */
+extern term_t mk_direct_arith_root_atom_lt(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+extern term_t mk_direct_arith_root_atom_leq(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+extern term_t mk_direct_arith_root_atom_eq(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+extern term_t mk_direct_arith_root_atom_neq(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+extern term_t mk_direct_arith_root_atom_gt(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+extern term_t mk_direct_arith_root_atom_geq(rba_buffer_t* b, term_table_t* terms, uint32_t k, term_t x, term_t p, bool simplify_ite);
+
+
+
+/*
+ * More arithmetic constructs for div/mod and mixed arithmetic
+ * - these are to support SMT-LIB 2 operators
+ */
+extern term_t mk_arith_is_int(term_manager_t *manager, term_t t);              // is_int t
+extern term_t mk_arith_idiv(term_manager_t *manager, term_t t1, term_t t2);    // (div t1 t2)
+extern term_t mk_arith_mod(term_manager_t *manager, term_t t1, term_t t2);     // (mod t1 t2)
+extern term_t mk_arith_divides(term_manager_t *manager, term_t t1, term_t t2); // t1 divides t2
+
+extern term_t mk_arith_abs(term_manager_t *manager, term_t t);    // absolute value of t
+extern term_t mk_arith_floor(term_manager_t *manager, term_t t);  // largest integer <= t
+extern term_t mk_arith_ceil(term_manager_t *manager, term_t t);   // smallest integer >= t
+
+
+/*
+ * Rational division
+ */
+extern term_t mk_arith_rdiv(term_manager_t *manager, term_t t1, term_t t2);
 
 
 /*
@@ -510,7 +579,7 @@ extern term_t mk_bvslt(term_manager_t *manager, term_t t1, term_t t2);   // t1 <
  * - a is an array of n arithmetic terms
  * - this function constructs the term a[0]^e_0 ... a[n-1]^e_{n-1}
  *
- * IMPORTANT: make sure the total degree overflow is no more than YICES_MAX_DEGREE
+ * IMPORTANT: make sure the total degree is no more than YICES_MAX_DEGREE
  * before calling this function.
  */
 extern term_t mk_arith_pprod(term_manager_t *manager, pprod_t *p, uint32_t n, const term_t *a);
@@ -522,7 +591,7 @@ extern term_t mk_arith_pprod(term_manager_t *manager, pprod_t *p, uint32_t n, co
  * - nbits = number of bits in each term of a
  * - this function constructs the term a[0]^e_0 ... a[n-1]^e_{n-1}
  *
- * IMPORTANT: make sure the total degree overflow is no more than YICES_MAX_DEGREE
+ * IMPORTANT: make sure the total degree is no more than YICES_MAX_DEGREE
  * before calling this function.
  */
 extern term_t mk_bvarith64_pprod(term_manager_t *manager, pprod_t *p, uint32_t n, const term_t *a, uint32_t nbits);
@@ -534,7 +603,7 @@ extern term_t mk_bvarith64_pprod(term_manager_t *manager, pprod_t *p, uint32_t n
  * - nbits = number of bits in each term of a
  * - this function constructs the term a[0]^e_0 ... a[n-1]^e_{n-1}
  *
- * IMPORTANT: make sure the total degree overflow is no more than YICES_MAX_DEGREE
+ * IMPORTANT: make sure the total degree is no more than YICES_MAX_DEGREE
  * before calling this function.
  */
 extern term_t mk_bvarith_pprod(term_manager_t *manager, pprod_t *p, uint32_t n, const term_t *a, uint32_t nbits);
@@ -577,7 +646,7 @@ extern term_t mk_bvarith_poly(term_manager_t *manager, bvpoly_t *p, uint32_t n, 
 
 
 /*
- * Support for elimating arithmetic variables:
+ * Support for eliminating arithmetic variables:
  * - given a polynomial p and a term t that occurs in p,
  *   construct the polynomial q such that (t == q) is equivalent to (p == 0)
  *   (i.e., write p as a.t + r and construct  q :=  -r/a).

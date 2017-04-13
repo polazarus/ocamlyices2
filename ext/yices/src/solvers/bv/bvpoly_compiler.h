@@ -33,14 +33,13 @@
 
 #include <stdint.h>
 
-#include "utils/int_vectors.h"
-#include "utils/int_hash_map.h"
-#include "utils/int_bv_sets.h"
+#include "solvers/bv/bv_vartable.h"
+#include "solvers/bv/bvpoly_dag.h"
 #include "solvers/bv/merge_table.h"
 #include "terms/bvpoly_buffers.h"
-#include "solvers/bv/bv_vartable.h"
-
-#include "solvers/bv/bvpoly_dag.h"
+#include "utils/int_bv_sets.h"
+#include "utils/int_hash_map.h"
+#include "utils/int_vectors.h"
 
 
 /*
@@ -99,12 +98,12 @@ typedef struct bvc_s {
 
 /*
  * Initialization:
- * - vtol = the attached variable table
+ * - vtbl = the attached variable table
  * - mtbl = the attached merge table
  * - elemexp is initially empty
  * - cmap has default initial size (cf. int_hash_map)
  */
-extern void init_bv_compiler(bvc_t *c, bv_vartable_t *vtol, mtbl_t *mtbl);
+extern void init_bv_compiler(bvc_t *c, bv_vartable_t *vtbl, mtbl_t *mtbl);
 
 /*
  * Free all memory

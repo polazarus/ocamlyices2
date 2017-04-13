@@ -18,10 +18,10 @@
 #include <ctype.h>
 
 #include "terms/bv_constants.h"
-#include "utils/object_stores.h"
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
 #include "utils/bit_tricks.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
+#include "utils/object_stores.h"
 
 
 
@@ -157,14 +157,14 @@ static void delete_allocator(bvconst_allocator_t *s) {
 /*
  * Initialization: prepare global store
  */
-void init_bvconstants() {
+void init_bvconstants(void) {
   init_allocator(&allocator);
 }
 
 /*
  * Cleanup: free the store
  */
-void cleanup_bvconstants() {
+void cleanup_bvconstants(void) {
   delete_allocator(&allocator);
 }
 
@@ -218,6 +218,11 @@ void bvconstant_set_bitsize(bvconstant_t *b, uint32_t n) {
   if (b->arraysize < k) {
     b->data = (uint32_t *) safe_realloc(b->data, k * sizeof(uint32_t));
     b->arraysize = k;
+    /*
+     * To prevent false alarms from valgrind, just make sure it's
+     * all initialized.
+     */
+    bvconst_clear(b->data, k);
   }
   b->bitsize = n;
   b->width = k;
@@ -1068,7 +1073,7 @@ void bvconst_lshr(uint32_t *bv, uint32_t *a, uint32_t *b, uint32_t n) {
 
 
 /*
- * Arithemtic shift right: (a >> b)
+ * Arithmetic shift right: (a >> b)
  * - store the result in *bv and normalize
  * - n = number of bits in a and b
  */
@@ -1636,6 +1641,8 @@ bool bvconst_sle(const uint32_t *a, const uint32_t *b, uint32_t n) {
  */
 uint32_t bvconst_hash(const uint32_t *a, uint32_t n) {
   uint32_t k;
+
+  assert(bvconst_is_normalized(a, n));
 
   k = (n + 31) >> 5;
   return jenkins_hash_array(a, k, 0x741a8d7a + n);

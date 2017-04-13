@@ -16,7 +16,7 @@
  * Examples:
  * - a rational number such as -1/2 must be written (/ (- 1) 2)
  * - a bitvector constant must be printed as #b01..00
- * - abstact constant must be have a name that starts with @
+ * - abstract constant must be have a name that starts with @
  *
  * This module implements the same functions as concrete_value_printer,
  * but with the SMT2 syntax.
@@ -27,8 +27,8 @@
 
 #include <stdbool.h>
 
-#include "model/concrete_values.h"
 #include "io/yices_pp.h"
+#include "model/concrete_values.h"
 
 
 /*
@@ -51,11 +51,9 @@ extern void smt2_pp_function(yices_pp_t *printer, value_table_t *table, value_t 
 
 /*
  * Expand update c and print it as a function
- * - name = function name to use
  * - if show_default is true, also print the default value
  */
-extern void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, char *name,
-					 value_t c, bool show_default);
+extern void smt2_normalize_and_pp_update(yices_pp_t *printer, value_table_t *table, value_t c, bool show_default);
 
 /*
  * Print the maps of all the queued functions (this may recursively push more

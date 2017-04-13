@@ -13,10 +13,10 @@
 #include <stddef.h>
 #include <float.h>
 
-#include "utils/memalloc.h"
-#include "utils/int_array_sort.h"
-#include "utils/gcd.h"
 #include "solvers/cdcl/smt_core.h"
+#include "utils/gcd.h"
+#include "utils/int_array_sort.h"
+#include "utils/memalloc.h"
 
 
 #define TRACE 0
@@ -58,7 +58,7 @@ static void check_lemma(smt_core_t *s, uint32_t n, literal_t *a);
 /*
  * PARAMETERS FOR THE PSEUDO RANDOM NUMBER GENERATOR
  *
- * We  use the same linear congruence as in prgn.h,
+ * We  use the same linear congruence as in prng.h,
  * but we use a local implementation so that different
  * solvers can use different seeds.
  */
@@ -550,7 +550,7 @@ static void reset_heap(var_heap_t *heap) {
   }
   heap->heap_last = 0;
 
-  // reset actitivity parameters: this makes a difference (2010/08/10)
+  // reset activity parameters: this makes a difference (2010/08/10)
   heap->act_increment = INIT_VAR_ACTIVITY_INCREMENT;
   heap->inv_act_decay = 1/VAR_DECAY_FACTOR;
 }
@@ -777,6 +777,7 @@ static void rescale_var_activities(var_heap_t *heap, uint32_t n) {
     act[i] *= INV_VAR_ACTIVITY_THRESHOLD;
   }
 }
+
 
 
 /*****************
@@ -1436,7 +1437,7 @@ static void test_eq_conflict(smt_core_t *s) {
  * - mode = to select optional features
  * This creates the predefined "constant" variable and the true/false literals
  *
- * The clause and variable activity increments, and the randonmess
+ * The clause and variable activity increments, and the randomness
  * parameters are set to their default values
  */
 void init_smt_core(smt_core_t *s, uint32_t n, void *th,
@@ -1969,6 +1970,7 @@ static void assign_literal(smt_core_t *s, literal_t l) {
   printf("---> DPLL:   Assigning literal ");
   print_literal(stdout, l);
   printf(", decision level = %"PRIu32"\n", s->decision_level);
+  fflush(stdout);
 #endif
   assert(0 <= l && l < s->nlits);
   assert(literal_is_unassigned(s, l));
@@ -2023,6 +2025,7 @@ void decide_literal(smt_core_t *s, literal_t l) {
   printf("\n---> DPLL:   Decision: literal ");
   print_literal(stdout, l);
   printf(", decision level = %"PRIu32"\n", s->decision_level);
+  fflush(stdout);
 #endif
 }
 
@@ -2041,6 +2044,7 @@ static void implied_literal(smt_core_t *s, literal_t l, antecedent_t a) {
   printf("---> DPLL:   Implied literal ");
   print_literal(stdout, l);
   printf(", decision level = %"PRIu32"\n", s->decision_level);
+  fflush(stdout);
 #endif
 
   s->stats.propagations ++;
@@ -2070,6 +2074,7 @@ void propagate_literal(smt_core_t *s, literal_t l, void *expl) {
   printf("---> DPLL:   Theory prop ");
   print_literal(stdout, l);
   printf(", decision level = %"PRIu32"\n", s->decision_level);
+  fflush(stdout);
 #endif
 
   s->stats.propagations ++;
@@ -2296,6 +2301,7 @@ static void backtrack(smt_core_t *s, uint32_t back_level) {
 
 #if TRACE
   printf("---> DPLL:   Backtracking to level %"PRIu32"\n\n", back_level);
+  fflush(stdout);
 #endif
 
   assert(s->base_level <= back_level && back_level < s->decision_level);
@@ -2361,6 +2367,7 @@ static void record_binary_conflict(smt_core_t *s, literal_t l0, literal_t l1) {
   printf(", ");
   print_literal(stdout, l1);
   printf("}\n");
+  fflush(stdout);
 #endif
 
   assert(! s->theory_conflict);
@@ -2394,6 +2401,7 @@ static void record_clause_conflict(smt_core_t *s, clause_t *cl) {
     ll = cl->cl[i];
   }
   printf("}\n");
+  fflush(stdout);
 #endif
 
   assert(! s->theory_conflict);
@@ -2430,6 +2438,7 @@ void record_theory_conflict(smt_core_t *s, literal_t *a) {
   }
   printf("}\n");
 #endif
+  fflush(stdout);
 
 #if DEBUG
   check_theory_conflict(s, a);
@@ -2808,6 +2817,7 @@ static void direct_binary_clause(smt_core_t *s, literal_t l1, literal_t l2) {
   printf(" ");
   print_literal(stdout, l2);
   printf(" }\n");
+  fflush(stdout);
 #endif
 
   add_literal_to_vector(s->bin + l1, l2);
@@ -2843,6 +2853,7 @@ static void add_learned_clause(smt_core_t *s, uint32_t n, literal_t *a) {
     print_literal(stdout, a[i]);
   }
   printf(" }\n\n");
+  fflush(stdout);
 #endif
 
   l0 = a[0];
@@ -2861,6 +2872,7 @@ static void add_learned_clause(smt_core_t *s, uint32_t n, literal_t *a) {
       printf("---> DPLL:   Add learned unit clause: { ");
       print_literal(stdout, l0);
       printf(" }\n");
+      fflush(stdout);
 #endif
       assign_literal(s, l0);
       s->nb_unit_clauses ++;
@@ -2943,6 +2955,7 @@ static bool try_cache_theory_clause(smt_core_t *s, uint32_t n, literal_t *a) {
       printf(" ");
       print_literal(stdout, a[1]);
       printf(" }\n");
+      fflush(stdout);
 #endif
       return true;
     }
@@ -2986,6 +2999,7 @@ static bool try_cache_theory_clause(smt_core_t *s, uint32_t n, literal_t *a) {
       print_literal(stdout, a[i]);
     }
     printf(" }\n");
+    fflush(stdout);
 #endif
 
     // create the new clause with l0 and l1 as watched literals
@@ -3283,6 +3297,7 @@ static void simplify_learned_clause(smt_core_t *s) {
     print_literal(stdout, b[i]);
   }
   printf(" }\n");
+  fflush(stdout);
 #endif
 
   // remove the subsumed literals
@@ -3463,7 +3478,7 @@ static void resolve_conflict(smt_core_t *s) {
   assert(unresolved > 0);
 
   /*
-   * Scan the assignement stack from top to bottom and process the
+   * Scan the assignment stack from top to bottom and process the
    * antecedent of all marked literals:
    * - all the literals processed have decision_level == conflict_level
    * - the code works if unresolved == 1 (which may happen for theory conflicts)
@@ -3636,6 +3651,7 @@ static clause_t *new_problem_clause(smt_core_t *s, uint32_t n, literal_t *a) {
     print_literal(stdout, a[i]);
   }
   printf(" }\n");
+  fflush(stdout);
 #endif
 
   cl = new_clause(n, a);
@@ -3665,6 +3681,7 @@ static void add_simplified_unit_clause(smt_core_t *s, literal_t l) {
   printf("---> DPLL:   Add unit clause: { ");
   print_literal(stdout, l);
   printf(" }\n");
+  fflush(stdout);
 #endif
 
   if (s->inconsistent && s->decision_level > s->base_level) {
@@ -3940,6 +3957,7 @@ static void record_empty_conflict(smt_core_t *s) {
 
 #if TRACE
   printf("---> DPLL:   Add empty clause: {}\n");
+  fflush(stdout);
 #endif
   s->inconsistent = true;
   s->conflict_buffer[0] = end_clause;
@@ -3975,6 +3993,7 @@ void add_unit_clause(smt_core_t *s, literal_t l) {
   printf("---> DPLL:   Add unit clause: { ");
   print_literal(stdout, l);
   printf(" }\n");
+  fflush(stdout);
 #endif
 
   assert(0 <= l && l < s->nlits);
@@ -4026,6 +4045,7 @@ void add_clause_unsafe(smt_core_t *s, uint32_t n, literal_t *a) {
 #if TRACE
   else {
     printf("---> DPLL:   Skipped true clause\n");
+    fflush(stdout);
   }
 #endif
 }
@@ -4069,6 +4089,7 @@ void add_clause(smt_core_t *s, uint32_t n, literal_t *a) {
 #if TRACE
   else {
     printf("---> DPLL:   Skipped true clause\n");
+    fflush(stdout);
   }
 #endif
 
@@ -4141,6 +4162,7 @@ static void add_lemma(smt_core_t *s, uint32_t n, literal_t *a) {
 #if TRACE
   else {
     printf("---> DPLL:   Skipped true lemma\n");
+    fflush(stdout);
   }
 #endif
 
@@ -4151,7 +4173,7 @@ static void add_lemma(smt_core_t *s, uint32_t n, literal_t *a) {
  * Add all queued lemmas to the database.
  * - this may cause backtracking
  * - a conflict clause may be recorded
- * If so, conflict resolution must called outside this function
+ * If so, conflict resolution must be called outside this function
  */
 static void add_all_lemmas(smt_core_t *s) {
   lemma_block_t *tmp;
@@ -4357,7 +4379,7 @@ void reduce_clause_database(smt_core_t *s) {
   act_threshold = s->cla_inc/n;
 
   // prepare for deletion: all non-locked clauses, with activity less
-  // than activitiy_threshold are marked for deletion.
+  // than activity_threshold are marked for deletion.
   for (i=0; i<n/2; i++) {
     if (get_activity(v[i]) <= act_threshold && ! clause_is_locked(s, v[i])) {
       mark_for_removal(v[i]);
@@ -5086,7 +5108,7 @@ void smt_cleanup(smt_core_t *s) {
 void smt_clear(smt_core_t *s) {
   assert(s->status == STATUS_SAT || s->status == STATUS_UNKNOWN);
 
-  // Give a change to the theory solver to cleanup its own state
+  // Give a chance to the theory solver to cleanup its own state
   s->th_ctrl.clear(s->th_solver);
 
   /*
@@ -5571,15 +5593,21 @@ void stop_search(smt_core_t *s) {
 
 
 /*
- * Main solving function.
+ * Core solving function.
  *
  * It executes the following loop:
  * 1) if lemmas are present, integrate them to the clause database
  * 2) perform boolean and theory propagation
  * 3) if a conflict is found, resolve that conflict otherwise
- *    exit the loop
+ *    exit the loop.
+ * 4) after a conflict is resolved, check whether the bound max_conflict
+ *    is reached. If so exit.
+ *
+ * Output:
+ * - true on normal exit
+ * - false on early exit (i.e., max_conflict reached)
  */
-void smt_process(smt_core_t *s) {
+static bool smt_core_process(smt_core_t *s, uint64_t max_conflicts) {
   while (s->status == STATUS_SEARCHING) {
     if (s->inconsistent) {
       resolve_conflict(s);
@@ -5592,6 +5620,11 @@ void smt_process(smt_core_t *s) {
       // decay activities after every conflict
       s->cla_inc *= s->inv_cla_decay;
       s->heap.act_increment *= s->heap.inv_act_decay;
+
+      // exit if max_conflict reached
+      if (num_conflicts(s) >= max_conflicts) {
+	return false;
+      }
 
     } else if (s->cp_flag) {
       delete_irrelevant_variables(s);
@@ -5617,6 +5650,23 @@ void smt_process(smt_core_t *s) {
     simplify_clause_database(s);
   }
 
+  return true;
+}
+
+
+
+/*
+ * Process with no conflict bounds
+ */
+void smt_process(smt_core_t *s) {
+  (void) smt_core_process(s, UINT64_MAX);
+}
+
+/*
+ * Use a bound
+ */
+bool smt_bounded_process(smt_core_t *s, uint64_t max_conflicts) {
+  return smt_core_process(s, max_conflicts);
 }
 
 
@@ -5627,9 +5677,8 @@ void smt_process(smt_core_t *s) {
  * - call the final_check function of the theory solver
  * - if that creates new variables or lemmas or report a conflict
  *   then smt_process is called
- * - return false if more processing is required,
- *   return true if the theory solver does not trigger anything more.
- * - if the result is true then the whole thing is SAT/UNKNOWN
+ * - otherwise the core status is updated to SAT or UNKNOWN and the search
+ *   is done.
  */
 void smt_final_check(smt_core_t *s) {
   assert(s->status == STATUS_SEARCHING || s->status == STATUS_INTERRUPTED);
@@ -5799,7 +5848,7 @@ void smt_partial_restart(smt_core_t *s) {
       ax = s->heap.activity[x];
 
       /*
-       * search for the first level i whose deicision level has
+       * search for the first level i whose decision level has
        * activity less than ax, then backtrack to level i-1.
        */
       n = s->decision_level;
@@ -5881,7 +5930,7 @@ static bool all_binary_clauses_are_true(smt_core_t *s) {
         // this loop terminates with l<0 (end-marker) if all clauses {l0, l} are true
         do {
 	  l = *v ++;
-	} while (literal_value(s, l) == VAL_TRUE);
+	} while (l >= 0 && literal_value(s, l) == VAL_TRUE);
         if (l >= 0) return false;
       }
     }

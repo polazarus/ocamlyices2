@@ -73,13 +73,19 @@
  *    structure to represent most composite terms.
  *
  * July 2012: Added lambda terms.
+ *
+ * June 2015: div/mod/abs and friends
+ *
+ * July 2016: division (by non-constant)
  */
 
 /*
  * The internal terms include:
+ *
  * 1) constants:
  *    - constants of uninterpreted/scalar
  *    - global uninterpreted constants
+ *
  * 2) generic terms
  *    - ite c t1 t2
  *    - eq t1 t2
@@ -88,22 +94,26 @@
  *    - select i tuple
  *    - update f t1 ... t_n v
  *    - distinct t1 ... t_n
+ *
  * 3) variables and quantifiers
  *    - variables are identified by their type and an integer index.
  *    - quantified formulas are of the form (forall v_1 ... v_n term)
  *      where each v_i is a variable
  *    - lambda terms are of the form (lambda v_1 ... v_n term) where
  *      each v_i is a variable
+ *
  * 4) boolean operators
  *    - or t1 ... t_n
  *    - xor t1 ... t_n
  *    - bit i u (extract bit i of a bitvector term u)
+ *
  * 6) arithmetic terms and atoms
  *    - terms are either rational constants, power products, or
  *      polynomials with rational coefficients
  *    - atoms are either of the form (t == 0) or (t >= 0)
  *      where p is a term.
  *    - atoms a x - a y == 0 are rewritten to (x = y)
+ *
  * 7) bitvector terms and atoms
  *    - bitvector constants
  *    - power products
@@ -114,6 +124,16 @@
  *      bv_eq t1 t2
  *      bv_ge t1 t2 (unsigned comparison: t1 >= t2)
  *      bv_sge t1 t2 (signed comparison: t1 >= t2)
+ *
+ * 8) more arithmetic operators (defined in SMTLIB2)
+ *    - floor x
+ *    - ceil x
+ *    - abs x
+ *    - div x y
+ *    - mod x y
+ *    - divides x y: y is a multiple of y
+ *    - is_int x: true if x is an integer
+ *    - real division: (/ x y)
  *
  * Every term is an index t in a global term table,
  * where 0 <= t <= 2^30. There are two term occurrences
@@ -144,19 +164,18 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/bitvectors.h"
-#include "utils/int_vectors.h"
-#include "utils/ptr_vectors.h"
-#include "utils/int_hash_tables.h"
-#include "utils/int_hash_map.h"
-#include "utils/ptr_hash_map.h"
-#include "utils/symbol_tables.h"
-
-#include "terms/types.h"
-#include "terms/pprod_table.h"
 #include "terms/balanced_arith_buffers.h"
-#include "terms/bvarith_buffers.h"
 #include "terms/bvarith64_buffers.h"
+#include "terms/bvarith_buffers.h"
+#include "terms/pprod_table.h"
+#include "terms/types.h"
+#include "utils/bitvectors.h"
+#include "utils/int_hash_map.h"
+#include "utils/int_hash_tables.h"
+#include "utils/int_vectors.h"
+#include "utils/ptr_hash_map.h"
+#include "utils/ptr_vectors.h"
+#include "utils/symbol_tables.h"
 
 
 /*
@@ -219,33 +238,44 @@ typedef enum {
   /*
    * Composites
    */
-  ARITH_EQ_ATOM,    // atom t == 0
-  ARITH_GE_ATOM,    // atom t >= 0
+  ARITH_EQ_ATOM,      // atom t == 0
+  ARITH_GE_ATOM,      // atom t >= 0
+  ARITH_IS_INT_ATOM,  // atom (is_int x)
+  ARITH_FLOOR,        // floor x
+  ARITH_CEIL,         // ceil x
+  ARITH_ABS,          // absolute value
+  ARITH_ROOT_ATOM,    // atom (k <= root_count(f) && (x r root_k(f)), for f in Z[x, ...], r in { <, <=, == , !=, >=, > }
 
-  ITE_TERM,         // if-then-else
-  ITE_SPECIAL,      // special if-then-else term (NEW: EXPERIMENTAL)
-  APP_TERM,         // application of an uninterpreted function
-  UPDATE_TERM,      // function update
-  TUPLE_TERM,       // tuple constructor
-  EQ_TERM,          // equality
-  DISTINCT_TERM,    // distinct t_1 ... t_n
-  FORALL_TERM,      // quantifier
-  LAMBDA_TERM,      // lambda
-  OR_TERM,          // n-ary OR
-  XOR_TERM,         // n-ary XOR
-  ARITH_BINEQ_ATOM, // equality: (t1 == t2)  (between two arithmetic terms)
-  BV_ARRAY,         // array of boolean terms
-  BV_DIV,           // unsigned division
-  BV_REM,           // unsigned remainder
-  BV_SDIV,          // signed division
-  BV_SREM,          // remainder in signed division (rounding to 0)
-  BV_SMOD,          // remainder in signed division (rounding to -infinity)
-  BV_SHL,           // shift left (padding with 0)
-  BV_LSHR,          // logical shift right (padding with 0)
-  BV_ASHR,          // arithmetic shift right (padding with sign bit)
-  BV_EQ_ATOM,       // equality: (t1 == t2)
-  BV_GE_ATOM,       // unsigned comparison: (t1 >= t2)
-  BV_SGE_ATOM,      // signed comparison (t1 >= t2)
+  ITE_TERM,           // if-then-else
+  ITE_SPECIAL,        // special if-then-else term (NEW: EXPERIMENTAL)
+  APP_TERM,           // application of an uninterpreted function
+  UPDATE_TERM,        // function update
+  TUPLE_TERM,         // tuple constructor
+  EQ_TERM,            // equality
+  DISTINCT_TERM,      // distinct t_1 ... t_n
+  FORALL_TERM,        // quantifier
+  LAMBDA_TERM,        // lambda
+  OR_TERM,            // n-ary OR
+  XOR_TERM,           // n-ary XOR
+
+  ARITH_BINEQ_ATOM,   // equality: (t1 == t2)  (between two arithmetic terms)
+  ARITH_RDIV,         // real division: (/ x y)
+  ARITH_IDIV,         // integer division: (div x y) as defined in SMT-LIB 2
+  ARITH_MOD,          // remainder: (mod x y) is y - x * (div x y)
+  ARITH_DIVIDES_ATOM, // divisibility test: (divides x y) is true if y = n * x for an integer n
+
+  BV_ARRAY,           // array of boolean terms
+  BV_DIV,             // unsigned division
+  BV_REM,             // unsigned remainder
+  BV_SDIV,            // signed division
+  BV_SREM,            // remainder in signed division (rounding to 0)
+  BV_SMOD,            // remainder in signed division (rounding to -infinity)
+  BV_SHL,             // shift left (padding with 0)
+  BV_LSHR,            // logical shift right (padding with 0)
+  BV_ASHR,            // arithmetic shift right (padding with sign bit)
+  BV_EQ_ATOM,         // equality: (t1 == t2)
+  BV_GE_ATOM,         // unsigned comparison: (t1 >= t2)
+  BV_SGE_ATOM,        // signed comparison (t1 >= t2)
 
   SELECT_TERM,      // tuple projection
   BIT_TERM,         // bit-select
@@ -272,11 +302,11 @@ typedef enum {
  *
  * The boolean constant true is built-in and always has index 1.
  * This gives two terms:
- * - true_term = pos_occ(bool_const) = 2
- * - false_term = neg_occ(bool_const) = 3
+ * - true_term = pos_term(bool_const) = 2
+ * - false_term = neg_term(bool_const) = 3
  *
  * The constant 0 is also built-in and always has index 2
- * - so zero_term = pos_occ(zero_const) = 4
+ * - so zero_term = pos_term(zero_const) = 4
  */
 enum {
   // indices
@@ -310,6 +340,34 @@ typedef struct select_term_s {
   uint32_t idx;
   term_t arg;
 } select_term_t;
+
+
+/*
+ * Comparison relations for arithmetic root atoms..
+ */
+typedef enum {
+  ROOT_ATOM_LT,
+  ROOT_ATOM_LEQ,
+  ROOT_ATOM_EQ,
+  ROOT_ATOM_NEQ,
+  ROOT_ATOM_GEQ,
+  ROOT_ATOM_GT
+} root_atom_rel_t;
+
+
+/*
+ * Arithmetic root constraint:
+ * - an integer root index
+ * - a variable x
+ * - a polynomial p(x, ...)
+ * - the relation x r root_k(p)
+ */
+typedef struct root_atom_s {
+  uint32_t k;
+  term_t x;
+  term_t p;
+  root_atom_rel_t r;
+} root_atom_t;
 
 
 /*
@@ -599,7 +657,43 @@ extern term_t arith_geq_atom(term_table_t *table, term_t t);
  */
 extern term_t arith_bineq_atom(term_table_t *table, term_t left, term_t right);
 
+/*
+ * Root constraint x r root_k(p).
+ */
+extern term_t arith_root_atom(term_table_t *table, uint32_t k, term_t x, term_t p, root_atom_rel_t r);
 
+
+/*
+ * Real division: (/ x y)
+ * - both x and y must be arithmetic terms
+ * - the result has type real
+ */
+extern term_t arith_rdiv(term_table_t *table, term_t x, term_t y);
+
+/*
+ * More arithmetic operations
+ * - is_int(x): true if x is an integer
+ * - floor and ceiling
+ * - absolute value
+ * - div(x, y)
+ * - mod(x, y)
+ * - divides(x, y): x divides y
+ *
+ * Intended semantics for div and mod:
+ * - if y > 0 then div(x, y) is floor(x/y)
+ * - if y < 0 then div(x, y) is ceil(x/y)
+ * - 0 <= rem(x, y) < y
+ * - x = y * div(x, y) + rem(x, y)
+ * These operations are defined for any x and non-zero y.
+ * They are not required to be integers.
+ */
+extern term_t arith_is_int(term_table_t *table, term_t x);
+extern term_t arith_floor(term_table_t *table, term_t x);
+extern term_t arith_ceil(term_table_t *table, term_t x);
+extern term_t arith_abs(term_table_t *table, term_t x);
+extern term_t arith_idiv(term_table_t *table, term_t x, term_t y);
+extern term_t arith_mod(term_table_t *table, term_t x, term_t y);
+extern term_t arith_divides(term_table_t *table, term_t x, term_t y);
 
 /*
  * Check whether b stores an integer polynomial
@@ -1032,6 +1126,11 @@ static inline select_term_t *select_for_idx(term_table_t *table, int32_t i) {
   return &table->desc[i].select;
 }
 
+static inline root_atom_t *root_atom_for_idx(term_table_t *table, int32_t i) {
+  assert(good_term_idx(table, i));
+  return (root_atom_t *) table->desc[i].ptr;
+}
+
 static inline pprod_t *pprod_for_idx(term_table_t *table, int32_t i) {
   assert(good_term_idx(table, i));
   return (pprod_t *) table->desc[i].ptr;
@@ -1155,16 +1254,6 @@ static inline bool is_ite_kind(term_kind_t tag) {
 
 static inline bool is_ite_term(term_table_t *table, term_t t) {
   return is_ite_kind(term_kind(table, t));
-}
-
-
-// Check whether t is atomic
-static inline bool is_atomic_kind(term_kind_t tag) {
-  return CONSTANT_TERM <= tag && tag <= UNINTERPRETED_TERM;
-}
-
-static inline bool is_atomic_term(term_table_t *table, term_t t) {
-  return is_atomic_kind(term_kind(table, t));
 }
 
 
@@ -1299,6 +1388,11 @@ static inline term_t composite_term_arg(term_table_t *table, term_t t, uint32_t 
   return composite_term_desc(table, t)->arg[i];
 }
 
+// argument of a unary term t
+static inline term_t unary_term_arg(term_table_t *table, term_t t) {
+  return integer_value_for_idx(table, index_of(t));
+}
+
 // index of a select term t
 static inline uint32_t select_term_index(term_table_t *table, term_t t) {
   return select_term_desc(table, t)->idx;
@@ -1336,6 +1430,33 @@ static inline term_t arith_ge_arg(term_table_t *table, term_t t) {
   return integer_value_for_idx(table, index_of(t));
 }
 
+static inline root_atom_t *arith_root_atom_desc(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_ROOT_ATOM);
+  return root_atom_for_idx(table, index_of(t));
+}
+
+/*
+ * Other unary terms
+ */
+static inline term_t arith_is_int_arg(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_IS_INT_ATOM);
+  return integer_value_for_idx(table, index_of(t));
+}
+
+static inline term_t arith_floor_arg(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_FLOOR);
+  return integer_value_for_idx(table, index_of(t));
+}
+
+static inline term_t arith_ceil_arg(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_CEIL);
+  return integer_value_for_idx(table, index_of(t));
+}
+
+static inline term_t arith_abs_arg(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_ABS);
+  return integer_value_for_idx(table, index_of(t));
+}
 
 
 /*
@@ -1394,6 +1515,26 @@ static inline composite_term_t *xor_term_desc(term_table_t *table, term_t t) {
 
 static inline composite_term_t *arith_bineq_atom_desc(term_table_t *table, term_t t) {
   assert(term_kind(table, t) == ARITH_BINEQ_ATOM);
+  return composite_for_idx(table, index_of(t));
+}
+
+static inline composite_term_t *arith_rdiv_term_desc(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_RDIV);
+  return composite_for_idx(table, index_of(t));
+}
+
+static inline composite_term_t *arith_idiv_term_desc(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_IDIV);
+  return composite_for_idx(table, index_of(t));
+}
+
+static inline composite_term_t *arith_mod_term_desc(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_MOD);
+  return composite_for_idx(table, index_of(t));
+}
+
+static inline composite_term_t *arith_divides_atom_desc(term_table_t *table, term_t t) {
+  assert(term_kind(table, t) == ARITH_DIVIDES_ATOM);
   return composite_for_idx(table, index_of(t));
 }
 

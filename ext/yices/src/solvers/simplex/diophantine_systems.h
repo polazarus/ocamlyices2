@@ -200,14 +200,15 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
-#include "utils/int_vectors.h"
-#include "utils/generic_heap.h"
-#include "utils/ptr_heap.h"
-#include "utils/int_heap2.h"
-#include "terms/rationals.h"
-#include "terms/polynomials.h"
 #include "terms/poly_buffer.h"
+#include "terms/polynomials.h"
+#include "terms/rationals.h"
+#include "utils/generic_heap.h"
+#include "utils/int_heap2.h"
+#include "utils/int_vectors.h"
+#include "utils/ptr_heap.h"
 
 
 /*
@@ -282,8 +283,11 @@ typedef struct delim_vector_s {
  * - TRIVIALLY_UNSAT: a row (b == 0) was added
  * - GCD_UNSAT: a row was added that failed the GCD test
  * - SIMPLIFIED: after simplifications (row elimination)
+ * - SEARCHING: on entry to dsolver_is_feasible
  * - SOLVED_SAT: the system was solved and a solution was found
  * - SOLVED_UNSAT: the system has been solved and it's not SAT
+ * - UNSOLVED: the solver gave up (search was too expensive)
+ * - INTERRUPTED: the search was stopped
  * For all UNSAT states, then unsat_row is the internal index of a row
  * where unsatisfiability was detected. For GCD_UNSAT or TRIV_UNSAT, this is
  * the last inconsistent row added.
@@ -293,8 +297,11 @@ typedef enum dsolver_status {
   DSOLVER_TRIV_UNSAT,
   DSOLVER_GCD_UNSAT,
   DSOLVER_SIMPLIFIED,
+  DSOLVER_SEARCHING,
   DSOLVER_SOLVED_SAT,
   DSOLVER_SOLVED_UNSAT,
+  DSOLVER_UNSOLVED,
+  DSOLVER_INTERRUPTED,
 } dsolver_status_t;
 
 
@@ -334,6 +341,15 @@ typedef struct dsolver_s {
    */
   uint32_t num_reduce_ops;
   uint32_t num_process_rows;
+
+  /*
+   * Size estimates:
+   * - max_coeff_size = approximately the number of bits in
+   *   the largest coefficient of the matrix.
+   * - max_column_size = largest column
+   */
+  uint32_t max_coeff_size;
+  uint32_t max_column_size;
 
   /*
    * Status and unsat-row index
@@ -549,6 +565,7 @@ extern void dsolver_simplify(dsolver_t *solver);
 
 
 
+
 /*
  * SOLVING
  */
@@ -556,12 +573,33 @@ extern void dsolver_simplify(dsolver_t *solver);
 /*
  * Check for satisfiability of the system.
  * - the solver status must be either READY or SIMPLIFIED
- * - return true if the system has solutions, false otherwise
- * - update the status accordingly (to either SOLVED_SAT or SOLVED_UNSAT)
- * - other functions below can be used after this to get more data
+ * - returned code is the status:
+ *   DSOLVER_SOLVED_SAT if the system is satisfiable
+ *   DSOLVER_SOLVED_UNSAT if the system is unsat
+ *   DSOLVER_UNSOLVED if the search is too expensive
+ *   DSOLVER_INTERRUPTED if the call is interrupted
+ * 
+ * - if the search is not interrupted other functions below can be
+ *   used after this to get a model or an explanation of
+ *   unsatisfiability.
  */
-extern bool dsolver_is_feasible(dsolver_t *solver);
+extern dsolver_status_t dsolver_is_feasible(dsolver_t *solver);
 
+
+/*
+ * STOP THE SEARCH
+ */
+
+/*
+ * If dsolver_is_fesible was called, then this function can be called
+ * from an interrupt handler to stop it. It sets solver->status to
+ * INTERRUPTED.
+ */
+static inline void dsolver_stop_search(dsolver_t *solver) {
+  if (solver->status == DSOLVER_SEARCHING) {
+    solver->status = DSOLVER_INTERRUPTED;
+  }
+}
 
 
 /*

@@ -14,9 +14,9 @@
 #include <stddef.h>
 #include <assert.h>
 
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
 #include "solvers/cdcl/gates_hash_table.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
 
 
 
@@ -259,7 +259,7 @@ static void init_gate_htbl(gate_htbl_t *tbl) {
  * - i.e., check g == 0 or g == 1
  */
 static inline bool live_descriptor(boolgate_t *g) {
-  return ((size_t) g)>>1 != 0;
+  return ((uintptr_t) g)>>1 != 0;
 }
 
 

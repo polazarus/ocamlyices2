@@ -9,18 +9,29 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-#include "utils/string_buffers.h"
-#include "terms/rationals.h"
 #include "terms/bv_constants.h"
+#include "terms/rationals.h"
+#include "utils/memalloc.h"
+#include "utils/string_buffers.h"
 
 static string_buffer_t buffer;
 
-static void show_test(char *desc, string_buffer_t *s) {
+static void show_test(const char *desc, string_buffer_t *s) {
+  char *content;
+  uint32_t len;
+
   printf("%s\n", desc);
   string_buffer_append_char(s, '!');
   string_buffer_print(stdout, s);
   printf("\n");
   fflush(stdout);
+
+  content = string_buffer_export(s, &len);
+  printf("Exported to %s\n", content);
+  printf("len = %"PRIu32"\n", len);
+  printf("---\n");
+
+  safe_free(content);
 }
 
 static char aux[40];
@@ -30,7 +41,7 @@ static mpq_t q0;
 
 static uint32_t *bv0;
 
-int main() {
+int main(void) {
   int32_t x, y;
   uint32_t a, b, n;
   char c;

@@ -57,10 +57,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "terms/term_manager.h"
+#include "utils/int_hash_sets.h"
 #include "utils/int_queues.h"
 #include "utils/int_vectors.h"
-#include "utils/int_hash_sets.h"
-#include "terms/term_manager.h"
 
 /*
  * Data structure for flattening:
@@ -68,7 +68,7 @@
  * - manager = term manager
  * - queue = terms to visit (BFS)
  * - cache = terms already visited
- * - resu = vector of conjuntcs or disjuncts
+ * - resu = vector of conjuncts or disjuncts
  */
 typedef struct flattener_s {
   term_table_t *terms;

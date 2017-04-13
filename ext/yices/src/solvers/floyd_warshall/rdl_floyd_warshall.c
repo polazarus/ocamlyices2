@@ -14,9 +14,9 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
 #include "solvers/floyd_warshall/rdl_floyd_warshall.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
 
 
 #ifndef NDEBUG
@@ -757,7 +757,7 @@ static void rdl_graph_explain_path(rdl_graph_t *graph, int32_t x, int32_t y, ive
  * For debugging: check consistency of the matrix
  * - cell[x, x].id must be zero and cell[x, x].val must be 0
  * For all x != y:
- * - cell[x, y].id must be -1 or between 1 and number of egdes -1
+ * - cell[x, y].id must be -1 or between 1 and number of edges -1
  * - if cell[x, y].id == i and i != 1 then
  *   let u = source of edge i and v = target of edge i
  *   we must have
@@ -1202,7 +1202,7 @@ static inline void delete_rdl_astack(rdl_astack_t *stack) {
  * always be equal to decision_level + 1.
  *
  * The initial record for decision level 0 must be initialized with
- * - number of egdes = -1
+ * - number of edges = -1
  * - number of saved cells = 0
  * - number of atoms = 0
  */
@@ -3012,6 +3012,17 @@ bool rdl_value_in_model(rdl_solver_t *solver, thvar_t x, rational_t *v) {
 }
 
 
+/*
+ * Interface function: check whether x is an integer variable.
+ */
+bool rdl_var_is_integer(rdl_solver_t *solver, thvar_t x) {
+  assert(0 <= x && x < solver->vtbl.nvars);
+  return false;
+}
+
+
+
+
 
 /****************************
  *  INTERFACE DESCRIPTORS   *
@@ -3075,6 +3086,8 @@ static arith_interface_t rdl_intern = {
   (build_model_fun_t) rdl_build_model,
   (free_model_fun_t) rdl_free_model,
   (arith_val_in_model_fun_t) rdl_value_in_model,
+
+  (arith_var_is_int_fun_t) rdl_var_is_integer,
 };
 
 
