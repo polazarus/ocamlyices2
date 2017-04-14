@@ -70,7 +70,7 @@
  *   SMT2_NAMED_TERM_NOT_GROUND --> t is not a ground term
  *   SMT2_NAMED_SYMBOL_REUSED   --> xxx is already in use as a term name
  */
-enum smt2_errors {
+typedef enum smt2_errors {
   SMT2_MISSING_NAME = NUM_TSTACK_ERRORS,   // missing name in (! <term> ,,,, :name X ...)
   SMT2_MISSING_PATTERN,                    // missing p in (! <term> ... :pattern p ...)
 
@@ -100,7 +100,7 @@ enum smt2_errors {
   SMT2_SYMBOL_REDEF_FUN,                   // name not allowed in (define-fun <name> ..) or (declare-fun <name> ...)
 
   SMT2_TERM_NOT_INTEGER,                   // type error for (to_real xxx) when xxx is not an integer expression
-};
+} smt2_errors_t;
 
 
 #define NUM_SMT2_EXCEPTIONS (SMT2_TERM_NOT_INTEGER+1)
@@ -115,7 +115,7 @@ enum smt2_errors {
  * - array theory sort and functions
  * - processing of term annotations
  */
-enum smt2_opcodes {
+typedef enum smt2_opcodes {
   SMT2_EXIT = NUM_BASE_OPCODES,         // [exit]
   SMT2_SILENT_EXIT,                     // [silent-exit]
   SMT2_GET_ASSERTIONS,                  // [get-assertions]
