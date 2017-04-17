@@ -154,7 +154,7 @@ static inline FILE *fopen_write_callback(void *cookie, ssize_t (*write)(void *,
 #warning "Pretty printing not supported (missing fopencookie/funopen)"
 FILE *fopen_write_callback(UNUSED void *cookie,
     NORETURN ssize_t (*UNUSED write)(void *, const char *, size_t)) {
-    _oy_unsupported();
+    _oy_unsupported_print();
     return NULL;
 }
 
