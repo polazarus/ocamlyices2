@@ -8,7 +8,8 @@ run_test_tt_main (
   "bitsize">::(Bitsize.bitsize);
   "checkoverflow">::(Checkoverflow.checkoverflow);
   "forall">::(Forall.forall);
-  "pp">::(Pp.pp);
+  "pp">::(fun _ -> (OUnit2.skip_if (Sys.os_type = "Win32")
+          "'print' functions won't work on windows (unix-only)"; Pp.pp ()));
   "type_consistency">::(Type_consistency.type_consistency);
   "z_nocrash">::(Z_nocrash.z_nocrash);
   "z_nocrash">::(Z_nocrash.z_nocrash2);
