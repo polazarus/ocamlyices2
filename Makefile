@@ -165,6 +165,9 @@ install: build
 	$(OF_INSTALL) $(LIB_NAME) $(INSTALL_FILES)
 uninstall:
 	$(OF_REMOVE) $(LIB_NAME)
+dist: build
+	mkdir -p dist
+	cp $(INSTALL_FILES) dist
 
 
 # Clean up #####################################################################
