@@ -56,7 +56,7 @@ INSTALL_FILES       = META \
 
 ifdef HAVE_OCAMLOPT
   BUILD_FILES      += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
-  INSTALL_FILES    += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
+  INSTALL_FILES    += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE) $(CMX_FILES)
 endif
 
 ###############################################################################
