@@ -1,4 +1,4 @@
-AC_INIT(yices2,0.1.0)
+AC_INIT(yices2,0.0.2)
 AC_CONFIG_AUX_DIR([autoconf])
 m4_include([ext/yices/autoconf/m4/csl_check_libs.m4]) # for CSL_STATIC_CHECK_GMP, CSL_CHECK_STATIC_LIBPOLY, etc...
 AC_CANONICAL_HOST
