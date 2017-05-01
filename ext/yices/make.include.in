@@ -3,12 +3,10 @@
 #                                                                       #
 #  This program may only be used subject to the noncommercial end user  #
 #  license agreement which is downloadable along with this program.     #
-#########################################################################                
+#########################################################################
 
 #
-#
 # Host-dependent configuration
-# to be included in all Makefiles
 #
 
 prefix = @prefix@
@@ -26,49 +24,76 @@ infodir = @infodir@
 mandir = @mandir@
 includedir = @includedir@
 
-#
-# Variables set by configure
-# NOTE: don't include POSIXOS here
-# (the OS is determined by the top-level Makefile)
-#
-@SET_MAKE@
-EXEEXT=@EXEEXT@
-
 # tools
-SED=@SED@
-LN_S=@LN_S@
-MKDIR_P=@MKDIR_P@
-INSTALL=@INSTALL@
-EGREP=@EGREP@
+SED = @SED@
+LN_S = @LN_S@
+MKDIR_P = @MKDIR_P@
+INSTALL = @INSTALL@
+EGREP = @EGREP@
+CC = @CC@
+LD = @LD@
+AR = @AR@
+RANLIB = @RANLIB@
+GPERF = @GPERF@
+HAS_GPERF = @HAS_GPERF@
+STRIP = @STRIP@
 
 # compilation
-CC=@CC@
-CFLAGS=@CFLAGS@
-CPPFLAGS=@CPPFLAGS@
-LIBS=@LIBS@
-LDFLAGS=@LDFLAGS@
-LD=@LD@
-AR=@AR@
-RANLIB=@RANLIB@
-GPERF=@GPERF@
-STRIP=@STRIP@
-NO_STACK_PROTECTOR=@NO_STACK_PROTECTOR@
+CFLAGS = @CFLAGS@
+CPPFLAGS = @CPPFLAGS@
+STATIC_CPPFLAGS = @STATIC_CPPFLAGS@
+SHARED_CPPFLAGS = @SHARED_CPPFLAGS@
+LIBS = @LIBS@
+LDFLAGS = @LDFLAGS@
+STATIC_LIBS = @STATIC_LIBS@
+SHARED_LIBS = @SHARED_LIBS@
+
+NO_STACK_PROTECTOR = @NO_STACK_PROTECTOR@
+
+# Variables set by libtool
+top_builddir = @top_builddir@
+LIBTOOL = @LIBTOOL@
+host_os = @host_os@ # darwin16.5.0
+host_vendor = @host_vendor@ # apple
+host_cpu = @host_cpu@ #x86_64
+host = @host@ #x86_64-apple-darwin16.5.0
+build_os = @build_os@ #darwin16.5.0
+build_vendor = @build_vendor@ #apple
+build_cpu = @build_cpu@ #x86_64
+build = @build@ #x86_64-apple-darwin16.5.0
 
 # GMP libaries
-STATIC_GMP=@STATIC_GMP@
-STATIC_GMP_INCLUDE_DIR=@STATIC_GMP_INCLUDE_DIR@
+STATIC_GMP = @STATIC_GMP@
+STATIC_GMP_INCLUDE_DIR = @STATIC_GMP_INCLUDE_DIR@
+STATIC_GMP_LIB_DIR = @STATIC_GMP_LIB_DIR@
+STATIC_GMP_HAS_PIC = @STATIC_GMP_HAS_PIC@
+HAS_STATIC_GMP = @HAS_STATIC_GMP@
+HAS_SHARED_GMP = @HAS_SHARED_GMP@
 
-PIC_GMP=@PIC_GMP@
-PIC_GMP_INCLUDE_DIR=@PIC_GMP_INCLUDE_DIR@
+libyices_a = @libyices_a@
+
+enable_shared = @enable_shared@
+enable_static = @enable_static@
+
+YICES_MODE = @YICES_MODE@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+EXEEXT = @EXEEXT@
+
+PIC_GMP = @PIC_GMP@
+PIC_GMP_INCLUDE_DIR = @PIC_GMP_INCLUDE_DIR@
 
 # MCSAT support and libpoly
-ENABLE_MCSAT=@ENABLE_MCSAT@
+ENABLE_MCSAT = @ENABLE_MCSAT@
 
-STATIC_LIBPOLY=@STATIC_LIBPOLY@
-STATIC_LIBPOLY_INCLUDE_DIR=@STATIC_LIBPOLY_INCLUDE_DIR@
+STATIC_LIBPOLY = @STATIC_LIBPOLY@
+STATIC_LIBPOLY_INCLUDE_DIR = @STATIC_LIBPOLY_INCLUDE_DIR@
 
-PIC_LIBPOLY=@PIC_LIBPOLY@
-PIC_LIBPOLY_INCLUDE_DIR=@PIC_LIBPOLY_INCLUDE_DIR@
+PIC_LIBPOLY = @PIC_LIBPOLY@
+PIC_LIBPOLY_INCLUDE_DIR = @PIC_LIBPOLY_INCLUDE_DIR@
 
-
-
+MAJOR = @MAJOR@
+MINOR = @MINOR@
+PATCH_LEVEL = @PATCH_LEVEL@
+PACKAGE_VERSION = @PACKAGE_VERSION@
