@@ -4,10 +4,10 @@ all: yices
 
 yices: libyices.a yices.h
 
-yices/configs:
-	cd yices; ./configure --prefix=$(realpath .)
-libyices.a: $(GPERF) yices/configs
-	$(MAKE) -C yices lib; cp yices/build/*/lib/libyices.a ./
+yices/make.include:
+	cd yices && ./configure --prefix=$(realpath .)
+libyices.a: yices/make.include
+	$(MAKE) lib -j -C yices; cp yices/build/*/lib/libyices.a ./
 
 yices.h:
 	cp yices/src/include/* ./
