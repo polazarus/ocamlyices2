@@ -23,9 +23,6 @@ AS_IF([test "x$HAVE_FUNOPEN$HAVE_FOPENCOOKIE" = x], [
   AC_MSG_WARN(Your system support funopen or fopencookie: print functions not supported!)
 ])
 
-AC_CHECK_PROG([GPERF], [gperf], [gperf])
-AS_IF([test "x$GPERF" = x], AC_MSG_NOTICE('gperf' will be downloaded and compiled.))
-
 AC_CHECK_PROG([OCAMLFIND], [ocamlfind], [ocamlfind])
 AS_IF([test "x$OCAMLFIND" = x], AC_MSG_ERROR(Cannot find ocamlfind.))
 
