@@ -5,24 +5,33 @@ environment:
   CYG_MIRROR: http://cygwin.mirror.constant.com
   CYG_CACHE: c:\ocaml32\var\cache\setup
   CYG_BASH: c:\ocaml32\bin\bash
-  CYG_SETUP: setup-x86.exe
+  CYG_SETUP: C:\cygwin\setup-x86.exe
 
 # Build cache to preserve files/folders between builds (saves time)
 cache:
   - '%CYG_CACHE% -> appveyor.yml'
   - '%CYG_ROOT%\home\appveyor\.opam -> appveyor.yml'
 
+
 # Scripts that run after cloning repository. "ps:" means windows PowerShell
 install:
   # First, install cygwin + opam + gmp
-  - ps: 'Invoke-WebRequest http://cygwin.com/$env:CYG_SETUP -OutFile "$env:CYG_SETUP"'
-  - '%CYG_SETUP% --quiet-mode --no-shortcuts --only-site --root "%CYG_ROOT%" --site "%CYG_MIRROR%" --local-package-dir "%CYG_CACHE%" --packages rsync,patch,diffutils,curl,make,unzip,git,m4,perl,mingw64-i686-gcc-core --upgrade-also'
-  - '%CYG_BASH% -lc "curl -O https://dl.dropboxusercontent.com/s/eo4igttab8ipyle/opam32.tar.xz"'
-  - '%CYG_BASH% -lc "tar -xf opam32.tar.xz"'
-  - '%CYG_BASH% -lc "bash opam32/install.sh"'
-  - '%CYG_BASH% -lc "opam init -y -a mingw https://github.com/fdopen/opam-repository-mingw.git --comp 4.02.3+mingw32c --switch 4.02.3+mingw32c"'
-  # Then, install things using opam
-  - '%CYG_BASH% -lc "opam install -y ocamlfind zarith ounit"'
+  - '%CYG_SETUP% --quiet-mode --no-shortcuts --only-site --root "%CYG_ROOT%" --site "%CYG_MIRROR%" --local-package-dir "%CYG_CACHE%" --packages rsync,patch,diffutils,curl,make,unzip,git,m4,perl,mingw64-i686-gcc-core,gperf,zip,gnupg,coreutils --upgrade-also'
 
 build_script:
-  - '%CYG_BASH% -lc "cd /cygdrive/c/oy && bash -ex .travis-script.sh"'
+  - '%CYG_BASH% -lc "cd /cygdrive/c/oy && bash -ex appveyor-script.sh"'
+
+artifacts:
+  - path: ocamlyices2-*.tar.gz*
+
+skip_tags: false
+
+deploy: # Deploy to GitHub Releases
+  - provider: GitHub
+    auth_token:
+      secure: "ksCdtElKaNg37pjDiMEV8bcjL/kTrAqAb7b2Lrrj304L/P2hwyxm/G+rC+qGTgKs"
+    artifact: /ocamlyices2-.*\.tar\.gz.*/
+    #draft: true
+    #prerelease: true
+    on:
+      appveyor_repo_tag: true
