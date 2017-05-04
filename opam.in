@@ -5,7 +5,7 @@ maintainer: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
 authors: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
 homepage: "http://micdel.fr/ocamlyices2.html"
 bug-reports: "https://github.com/polazarus/ocamlyices2/issues"
-dev-repo: "https://github.com/polazarus/ocamlyices2.git"
+dev-repo: "https://github.com/maelvalais/ocamlyices2.git"
 license: "ISC license and non-commercial use"
 build: [
   ["./configure" "--prefix=%{prefix}%"]
@@ -26,5 +26,5 @@ depends: [
 post-messages: [
   "OCamlYices2 is free (BSD-like) but Yices is not!
 **Yices is free [only] for non-commercial use**
-License terms: http://yices.csl.sri.com/yices-newnewlicense.shtml" {success}
+License terms: http://yices.csl.sri.com/yices-newnewlicense.html" {success}
 ]
