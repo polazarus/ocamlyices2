@@ -9,10 +9,10 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
-#include "utils/memalloc.h"
-#include "terms/bv_constants.h"
 #include "terms/bit_expr.h"
+#include "terms/bv_constants.h"
 #include "terms/bvlogic_buffers.h"
+#include "utils/memalloc.h"
 
 
 
@@ -21,13 +21,13 @@ static bvlogic_buffer_t buffer;
 
 
 // Initialization
-static void init() {
+static void init(void) {
   init_node_table(&nodes, 10);
   init_bvlogic_buffer(&buffer, &nodes);
 }
 
 
-static void cleanup() {
+static void cleanup(void) {
   delete_bvlogic_buffer(&buffer);
   delete_node_table(&nodes);
 }
@@ -44,7 +44,7 @@ static void print_bit(bit_t b) {
   }
 }
 
-static void print_buffer() {
+static void print_buffer(void) {
   uint32_t i, n;
 
   printf("bvlogic buffer %p\n", &buffer);
@@ -59,7 +59,7 @@ static void print_buffer() {
   }
 }
 
-int main() {
+int main(void) {
   uint32_t c[2];
   uint64_t tst;
 

@@ -34,27 +34,23 @@
 #include <stdint.h>
 #include <setjmp.h>
 
-#include "utils/int_vectors.h"
-#include "terms/bvpoly_buffers.h"
-#include "terms/power_products.h"
-#include "solvers/bv/remap_table.h"
+#include "context/context_types.h"
 #include "solvers/bv/bit_blaster.h"
-#include "solvers/bv/merge_table.h"
-#include "solvers/egraph/egraph_assertion_queues.h"
-#include "utils/cache.h"
-
-#include "solvers/bv/bv_vartable.h"
 #include "solvers/bv/bv_atomtable.h"
 #include "solvers/bv/bv_intervals.h"
+#include "solvers/bv/bv_vartable.h"
 #include "solvers/bv/bvconst_hmap.h"
 #include "solvers/bv/bvexp_table.h"
 #include "solvers/bv/bvpoly_compiler.h"
-
+#include "solvers/bv/merge_table.h"
+#include "solvers/bv/remap_table.h"
 #include "solvers/cdcl/smt_core.h"
 #include "solvers/egraph/egraph.h"
-#include "context/context.h"
-
-
+#include "solvers/egraph/egraph_assertion_queues.h"
+#include "terms/bvpoly_buffers.h"
+#include "terms/power_products.h"
+#include "utils/cache.h"
+#include "utils/int_vectors.h"
 
 
 
@@ -163,11 +159,15 @@ typedef struct bv_interval_stack_s {
  * means that x has a pseudo map attached, and this pseudo
  * map must be preserved by bv_solver_pop.
  *
- * Another queue stores the variables 'x' that were created at some level
- * k but were bit-blasted at a later stage (at level k' > k).
- * When we backtrack from level k', we must cleanup the array of literals
- * attached to x in the variable table, unless 'x' is also in the
- * select queue for this level.
+ * We use two more queues for variables 'x' created at some level k, but
+ * get processed at a later stage (at level k' > k). We keep track
+ * of two operations on x:
+ * - assigning a pseudo map to x 
+ * - bitblasting x.
+ * If a pseudo map is assigned to x at level k', we must cleanup this
+ * literal array when backtracking from k'.
+ * If x is bitblasted at level k', we must clear the 'bitblasted' mark
+ * of x when backtracking from level k'.
  */
 typedef struct bv_queue_s {
   thvar_t *data;
@@ -188,7 +188,7 @@ typedef struct bv_queue_s {
 /*
  * For every push, we keep track of the number of variables and atoms
  * on entry to the new base level, the size of the bound queue, and
- * the size of the queue of select vars and delayed bitblasting + the
+ * the size of the queue of select vars and delayed mapped/bitblasting vars, the
  * number of bitblasted atoms.
  */
 typedef struct bv_trail_s {
@@ -196,7 +196,8 @@ typedef struct bv_trail_s {
   uint32_t natoms;
   uint32_t nbounds;
   uint32_t nselects;
-  uint32_t ndelayed;
+  uint32_t ndelayed_mapped;
+  uint32_t ndelayed_blasted;
   uint32_t nbblasted;
 } bv_trail_t;
 
@@ -335,13 +336,13 @@ typedef struct bv_solver_s {
    * Queues of select and delayed variables
    */
   bv_queue_t select_queue;
-  bv_queue_t delayed_queue;
+  bv_queue_t delayed_mapped;
+  bv_queue_t delayed_blasted;
 
   /*
    * Push/pop stack
    */
   bv_trail_stack_t trail_stack;
-
 
   /*
    * Auxiliary buffers for internalization and simplification

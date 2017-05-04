@@ -6,7 +6,7 @@
  */
 
 /*
- * BINRARY HEAP OF INTEGERS
+ * BINARY HEAP OF INTEGERS
  * - stores a set of integers, all in range [0 ... n]
  * - the ordering is defined by a function provided when
  *   the heap is constructed
@@ -14,8 +14,8 @@
 
 #include <assert.h>
 
-#include "utils/memalloc.h"
 #include "utils/generic_heap.h"
+#include "utils/memalloc.h"
 
 
 /*

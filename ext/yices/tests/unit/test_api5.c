@@ -22,14 +22,14 @@
 #include <stdlib.h>
 #include <gmp.h>
 
-#include "utils/memalloc.h"
+#include "api/yices_globals.h"
+#include "io/term_printer.h"
+#include "io/type_printer.h"
 #include "utils/bitvectors.h"
 #include "utils/int_vectors.h"
+#include "utils/memalloc.h"
 
 #include "yices.h"
-#include "api/yices_globals.h"
-#include "io/type_printer.h"
-#include "io/term_printer.h"
 
 
 
@@ -682,5 +682,7 @@ int main(void) {
 
   yices_exit();
 
+  printf("All tests succeeded\n");
+  
   return 0;
 }

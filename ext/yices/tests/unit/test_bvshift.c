@@ -16,8 +16,8 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "solvers/cdcl/smt_core.h"
 #include "solvers/bv/bit_blaster.h"
+#include "solvers/cdcl/smt_core.h"
 #include "solvers/cdcl/smt_core_printer.h"
 
 
@@ -822,7 +822,7 @@ static void all_bvashr_tests(void) {
 
 
 
-int main() {
+int main(void) {
   all_bvshl_tests();
   all_bvlshr_tests();
   all_bvashr_tests();

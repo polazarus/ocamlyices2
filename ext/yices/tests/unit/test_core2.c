@@ -17,12 +17,11 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "utils/cputime.h"
-#include "utils/memsize.h"
-#include "utils/memalloc.h"
-#include "utils/int_vectors.h"
-
 #include "solvers/cdcl/smt_core.h"
+#include "utils/cputime.h"
+#include "utils/int_vectors.h"
+#include "utils/memalloc.h"
+#include "utils/memsize.h"
 
 
 
@@ -43,10 +42,14 @@ static fcheck_code_t null_final_check(void *t) {
   return FCHECK_SAT;
 }
 
+static bool empty_propagate(void *t) {
+  return true;
+}
+
 static th_ctrl_interface_t null_theory_ctrl = {
   do_nothing,       // start_internalization
   do_nothing,       // start_search
-  NULL,             // propagate
+  empty_propagate,  // propagate
   null_final_check, // final_check
   do_nothing,       // increase_dlevel
   null_backtrack,   // backtrack
@@ -580,7 +583,7 @@ static void handler(int signum) {
  * SIGINT, SIGABRT, SIGALRM, SIGXCPU
  * (the latter two don't exist on mingw)
  */
-static void init_handler() {
+static void init_handler(void) {
   signal(SIGINT, handler);
   signal(SIGABRT, handler);
 #ifndef MINGW

@@ -20,6 +20,7 @@
  * and set the configuration.
  *
  * A configuration object includes:
+ * - solver_type: either "mcsat" or "dpplt"
  * - logic: which logic to support
  * - mode: which set of operations the context supports
  * - uf_solver: whether to use the Egraph or not
@@ -35,7 +36,7 @@
 #include <stdint.h>
 
 #include "api/smt_logic_codes.h"
-#include "context/context.h"
+#include "context/context_types.h"
 
 
 
@@ -52,7 +53,7 @@
  *    ARITH_NIA
  *    ARITH_NIRA
  *
- * The possible modes are defined in context.h:
+ * The possible modes are defined in context_types.h:
  *    CTX_MODE_ONECHECK
  *    CTX_MODE_MULTICHECKS
  *    CTX_MODE_PUSHPOP
@@ -85,13 +86,14 @@ typedef enum solver_code {
  * Configuration descriptor
  */
 struct ctx_config_s {
-  context_mode_t    mode;
-  smt_logic_t       logic;
-  solver_code_t     uf_config;
-  solver_code_t     array_config;
-  solver_code_t     bv_config;
-  solver_code_t     arith_config;
-  arith_fragment_t  arith_fragment;
+  context_mode_t        mode;
+  context_solver_type_t solver_type;
+  smt_logic_t           logic;
+  solver_code_t         uf_config;
+  solver_code_t         array_config;
+  solver_code_t         bv_config;
+  solver_code_t         arith_config;
+  arith_fragment_t      arith_fragment;
 };
 
 
@@ -188,7 +190,7 @@ extern int32_t decode_config(const ctx_config_t *config, smt_logic_t *logic, con
  *
  * Function arch_for_logic returns -1 if we don't support the logic.
  * For IDL and RDL, arch_for_logic returns CTX_ARCH_SPLX (because the
- * alternaive solvers IFW and RFW don't support push and pop).
+ * alternative solvers IFW and RFW don't support push and pop).
  */
 extern int32_t arch_for_logic(smt_logic_t code);
 
@@ -202,6 +204,10 @@ static inline bool logic_is_supported(smt_logic_t code) {
   return arch_for_logic(code) >= 0;
 }
 
+/*
+ * Variant for MCSAT
+ */
+extern bool logic_is_supported_by_mcsat(smt_logic_t code);
 
 
 #endif /* __CONTEXT_CONFIG_H */

@@ -17,10 +17,10 @@
 #ifndef __YICES_EXTENSIONS_H
 #define __YICES_EXTENSIONS_H
 
-#include "utils/int_array_hsets.h"
-#include "terms/terms.h"
+#include "context/context_types.h"
 #include "terms/bvlogic_buffers.h"
-#include "context/context.h"
+#include "terms/terms.h"
+#include "utils/int_array_hsets.h"
 
 
 /*
@@ -392,7 +392,7 @@ extern bool yices_check_bvlogic_buffer(bvlogic_buffer_t *b);
  *
  * In all cases, the function set the error report and
  * return false if there's an overflow:
- *   code = DEGREE_OVEFLOW
+ *   code = DEGREE_OVERFLOW
  *   badval = degree of the product
  *
  * All return true if there's no overflow.
@@ -466,7 +466,7 @@ extern harray_t *yices_free_vars_of_term(term_t t);
 
 
 /*
- * CONTEXT INITILIZATION
+ * CONTEXT INITIALIZATION
  */
 
 /*
@@ -490,17 +490,10 @@ extern context_t *yices_create_context(smt_logic_t logic, context_arch_t arch, c
 
 
 /*
- * Set default search parameters for the given architecture and logic.
- * - this is based on benchmarking on the SMT-LIB 1.2 benchmarks (cf. yices_smtcomp.c)
+ * Set default search parameters for the given architecture, logic, and mode.
+ * - this is based on benchmarking on the SMT-LIB benchmarks.
  */
-extern void yices_set_default_params(param_t *params, smt_logic_t logic, context_arch_t arch);
-
-
-/*
- * Set default search parameters for ctx
- */
-extern void yices_default_params_for_context(context_t *ctx, param_t *params);
-
+extern void yices_set_default_params(param_t *params, smt_logic_t logic, context_arch_t arch, context_mode_t mode);
 
 
 /*
@@ -508,6 +501,16 @@ extern void yices_default_params_for_context(context_t *ctx, param_t *params);
  * - keep_subst = whether to support alias_map (cf. models.h)
  */
 extern model_t *yices_new_model(bool keep_subst);
+
+
+/*
+ * Convert an internalization error code to a yices error
+ * - code = negative code returned by direct call to assert_formula
+ *   or assert_formulas
+ * - this function stores an equivalent error code in the global
+ *   error_code data structure.
+ */
+extern void yices_internalization_error(int32_t code);
 
 
 /*

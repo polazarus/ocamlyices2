@@ -10,10 +10,10 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "terms/types.h"
 #include "io/type_printer.h"
-#include "utils/refcount_strings.h"
 #include "io/yices_pp.h"
+#include "terms/types.h"
+#include "utils/refcount_strings.h"
 
 /*
  * Short cuts
@@ -152,10 +152,7 @@ static void print_symbol_table(FILE *f, stbl_t *table, uint32_t level) {
 }
 
 
-
-
-
-int main() {
+int main(void) {
   type_t bv10, bv32, i, any, enumtype, ft, unit, tt;
   type_t unit2, finite_fun;
   type_t var1, var2, fvar1, tvar;

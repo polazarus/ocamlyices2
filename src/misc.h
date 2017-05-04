@@ -54,8 +54,8 @@ static inline NORETURN void _oy_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
 
-static inline NORETURN void _oy_unsupported() {
-  caml_failwith("Unsupported operation");
+static inline NORETURN void _oy_unsupported_print() {
+  caml_failwith("Unsupported 'print' function for this build of libyices.a");
 }
 
 static inline NORETURN void _oy_invalid_array_sizes() {

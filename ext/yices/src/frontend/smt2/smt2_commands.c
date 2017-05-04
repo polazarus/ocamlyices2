@@ -1,5 +1,5 @@
 /*
- * The Yices SMT Solver. Copyright 2014 SRI International.
+ * The Yices SMT Solver. Copyright 2015 SRI International.
  *
  * This program may only be used subject to the noncommercial end user
  * license agreement which is downloadable along with this program.
@@ -25,50 +25,64 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "utils/refcount_strings.h"
-#include "frontend/smt2/attribute_values.h"
-#include "api/smt_logic_codes.h"
-#include "frontend/smt2/smt2_lexer.h"
-#include "frontend/smt2/smt2_commands.h"
-#include "frontend/smt2/smt2_printer.h"
-#include "frontend/smt2/smt2_model_printer.h"
-#include "model/model_eval.h"
-
-// for statistics
-#include "solvers/funs/fun_solver.h"
-#include "solvers/simplex/simplex.h"
-#include "solvers/bv/bvsolver.h"
-#include "solvers/floyd_warshall/idl_floyd_warshall.h"
-#include "solvers/floyd_warshall/rdl_floyd_warshall.h"
-#include "context/context.h"
-#include "utils/cputime.h"
-#include "utils/memsize.h"
-
-// for direct context configuration
 #include "api/context_config.h"
+#include "api/smt_logic_codes.h"
+#include "api/yices_extensions.h"
+#include "api/yices_globals.h"
+#include "context/context.h"
+#include "frontend/common.h"
+#include "frontend/smt2/attribute_values.h"
+#include "frontend/smt2/smt2_commands.h"
+#include "frontend/smt2/smt2_lexer.h"
+#include "frontend/smt2/smt2_model_printer.h"
+#include "frontend/smt2/smt2_printer.h"
+#include "model/model_eval.h"
+#include "model/projection.h"
+#include "utils/refcount_strings.h"
+
+#include "utils/timeout.h"
+#include "mcsat/options.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
-#include "api/yices_extensions.h"
-#include "api/yices_globals.h"
+
+// for statistics
+#include "solvers/bv/bvsolver.h"
+#include "solvers/floyd_warshall/idl_floyd_warshall.h"
+#include "solvers/floyd_warshall/rdl_floyd_warshall.h"
+#include "solvers/funs/fun_solver.h"
+#include "solvers/simplex/simplex.h"
+#include "utils/cputime.h"
+#include "utils/memsize.h"
 
 
-//// PROVISIONAL
 
+/*
+ * Parameters for preprocessing and simplifications
+ * - these parameters are stored in the context but
+ *   we want to keep a copy when the exists forall solver is used (since then
+ *   context is NULL).
+ */
+static ctx_param_t ctx_parameters;
+
+
+/*
+ * DUMP CONTEXT: FOR TESTING/DEBUGGING
+ */
 #define DUMP_CTX 0
 
 #if DUMP_CTX
 
-#include "term_printer.h"
-#include "type_printer.h"
-#include "idl_fw_printer.h"
-#include "rdl_fw_printer.h"
-#include "simplex_printer.h"
-#include "bvsolver_printer.h"
-#include "egraph_printer.h"
-#include "smt_core_printer.h"
-#include "context_printer.h"
-#include "gates_printer.h"
+#include "io/term_printer.h"
+#include "io/type_printer.h"
+#include "solvers/floyd_warshall/idl_fw_printer.h"
+#include "solvers/floyd_warshall/rdl_fw_printer.h"
+#include "solvers/simplex/simplex_printer.h"
+#include "solvers/bv/bvsolver_printer.h"
+#include "solvers/egraph/egraph_printer.h"
+#include "solvers/cdcl/smt_core_printer.h"
+#include "solvers/cdcl/gates_printer.h"
+#include "context/context_printer.h"
 
 
 /*
@@ -212,7 +226,84 @@ static void dump(const char *filename, context_t *ctx) {
 
 #endif
 
-////
+
+/*
+ * FOR TESTING: BITBLAST THEN EXPORT TO DIMACS
+ */
+
+#define EXPORT_TO_DIMACS 0
+
+#if EXPORT_TO_DIMACS
+
+#include "solvers/bv/dimacs_printer.h"
+
+/*
+ * Export ctx content in DIMACS format
+ * - s = file name
+ */
+static void do_export(context_t *ctx, const char *s) {
+  FILE *f;
+
+  f = fopen(s, "w");
+  if (f == NULL) {
+    perror(s);
+    exit(YICES_EXIT_SYSTEM_ERROR);
+  } else {
+    dimacs_print_bvcontext(f, ctx);
+    fclose(f);
+  }
+}
+
+/*
+ * Force bitblasting then export
+ * - s = filename
+ * - ctx's status must be IDLE when this is called
+ */
+static void bitblast_then_export(context_t *ctx, const char *s) {
+  smt_status_t stat;
+
+  assert(context_status(ctx) == STATUS_IDLE);
+  stat = precheck_context(ctx);
+  switch (stat) {
+  case STATUS_UNKNOWN:
+  case STATUS_UNSAT:
+    do_export(ctx, s);
+    break;
+
+  case STATUS_INTERRUPTED:
+    fprintf(stderr, "Export to dimacs interrupted\n");
+    break;
+
+  default:
+    fprintf(stderr, "Unexpected context status after pre-check\n");
+    break;
+  }
+}
+
+
+
+/*
+ * Export the delayed assertions
+ * - ctx = context
+ * - a = array of n formulas (the assertions)
+ * - s = filename
+ */
+static int32_t export_delayed_assertions(context_t *ctx, uint32_t n, term_t *a, const char *s) {
+  int32_t code;
+
+  code = CTX_OPERATION_NOT_SUPPORTED;
+  if (ctx->logic == QF_BV && ctx->mode == CTX_MODE_ONECHECK) {
+    code = yices_assert_formulas(ctx, n, a);
+    if (code == 0) {
+      bitblast_then_export(ctx, s);
+    }
+  }
+  return code;
+}
+
+
+
+#endif
 
 
 
@@ -616,13 +707,13 @@ static void init_cmd_stats(smt2_cmd_stats_t *stats) {
  * REQUIRED INFO
  */
 static const char *yices_name = "Yices";
-static const char *yices_authors = "Bruno Dutertre";
+static const char *yices_authors = "Bruno Dutertre, Dejan Jovanović";
 static const char *error_behavior = "immediate-exit";
 
 /*
  * GLOBAL OBJECTS
  */
-static bool done;    // set to true on exit
+static bool done;         // set to true on exit
 static attr_vtbl_t avtbl; // attribute values
 
 
@@ -631,6 +722,7 @@ smt2_globals_t __smt2_globals;
 
 // search parameters
 static param_t parameters;
+
 
 
 /*
@@ -649,27 +741,6 @@ static void __attribute__((noreturn)) failed_output(void) {
 
   exit(YICES_EXIT_SYSTEM_ERROR);
 }
-
-
-/*
- * bug report
- */
-static void __attribute__((noreturn)) report_bug(FILE *f) {
-  fprintf(f, "\n*************************************************************\n");
-  fprintf(f, "Please report this bug to yices-bugs@csl.sri.com.\n");
-  fprintf(f, "To help us diagnose this problem, please include the\n"
-                  "following information in your bug report:\n\n");
-  fprintf(f, "  Yices version: %s\n", yices_version);
-  fprintf(f, "  Build date: %s\n", yices_build_date);
-  fprintf(f, "  Platform: %s (%s)\n", yices_build_arch, yices_build_mode);
-  fprintf(f, "\n");
-  fprintf(f, "Thank you for your help.\n");
-  fprintf(f, "*************************************************************\n\n");
-  fflush(f);
-
-  exit(YICES_EXIT_INTERNAL_ERROR);
-}
-
 
 
 /*
@@ -722,7 +793,7 @@ static void report_success(void) {
  * - SMT2 wants errors to be printed as
  *        (error "explanation")
  *   on the current output channel
- * - start_error(l, c) prints '(error "at line x, column y: '
+ * - start_error(l, c) prints '(error "at line l, column c: '
  * - open_error() prints '(error "
  * - close_error() prints '")' and a newline then flush the output channel
  */
@@ -939,6 +1010,18 @@ static void print_yices_error(bool full) {
     unsupported_construct("quantifiers are");
     break;
 
+  case CTX_SCALAR_NOT_SUPPORTED:
+    unsupported_construct("scalar types are");
+    break;
+
+  case CTX_TUPLE_NOT_SUPPORTED:
+    unsupported_construct("tuples are");
+    break;
+
+  case CTX_UTYPE_NOT_SUPPORTED:
+    unsupported_construct("uninterpreted sorts are");
+    break;
+
   case CTX_NONLINEAR_ARITH_NOT_SUPPORTED:
     unsupported_construct("non-linear arithmetic is");
     break;
@@ -952,7 +1035,7 @@ static void print_yices_error(bool full) {
     break;
 
   case CTX_TOO_MANY_ARITH_VARS:
-    print_out("too many variables for the arithemtic solver");
+    print_out("too many variables for the arithmetic solver");
     break;
 
   case CTX_TOO_MANY_ARITH_ATOMS:
@@ -993,6 +1076,10 @@ static void print_yices_error(bool full) {
     print_out("can't evaluate term value");
     break;
 
+  case MCSAT_ERROR_UNSUPPORTED_THEORY:
+    print_out("mcsat: unsupported theory");
+    break;
+
   case OUTPUT_ERROR:
     print_out(" IO error");
     break;
@@ -1000,12 +1087,102 @@ static void print_yices_error(bool full) {
   default:
     print_out("BUG detected");
     if (full) close_error();
-    report_bug(__smt2_globals.err);
+    freport_bug(__smt2_globals.err, "smt2_commands");
     break;
   }
 
   if (full) close_error();
 }
+
+
+/*
+ * Print an internalization error code
+ */
+static void print_internalization_error(int32_t code) {
+  assert(-NUM_INTERNALIZATION_ERRORS < code && code < 0);
+  code = - code;
+  print_error(code2error[code]);
+}
+
+/*
+ * Print the error code returned by ef_analyze
+ */
+static void print_ef_analyze_error(ef_code_t code, FILE *err) {
+  assert(code != EF_NO_ERROR);
+  print_error(efcode2error[code]);
+}
+
+
+/*
+ * Print the efsolver status
+ */
+static void print_ef_status(ef_client_t *efc, uint32_t verbosity, FILE *err) {
+  ef_status_t stat;
+  int32_t error;
+  ef_solver_t *efsolver;
+
+  efsolver = efc->efsolver;
+
+  assert(efsolver != NULL && efc->efdone);
+
+  if (verbosity > 0) {
+    printf("exist forall solver: %"PRIu32" iterations\n", efsolver->iters);
+  }
+
+  stat = efsolver->status;
+  error = efsolver->error_code;
+
+  switch (stat) {
+  case EF_STATUS_SAT:
+  case EF_STATUS_UNKNOWN:
+  case EF_STATUS_UNSAT:
+  case EF_STATUS_INTERRUPTED:
+    fputs(ef_status2string[stat], stdout);
+    fputc('\n', stdout);
+    if (verbosity > 0) {
+      if (stat == EF_STATUS_SAT) {
+        print_ef_solution(stdout, efsolver);
+        fputc('\n', stdout);
+      }
+    }
+    fflush(stdout);
+    break;
+
+  case EF_STATUS_SUBST_ERROR:
+    if (error == -1) {
+      print_error("exist forall solver failed: degree overflow in substitution");
+    } else {
+      assert(error == -2);
+      freport_bug(err, "exist forall solver failed: substitution error");
+    }
+    break;
+
+  case EF_STATUS_ASSERT_ERROR:
+    assert(error < 0);
+    print_internalization_error(error);
+    break;
+
+  case EF_STATUS_PROJECTION_ERROR:
+    if (error == PROJ_ERROR_NON_LINEAR) {
+      print_error("exists forall solver failed: non-linear arithmetic is not supported");
+    } else {
+      freport_bug(err, "exists forall solver failed: projection error");
+    }
+    break;
+
+  case EF_STATUS_MDL_ERROR:
+  case EF_STATUS_IMPLICANT_ERROR:    
+  case EF_STATUS_TVAL_ERROR:
+  case EF_STATUS_CHECK_ERROR:
+  case EF_STATUS_ERROR:
+  case EF_STATUS_IDLE:
+  case EF_STATUS_SEARCHING:
+    freport_bug(err, "exists forall solver failed: unexpected status: %s\n", ef_status2string[stat]);
+    break;
+
+  }
+}
+
 
 
 
@@ -1075,6 +1252,7 @@ static const char * const exception_string[NUM_SMT2_EXCEPTIONS] = {
   "invalid :named attribute (name is already used)",  // SMT2_NAMED_SYMBOL_REUSED
   NULL,                                 // SMT2_SYMBOL_REDEF_SORT
   NULL,                                 // SMT2_SYMBOL_REDEF_FUN
+  NULL,                                 // SMT2_TERM_NOT_INTEGER
 };
 
 
@@ -1166,6 +1344,9 @@ static const char * const opcode_string[NUM_SMT2_OPCODES] = {
   "bvsgt",                // MK_BV_SGT
   "bvsle",                // MK_BV_SLE
   "bvslt",                // MK_BV_SLT
+  NULL,                   // MK_BOOL_TO_BV
+  NULL,                   // MK_BIT
+
   "build term",           // BUILD_TERM
   "build_type",           // BUILD_TYPE
   //
@@ -1206,11 +1387,12 @@ static const char * const opcode_string[NUM_SMT2_OPCODES] = {
   "function application", // SMT2_INDEXED_APPLY
   "sort qualifier",       // SMT2_SORTED_APPLY
   "sort qualifier",       // SMT2_SORTED_INDEXED_APPLY
-  // operations not supported
+
+  // more arithmetic stuff
+  "to_real",              // SMT2_MK_TO_REAL
   "div",                  // SMT2_MK_DIV
   "mod",                  // SMT2_MK_MOD
   "abs",                  // SMT2_MK_ABS
-  "to_real",              // SMT2_MK_TO_REAL
   "to_int",               // SMT2_MK_TO_INT
   "is_int",               // SMT2_MK_IS_INT
   "divisible",            // SMT2_MK_DIVISIBLE
@@ -1327,7 +1509,14 @@ void smt2_tstack_error(tstack_t *tstack, int32_t exception) {
   case SMT2_MISSING_PATTERN:
   case SMT2_TYPE_ERROR_IN_QUAL:
   case SMT2_QUAL_NOT_IMPLEMENTED:
+  case SMT2_INVALID_IDX_BV:
+  case SMT2_NAMED_TERM_NOT_GROUND:
+  case SMT2_NAMED_SYMBOL_REUSED:
     print_out("%s", exception_string[exception]);
+    break;
+
+  case SMT2_TERM_NOT_INTEGER:
+    print_out("invalid argument in %s: not an integer",  opcode_string[tstack->error_op]);    
     break;
 
   case TSTACK_STRINGS_ARE_NOT_TERMS:
@@ -1335,15 +1524,9 @@ void smt2_tstack_error(tstack_t *tstack, int32_t exception) {
     break;
 
   case TSTACK_YICES_ERROR:
-    // TODO: extract mode information from yices_error_report();
+    // TODO: extract more information from yices_error_report();
     print_out("in %s: ", opcode_string[tstack->error_op]);
     print_yices_error(false);
-    break;
-
-  case SMT2_INVALID_IDX_BV:
-  case SMT2_NAMED_TERM_NOT_GROUND:
-  case SMT2_NAMED_SYMBOL_REUSED:
-    print_out("%s", exception_string[exception]);
     break;
 
   case TSTACK_NO_ERROR:
@@ -1354,7 +1537,7 @@ void smt2_tstack_error(tstack_t *tstack, int32_t exception) {
   default:
     print_out("FATAL ERROR");
     close_error();
-    report_bug(__smt2_globals.err);
+    freport_bug(__smt2_globals.err, "smt2_commands");
     break;
   }
 
@@ -1369,7 +1552,7 @@ void smt2_tstack_error(tstack_t *tstack, int32_t exception) {
 static void __attribute__((noreturn)) bad_status_bug(FILE *f) {
   print_error("Internal error: unexpected context status");
   flush_out();
-  report_bug(f);
+  freport_bug(f, "Internal error: unexpected context status");
 }
 
 
@@ -1377,15 +1560,6 @@ static void __attribute__((noreturn)) bad_status_bug(FILE *f) {
 /*
  * PRINT STATUS AND STATISTICS
  */
-static const char * const status2string[] = {
-  "idle",
-  "searching",
-  "unknown",
-  "sat",
-  "unsat",
-  "interrupted",
-  "error",
-};
 
 static void show_status(smt_status_t status) {
   print_out("%s\n", status2string[status]);
@@ -1428,6 +1602,9 @@ static void show_funsolver_stats(fun_solver_t *solver) {
 
 static void show_simplex_stats(simplex_solver_t *solver) {
   simplex_collect_statistics(solver);
+  print_out(" :simplex-init-vars %"PRIu32"\n", simplex_num_init_vars(solver));
+  print_out(" :simplex-init-rows %"PRIu32"\n", simplex_num_init_rows(solver));
+  print_out(" :simplex-init-atoms %"PRIu32"\n", simplex_num_init_atoms(solver));
   print_out(" :simplex-vars %"PRIu32"\n", simplex_num_vars(solver));
   print_out(" :simplex-rows %"PRIu32"\n", simplex_num_rows(solver));
   print_out(" :simplex-atoms %"PRIu32"\n", simplex_num_atoms(solver));
@@ -1438,8 +1615,19 @@ static void show_simplex_stats(simplex_solver_t *solver) {
       simplex_num_dioph_checks(solver) > 0) {
     print_out(" :simplex-integer-vars %"PRIu32"\n", simplex_num_integer_vars(solver));
     print_out(" :simplex-branch-and-bound %"PRIu32"\n", simplex_num_branch_and_bound(solver));
-    print_out(" :simplex-gcd-conflicts %"PRIu32"\n", simplex_num_gcd_conflicts(solver));
-    print_out(" :simplex-diophantine-conflicts %"PRIu32"\n", simplex_num_dioph_conflicts(solver));
+    // bound strenthening
+    print_out(" :simplex-bound-conflicts %"PRIu32"\n", simplex_num_bound_conflicts(solver));
+    print_out(" :simplex-bound-recheck-conflicts %"PRIu32"\n", simplex_num_bound_recheck_conflicts(solver));
+    // integrality test
+    print_out(" :simplex-itest-conflicts %"PRIu32"\n", simplex_num_itest_conflicts(solver));
+    print_out(" :simplex-itest-bound-conflicts %"PRIu32"\n", simplex_num_itest_bound_conflicts(solver));
+    print_out(" :simplex-itest-recheck-conflicts %"PRIu32"\n", simplex_num_itest_bound_conflicts(solver));
+    // diophantine solver
+    print_out(" :simplex-gcd-conflicts %"PRIu32"\n", simplex_num_dioph_gcd_conflicts(solver));
+    print_out(" :simplex-dioph-checks %"PRIu32"\n", simplex_num_dioph_checks(solver));
+    print_out(" :simplex-dioph-conflicts %"PRIu32"\n", simplex_num_dioph_conflicts(solver));
+    print_out(" :simplex-dioph-bound-conflicts %"PRIu32"\n", simplex_num_dioph_bound_conflicts(solver));
+    print_out(" :simplex-dioph-recheck-conflicts %"PRIu32"\n", simplex_num_dioph_recheck_conflicts(solver));
   }
 }
 
@@ -1488,6 +1676,10 @@ static void show_ctx_stats(context_t *ctx) {
 
   if (context_has_bv_solver(ctx)) {
     show_bvsolver_stats(ctx->bv_solver);
+  }
+
+  if (ctx->mcsat != NULL) {
+    mcsat_show_stats(ctx->mcsat, __smt2_globals.out);
   }
 }
 
@@ -1747,6 +1939,37 @@ static bool aval_is_rational(attr_vtbl_t *avtbl, aval_t v, rational_t *result) {
 }
 
 
+/*
+ * For (set-info :smt-lib-version X.Y)
+ * - check whether v is either 2.0 or 2.5
+ * - return false if it's not
+ * - return true if it is
+ *
+ * - set *version to 2500 or 2000 if v is either 2.5 or 2.0
+ */
+static bool aval_is_known_version(attr_vtbl_t *avtbl, aval_t v, uint32_t *version) {
+  rational_t aux;
+  bool ok;
+
+  ok = false;
+  if (v >= 0 && aval_tag(avtbl, v) == ATTR_RATIONAL) {
+    q_init(&aux);
+    q_set(&aux, aval_rational(avtbl, v));
+    if (q_cmp_int32(&aux, 2, 1) == 0) {
+      // version 2.0
+      *version = 2000;
+      ok = true;
+    } else if (q_cmp_int32(&aux, 5, 2) == 0) {
+      // version 2.5
+      *version = 2500;
+      ok = true;
+    }
+    q_clear(&aux);
+  }
+
+  return ok;
+}
+
 
 /*
  * Boolean option
@@ -1777,7 +2000,7 @@ static void set_uint32_option(smt2_globals_t *g, const char *name, aval_t value,
   if (aval_is_rational(g->avtbl, value, &aux) && q_is_integer(&aux)) {
     if (q_is_neg(&aux)) {
       print_error("option %s must be non-negative", name);
-    } else if (q_get64(&aux, &x) && x <= (int64_t) UINT32_MAX){
+    } else if (q_get64(&aux, &x) && x <= (int64_t) UINT32_MAX) {
       assert(x >= 0);
       *result = (uint32_t) x;
       report_success();
@@ -1907,6 +2130,8 @@ static void print_kw_symbol_pair(const char *keyword, const char *value) {
 
 static const char * const string_bool[2] = { "false", "true" };
 
+#if 0
+// not used
 static void print_kw_boolean_pair(const char *keyword, bool value) {
   print_kw_symbol_pair(keyword, string_bool[value]);
 }
@@ -1915,6 +2140,34 @@ static void print_kw_uint32_pair(const char *keyword, uint32_t value) {
   print_out("(%s %"PRIu32")\n", keyword, value);
 }
 
+#endif
+
+/*
+ * Print value
+ */
+static void print_string_value(const char *value) {
+  print_out("\"%s\"\n", value);
+}
+
+static void print_symbol_value(const char *value) {
+  print_out("%s\n", value);
+}
+
+static void print_boolean_value(bool value) {
+  print_symbol_value(string_bool[value]);
+}
+
+static void print_uint32_value(uint32_t value) {
+  print_out("%"PRIu32"\n", value);
+}
+
+static void print_float_value(double value) {
+  if (value < 1.0) {
+    print_out("%.4f\n", value);
+  } else {
+    print_out("%.2f\n", value);
+  }
+}
 
 /*
  * Print attribute values
@@ -1981,7 +2234,7 @@ static void print_aval(smt2_globals_t *g, aval_t val) {
     break;
 
   case ATTR_DELETED:
-    report_bug(g->err);
+    freport_bug(g->err, "smt2_commands: attribute deleted");
     break;
   }
 }
@@ -2039,7 +2292,6 @@ static void unsupported_option(void) {
  * CONTEXT INITIALIZATION
  */
 
-
 /*
  * Allocate and initialize the context based on g->logic
  * - make sure the logic is supported before calling this
@@ -2056,11 +2308,17 @@ static void init_smt2_context(smt2_globals_t *g) {
   // default: assume g->benchmark_mode is false
   logic = g->logic_code;
   mode = CTX_MODE_PUSHPOP;
+  if (g->timeout > 0) {
+    mode = CTX_MODE_INTERACTIVE;
+  }
   arch = arch_for_logic(logic);
   iflag = iflag_for_logic(logic);
   qflag = qflag_for_logic(logic);
 
-  if (g->benchmark_mode) {
+  if (g->mcsat) {
+    // force MCSAT independent of the logic
+    arch = CTX_ARCH_MCSAT;
+  } else if (g->benchmark_mode) {
     // change mode and arch for QF_IDL/QF_RDL
     mode = CTX_MODE_ONECHECK;
     switch (logic) {
@@ -2077,11 +2335,27 @@ static void init_smt2_context(smt2_globals_t *g) {
     }
   }
 
+  if (arch == CTX_ARCH_MCSAT) {
+    // MCSAT requires ONE_CHECK for now
+    mode = CTX_MODE_ONECHECK;
+    iflag = false;
+    qflag = false;
+  }
+
   g->ctx = yices_create_context(logic, arch, mode, iflag, qflag);
   assert(g->ctx != NULL);
-  if (g->verbosity > 0) {
+  if (g->verbosity > 0 || g->tracer != NULL) {
     context_set_trace(g->ctx, get_tracer(g));
   }
+
+  // Set the mcsat options
+  g->ctx->mcsat_options = g->mcsat_options;
+
+  /*
+   * TODO: override the default context options based on
+   * ctx_parameters.  I don't want to do it now (2015/07/22). If we
+   * make a mistake, we could get a major performance loss.
+   */
 }
 
 
@@ -2095,6 +2369,70 @@ static void init_search_parameters(smt2_globals_t *g) {
   assert(g->ctx != NULL);
   yices_default_params_for_context(g->ctx, &parameters);
 }
+
+
+
+/*
+ * CHECK SAT WITH TIMEOUT
+ */
+
+/*
+ * Timeout handler: call stop_search when triggered
+ * - data = pointer to the smt2_global structure
+ */
+static void timeout_handler(void *data) {
+  smt2_globals_t *g;
+
+  assert(data == &__smt2_globals);
+
+  g = data;
+  if (g->ctx != NULL && context_status(g->ctx) == STATUS_SEARCHING) {
+    context_stop_search(g->ctx);
+  }
+}
+
+/*
+ * Call check_context with the given search parameters.
+ * - if g->timeout is positive, set a timeout first
+ */
+static smt_status_t check_context_with_timeout(smt2_globals_t *g, const param_t *params) {
+  smt_status_t stat;
+
+  if (g->timeout == 0) {
+    // no timeout
+    return check_context(g->ctx, params);
+  }
+
+  /*
+   * We call init_timeout only now because the internal timeout
+   * consumes resources even if it's never used.
+   */
+  if (! g->timeout_initialized) {
+    init_timeout();
+    g->timeout_initialized = true;
+  }
+  g->interrupted = false;
+  start_timeout(g->timeout, timeout_handler, g);
+  stat = check_context(g->ctx, params);
+  clear_timeout();
+
+  /*
+   * Attempt to cleanly recover from interrupt
+   */
+  if (stat == STATUS_INTERRUPTED) {
+    tprintf(g->tracer, 2, "(check_sat: interrupted)\n");
+    g->interrupted = true;
+    if (context_get_mode(g->ctx) == CTX_MODE_INTERACTIVE) {
+      context_cleanup(g->ctx);
+      assert(context_status(g->ctx) == STATUS_IDLE);
+    }
+    // we don't want to report "interrupted" that's not SMT2 compliant
+    stat = STATUS_UNKNOWN;
+  }
+
+  return stat;
+}
+
 
 
 
@@ -2204,7 +2542,15 @@ static bool needs_egraph(int_hset_t *seen, term_t t) {
 
     case ARITH_EQ_ATOM:
     case ARITH_GE_ATOM:
+    case ARITH_IS_INT_ATOM:
+    case ARITH_FLOOR:
+    case ARITH_CEIL:
+    case ARITH_ABS:
       result = needs_egraph(seen, arith_atom_arg(terms, t));
+      break;
+
+    case ARITH_ROOT_ATOM:
+      result = needs_egraph(seen, arith_root_atom_desc(terms, t)->p);
       break;
 
     case ITE_TERM:
@@ -2214,6 +2560,10 @@ static bool needs_egraph(int_hset_t *seen, term_t t) {
     case OR_TERM:
     case XOR_TERM:
     case ARITH_BINEQ_ATOM:
+    case ARITH_RDIV:
+    case ARITH_IDIV:
+    case ARITH_MOD:
+    case ARITH_DIVIDES_ATOM:
     case BV_ARRAY:
     case BV_DIV:
     case BV_REM:
@@ -2329,19 +2679,27 @@ static void check_delayed_assertions(smt2_globals_t *g) {
       print_yices_error(true);
       return;
     }
+#if DUMP_CTX
     //    yices_print_presearch_stats(stderr, g->ctx);
-    //    dump("yices2intern.dmp", g->ctx);
+    //    pp_context(g->out, g->ctx);
+    dump("yices2intern.dmp", g->ctx);
+#endif
 
     init_search_parameters(g);
     if (g->random_seed != 0) {
       parameters.random_seed = g->random_seed;
     }
 
-    status = check_context(g->ctx, &parameters);
+    //    status = check_context(g->ctx, &parameters);
+    status = check_context_with_timeout(g, &parameters);
     switch (status) {
     case STATUS_UNKNOWN:
-    case STATUS_UNSAT:
     case STATUS_SAT:
+      show_status(status);
+      // get_model here.
+      break;
+
+    case STATUS_UNSAT:
     case STATUS_INTERRUPTED:
       show_status(status);
       break;
@@ -2356,6 +2714,15 @@ static void check_delayed_assertions(smt2_globals_t *g) {
       bad_status_bug(g->err);
       break;
     }
+#elif EXPORT_TO_DIMACS
+    /*
+     * TESTING: EXPORT TO DIMACS
+     */
+    code = export_delayed_assertions(g->ctx, g->assertions.size, g->assertions.data, "yices-bv.cnf");
+    if (code < 0) {
+      print_yices_error(true);
+      return;
+    }
 #else
     /*
      * FOR TESTING: DISPLAY THE ASSERTIONS
@@ -2367,6 +2734,7 @@ static void check_delayed_assertions(smt2_globals_t *g) {
       return;
     }
     pp_context(g->out, g->ctx);
+    //    print_context(g->out, g->ctx);
 #endif
   }
 
@@ -2423,11 +2791,12 @@ static void add_assertion(smt2_globals_t *g, term_t t) {
     }
     context_clear(g->ctx);
     assert(context_status(g->ctx) == STATUS_IDLE);
-    // fall through intended
+    // fall-through intended
 
   case STATUS_IDLE:
     code = assert_formula(g->ctx, t);
     if (code < 0) {
+      yices_internalization_error(code);
       print_yices_error(true);
     } else {
       report_success();
@@ -2474,7 +2843,8 @@ static void ctx_check_sat(smt2_globals_t *g) {
     if (g->random_seed != 0) {
       parameters.random_seed = g->random_seed;
     }
-    stat = check_context(g->ctx, &parameters);
+    //    stat = check_context(g->ctx, &parameters);
+    stat = check_context_with_timeout(g, &parameters);
     show_status(stat);
     break;
 
@@ -2504,7 +2874,7 @@ static void ctx_push(smt2_globals_t *g) {
     }
     context_clear(g->ctx);
     assert(context_status(g->ctx) == STATUS_IDLE);
-    // fall through intended
+    // fall-through intended
 
   case STATUS_IDLE:
     context_push(g->ctx);
@@ -2615,7 +2985,7 @@ static model_t *get_model(smt2_globals_t *g) {
       case STATUS_INTERRUPTED:
       default:
 	print_out("BUG: unexpected context status");
-	report_bug(__smt2_globals.err);
+	freport_bug(__smt2_globals.err, "BUG: unexpected context status");
 	break;
       }
     }
@@ -2809,7 +3179,7 @@ static void show_assignment(smt2_globals_t *g) {
     case STATUS_INTERRUPTED:
     default:
       print_out("BUG: unexpected context status");
-      report_bug(__smt2_globals.err);
+      freport_bug(__smt2_globals.err, "BUG: unexpected context status");
       break;
     }
   }
@@ -2852,7 +3222,7 @@ static inline void save_macro_name(smt2_globals_t *g, const char *s) {
 
 
 /*
- * For debugging: check that the stack look reasonable
+ * For debugging: check that the stack looks reasonable
  */
 #ifndef NDEBUG
 
@@ -2869,18 +3239,15 @@ static void check_stack(smt2_globals_t *g) {
       sum += stack->data[i].multiplicity;
     }
     if (sum != stack->levels) {
-      print_error("Invalid stack: levels don't match");
-      report_bug(g->err);
+      freport_bug(g->err, "Invalid stack: levels don't match");
     }
 
     if (context_base_level(g->ctx) + g->pushes_after_unsat != stack->top) {
-      print_error("Invalid stack: push counters don't match");
-      report_bug(g->err);
+      freport_bug(g->err, "Internal error: unexpected context status");
     }
 
     if (g->pushes_after_unsat > 0 && context_status(g->ctx) != STATUS_UNSAT) {
-      print_error("Invalid stack: push_after_unsat is positive but context is not unsat");
-      report_bug(g->err);
+      freport_bug(g->err, "Invalid stack: push_after_unsat is positive but context is not unsat");
     }
   }
 }
@@ -2921,7 +3288,11 @@ static void explain_unknown_status(smt2_globals_t *g) {
     } else {
       switch (context_status(g->ctx)) {
       case STATUS_UNKNOWN:
-	print_kw_symbol_pair(":reason-unknown", "incomplete");
+	if (g->interrupted) {
+	  print_kw_symbol_pair(":reason-unknown", "timeout");
+	} else {
+	  print_kw_symbol_pair(":reason-unknown", "incomplete");
+	}
 	flush_out();
 	break;
 
@@ -2941,7 +3312,7 @@ static void explain_unknown_status(smt2_globals_t *g) {
       case STATUS_INTERRUPTED:
       default:
 	print_out("BUG: unexpected context status");
-	report_bug(__smt2_globals.err);
+	freport_bug(__smt2_globals.err, "BUG: unexpected context status");
 	break;
       }
     }
@@ -2958,11 +3329,17 @@ static void explain_unknown_status(smt2_globals_t *g) {
  * Initialize g to defaults
  */
 static void init_smt2_globals(smt2_globals_t *g) {
+
+  init_ef_client(&g->ef_client_globals);
+  init_mcsat_options(&g->mcsat_options);
+
   g->logic_code = SMT_UNKNOWN;
   g->benchmark_mode = false;
   g->global_decls = false;
+  g->smtlib_version = 0;       // means no version specified yet 
   g->pushes_after_unsat = 0;
   g->logic_name = NULL;
+  g->mcsat = false;
   g->out = stdout;
   g->err = stderr;
   g->out_name = NULL;
@@ -2977,6 +3354,9 @@ static void init_smt2_globals(smt2_globals_t *g) {
   g->produce_assignments = false;
   g->random_seed = 0;  // 0 means any seed is good
   g->verbosity = 0;
+  g->timeout = 0;
+  g->timeout_initialized = false;
+  g->interrupted = false;
   g->avtbl = NULL;
   g->info = NULL;
   g->ctx = NULL;
@@ -3013,8 +3393,12 @@ static void init_smt2_globals(smt2_globals_t *g) {
 /*
  * Cleanup: close out and err if different from the defaults
  * - delete all internal structures (except avtbl)
+ * - delete the timeout object if it's initialized
  */
 static void delete_smt2_globals(smt2_globals_t *g) {
+  if (g->timeout_initialized) {
+    delete_timeout();
+  }
   delete_info_table(g);
   if (g->logic_name != NULL) {
     string_decref(g->logic_name);
@@ -3027,6 +3411,9 @@ static void delete_smt2_globals(smt2_globals_t *g) {
   if (g->model != NULL) {
     yices_free_model(g->model);
     g->model = NULL;
+  }
+  if (g->efmode) {
+    delete_ef_client(&g->ef_client_globals);
   }
   delete_ivector(&g->assertions);
 
@@ -3057,11 +3444,14 @@ static void delete_smt2_globals(smt2_globals_t *g) {
  *   - push/pop are not supported
  *   - assert can't be used after (check-sat)
  *
+ * - timeout = timeout to use (in seconds).
+ *   If this is zero, no timeout is used.
+ *
  * - print_success = initial setting of the :print-success option.
  *
  * This function is called after yices_init so all Yices internals are ready
  */
-void init_smt2(bool benchmark, bool print_success) {
+void init_smt2(bool benchmark, uint32_t timeout, bool print_success) {
   done = false;
   init_smt2_globals(&__smt2_globals);
   init_attr_vtbl(&avtbl);
@@ -3070,6 +3460,7 @@ void init_smt2(bool benchmark, bool print_success) {
     __smt2_globals.benchmark_mode = true;
     __smt2_globals.global_decls = true;
   }
+  __smt2_globals.timeout = timeout;
   __smt2_globals.print_success = print_success;
   check_stack(&__smt2_globals);
 }
@@ -3082,6 +3473,17 @@ void smt2_set_verbosity(uint32_t k) {
   __smt2_globals.verbosity = k;
   update_trace_verbosity(&__smt2_globals);
 }
+
+/*
+ * Enable a trace tag for tracing
+ */
+void smt2_enable_trace_tag(const char* tag) {
+  tracer_t* tracer;
+
+  tracer = get_tracer(&__smt2_globals);
+  enable_trace_tag(tracer, tag);
+}
+
 
 /*
  * Display all statistics
@@ -3258,6 +3660,225 @@ static uint32_t kwlen(const char *s) {
   return (uint32_t) l;
 }
 
+/*
+ * Checks if the option should be passed to the yices frontend.
+ * In other words returns true in the name begins with ":yices-"
+ * if so then it also stores the remainder of the string in *option.
+ */
+#define YICES_SMT2_PREFIX  ":yices-"
+
+static bool is_yices_option(const char *name, const char **option) {
+  uint32_t len;
+
+  len = strlen(YICES_SMT2_PREFIX);
+  if (strncmp(name, YICES_SMT2_PREFIX, len) == 0) {
+    *option = &name[len];
+    return true;
+  }  
+  return false;
+}
+
+
+/*
+ * Shows the value of the yices option, and returns true, if supported.
+ * If not supported it simply returns false.
+ *
+ */
+static bool yices_get_option(yices_param_t p, ef_param_t *ef_params) {
+  bool supported;
+
+  supported = true;
+  
+  switch (p) {
+  case PARAM_VAR_ELIM:
+    print_boolean_value(ctx_parameters.var_elim);
+    break;
+
+  case PARAM_ARITH_ELIM:
+    print_boolean_value(ctx_parameters.arith_elim);
+    break;
+
+  case PARAM_BVARITH_ELIM:
+    print_boolean_value(ctx_parameters.bvarith_elim);
+    break;
+
+  case PARAM_FLATTEN:
+    // this activates both flatten or and flatten diseq.
+    print_boolean_value(ctx_parameters.flatten_or);
+    break;
+
+  case PARAM_LEARN_EQ:
+    print_boolean_value(ctx_parameters.eq_abstraction);
+    break;
+
+  case PARAM_KEEP_ITE:
+    print_boolean_value(ctx_parameters.keep_ite);
+    break;
+    
+  case PARAM_FAST_RESTARTS:
+    print_boolean_value(parameters.fast_restart);
+    break;
+
+  case PARAM_C_THRESHOLD:
+    print_uint32_value(parameters.c_threshold);
+    break;
+
+  case PARAM_C_FACTOR:
+    print_float_value(parameters.c_factor);
+    break;
+
+  case PARAM_D_THRESHOLD:
+    print_uint32_value(parameters.d_threshold);
+    break;
+
+  case PARAM_D_FACTOR:
+    print_float_value(parameters.c_factor);
+    break;
+
+  case PARAM_R_THRESHOLD:
+    print_uint32_value(parameters.r_threshold);
+    break;
+
+  case PARAM_R_FRACTION:
+    print_float_value(parameters.r_fraction);
+    break;
+
+  case PARAM_R_FACTOR:
+    print_float_value(parameters.r_factor);
+    break;
+
+  case PARAM_VAR_DECAY:
+    print_float_value(parameters.var_decay);
+    break;
+
+  case PARAM_RANDOMNESS:
+    print_float_value(parameters.randomness);
+    break;
+
+  case PARAM_RANDOM_SEED:
+    print_uint32_value(parameters.random_seed);
+    break;
+
+  case PARAM_BRANCHING:
+    print_string_value(branching2string[parameters.branching]);
+    break;
+
+  case PARAM_CLAUSE_DECAY:
+    print_float_value(parameters.clause_decay);
+    break;
+
+  case PARAM_CACHE_TCLAUSES:
+    print_boolean_value(parameters.cache_tclauses);
+    break;
+
+  case PARAM_TCLAUSE_SIZE:
+    print_uint32_value(parameters.tclause_size);
+    break;
+
+  case PARAM_DYN_ACK:
+    print_boolean_value(parameters.use_dyn_ack);
+    break;
+
+  case PARAM_DYN_BOOL_ACK:
+    print_boolean_value(parameters.use_bool_dyn_ack);
+    break;
+
+  case PARAM_OPTIMISTIC_FCHECK:
+    print_boolean_value(parameters.use_optimistic_fcheck);
+    break;
+
+  case PARAM_MAX_ACK:
+    print_uint32_value(parameters.max_ackermann);
+    break;
+
+  case PARAM_MAX_BOOL_ACK:
+    print_uint32_value(parameters.max_boolackermann);
+    break;
+
+  case PARAM_AUX_EQ_QUOTA:
+    print_uint32_value(parameters.aux_eq_quota);
+    break;
+
+  case PARAM_AUX_EQ_RATIO:
+    print_float_value(parameters.aux_eq_ratio);
+    break;
+
+  case PARAM_DYN_ACK_THRESHOLD:
+    print_uint32_value((uint32_t) parameters.dyn_ack_threshold);
+    break;
+
+  case PARAM_DYN_BOOL_ACK_THRESHOLD:
+    print_uint32_value((uint32_t) parameters.dyn_bool_ack_threshold);
+    break;
+
+  case PARAM_MAX_INTERFACE_EQS:
+    print_uint32_value(parameters.max_interface_eqs);
+    break;
+
+  case PARAM_EAGER_LEMMAS:
+    print_boolean_value(ctx_parameters.splx_eager_lemmas);
+    break;
+
+  case PARAM_ICHECK:
+    print_boolean_value(ctx_parameters.splx_periodic_icheck);
+    break;
+
+  case PARAM_SIMPLEX_PROP:
+    print_boolean_value(parameters.use_simplex_prop);
+    break;
+
+  case PARAM_SIMPLEX_ADJUST:
+    print_boolean_value(parameters.adjust_simplex_model);
+    break;
+
+  case PARAM_PROP_THRESHOLD:
+    print_uint32_value(parameters.max_prop_row_size);
+    break;
+
+  case PARAM_BLAND_THRESHOLD:
+    print_uint32_value(parameters.bland_threshold);
+    break;
+
+  case PARAM_ICHECK_PERIOD:
+    print_uint32_value(parameters.integer_check_period);
+    break;
+
+  case PARAM_MAX_UPDATE_CONFLICTS:
+    print_uint32_value(parameters.max_update_conflicts);
+    break;
+
+  case PARAM_MAX_EXTENSIONALITY:
+    print_uint32_value(parameters.max_extensionality);
+    break;
+
+  case PARAM_EF_FLATTEN_IFF:
+    print_boolean_value(ef_params->flatten_iff);
+    break;
+
+  case PARAM_EF_FLATTEN_ITE:
+    print_boolean_value(ef_params->flatten_ite);
+    break;
+
+  case PARAM_EF_GEN_MODE:
+    print_string_value(efgen2string[ef_params->gen_mode]);
+    break;
+
+  case PARAM_EF_MAX_SAMPLES:
+    print_uint32_value(ef_params->max_samples);
+    break;
+
+  case PARAM_EF_MAX_ITERS:
+    print_uint32_value(ef_params->max_iters);
+    break;
+
+  case PARAM_UNKNOWN:
+  default:
+    freport_bug(stderr,"invalid parameter id in 'yices_get_option'");
+    break;
+  }
+
+  return supported;
+}
 
 /*
  * Get the value of an option
@@ -3268,21 +3889,23 @@ void smt2_get_option(const char *name) {
   char *s;
   smt2_keyword_t kw;
   uint32_t n;
-
+  const char* yices_option;
+  yices_param_t p;
+  
   g = &__smt2_globals;
   n = kwlen(name);
   kw = smt2_string_to_keyword(name, n);
   switch (kw) {
   case SMT2_KW_PRINT_SUCCESS:
-    print_kw_boolean_pair(name, g->print_success);
+    print_boolean_value(g->print_success);
     break;
 
   case SMT2_KW_PRODUCE_MODELS:
-    print_kw_boolean_pair(name, g->produce_models);
+    print_boolean_value(g->produce_models);
     break;
 
   case SMT2_KW_PRODUCE_ASSIGNMENTS:
-    print_kw_boolean_pair(name, g->produce_assignments);
+    print_boolean_value(g->produce_assignments);
     break;
 
   case SMT2_KW_REGULAR_OUTPUT:
@@ -3291,7 +3914,7 @@ void smt2_get_option(const char *name) {
       assert(g->out == stdout);
       s = "stdout";
     }
-    print_kw_string_pair(name, s);
+    print_string_value(s);
     break;
 
   case SMT2_KW_DIAGNOSTIC_OUTPUT:
@@ -3300,19 +3923,19 @@ void smt2_get_option(const char *name) {
       assert(g->err == stderr);
       s = "stderr";
     }
-    print_kw_string_pair(name, s);
+    print_string_value(s);
     break;
 
   case SMT2_KW_RANDOM_SEED:
-    print_kw_uint32_pair(name, g->random_seed);
+    print_uint32_value(g->random_seed);
     break;
 
   case SMT2_KW_VERBOSITY:
-    print_kw_uint32_pair(name, g->verbosity);
+    print_uint32_value(g->verbosity);
     break;
 
   case SMT2_KW_GLOBAL_DECLS:
-    print_kw_boolean_pair(name, g->global_decls);
+    print_boolean_value(g->global_decls);
     break;
 
   case SMT2_KW_EXPAND_DEFINITIONS:
@@ -3320,11 +3943,43 @@ void smt2_get_option(const char *name) {
   case SMT2_KW_PRODUCE_PROOFS:
   case SMT2_KW_PRODUCE_UNSAT_CORES:
   default:
-    unsupported_option();
+    // may be a Yices option
+    if (is_yices_option(name, &yices_option)) {
+      p = find_param(yices_option);
+      if (p != PARAM_UNKNOWN) {
+	assert(0 <= p && p < NUM_PARAMETERS);
+	if (! yices_get_option(p, &g->ef_client_globals.ef_parameters)) {
+	  unsupported_option();
+	}
+      } else {
+	unsupported_option();
+      }
+    } else {
+      unsupported_option();
+    }
     break;
   }
-
   flush_out();
+}
+
+
+/*
+ * Check whether smtlib_version is set and if so print it
+ */
+static void show_smtlib_version(const smt2_globals_t *g) {
+  switch (g->smtlib_version) {
+  case 2000:
+    print_kw_symbol_pair(":smt-lib-version", "2.0");
+    break;
+    
+  case 2500:
+    print_kw_symbol_pair(":smt-lib-version", "2.5");
+    break;
+
+  default:
+    print_kw_symbol_pair(":smt-lib-version", "unknown");
+    break;
+  }
 }
 
 
@@ -3365,6 +4020,10 @@ void smt2_get_info(const char *name) {
     show_statistics(&__smt2_globals);
     break;
 
+  case SMT2_KW_SMT_LIB_VERSION:
+    show_smtlib_version(&__smt2_globals);
+    break;
+
   default:
     g = &__smt2_globals;
     if (has_info(g, name, &value)) {
@@ -3379,10 +4038,439 @@ void smt2_get_info(const char *name) {
 }
 
 
+
+/*
+ * Attempt to convert value to a parameter value:
+ * - if this can't be done, store PARAM_ERROR in param_val
+ */
+static void aval2param_val(aval_t avalue, param_val_t *param_val) {
+  smt2_globals_t *g;
+  rational_t *rational;
+  char* symbol;
+  
+  g = &__smt2_globals;
+
+  switch (aval_tag(g->avtbl, avalue)) {    
+  case ATTR_RATIONAL:
+    rational = aval_rational(g->avtbl, avalue);
+    param_val->tag = PARAM_VAL_RATIONAL;
+    param_val->val.rational = rational;
+    break;
+    
+  case ATTR_SYMBOL:
+    symbol = aval_symbol(g->avtbl, avalue);
+    // We use the SMT2 conventions here: True/False are capitalized
+    if (strcmp(symbol, "True") == 0) {
+      param_val->tag = PARAM_VAL_TRUE;
+    } else if (strcmp(symbol, "False") == 0) {
+      param_val->tag = PARAM_VAL_FALSE;
+    } else {
+      param_val->tag = PARAM_VAL_SYMBOL;
+      param_val->val.symbol = symbol;
+    }
+    break;
+
+  case ATTR_STRING:
+  case ATTR_BV:
+  case ATTR_LIST:
+    param_val->tag = PARAM_VAL_ERROR;
+    break;
+    
+  case ATTR_DELETED:
+    freport_bug(g->err, "smt2_commands: attribute deleted");
+    break;
+  }
+}
+
+static void yices_set_option(const char *param, const param_val_t *val, ef_param_t *ef_params, mcsat_options_t* mcsat_options) {
+  bool tt;
+  int32_t n;
+  double x;
+  branch_t b;
+  ef_gen_option_t g;
+  char* reason;
+  context_t *context; 
+    
+  //keep track of those we punt on
+  bool unsupported;
+
+  unsupported = false;  
+  reason = NULL;
+  
+  switch (find_param(param)) {
+  case PARAM_VAR_ELIM:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.var_elim = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_variable_elimination(context);
+	} else {
+	  disable_variable_elimination(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_ARITH_ELIM:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.arith_elim = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_arith_elimination(context);
+	} else {
+	  disable_arith_elimination(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_BVARITH_ELIM:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.bvarith_elim = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_bvarith_elimination(context);
+	} else {
+	  disable_bvarith_elimination(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_FLATTEN:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.flatten_or = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_diseq_and_or_flattening(context);
+	} else {
+	  disable_diseq_and_or_flattening(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_LEARN_EQ:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.eq_abstraction = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_eq_abstraction(context);
+	} else {
+	  disable_eq_abstraction(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_KEEP_ITE:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.keep_ite = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_keep_ite(context);
+	} else {
+	  disable_keep_ite(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_FAST_RESTARTS:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.fast_restart = tt;
+    }
+    break;
+
+  case PARAM_C_THRESHOLD:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.c_threshold = n;
+    }
+    break;
+
+  case PARAM_C_FACTOR:
+    if (param_val_to_factor(param, val, &x, &reason)) {
+      parameters.c_factor = x;
+    }
+    break;
+
+  case PARAM_D_THRESHOLD:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.d_threshold = n;
+    }
+    break;
+
+  case PARAM_D_FACTOR:
+    if (param_val_to_factor(param, val, &x, &reason)) {
+      parameters.d_factor = x;
+    }
+    break;
+
+  case PARAM_R_THRESHOLD:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.r_threshold = n;
+    }
+    break;
+
+  case PARAM_R_FRACTION:
+    if (param_val_to_ratio(param, val, &x, &reason)) {
+      parameters.r_fraction = x;
+    }
+    break;
+
+  case PARAM_R_FACTOR:
+    if (param_val_to_factor(param, val, &x, &reason)) {
+      parameters.r_factor = x;
+    }
+    break;
+
+  case PARAM_VAR_DECAY:
+    if (param_val_to_ratio(param, val, &x, &reason)) {
+      parameters.var_decay = x;
+    }
+    break;
+
+  case PARAM_RANDOMNESS:
+    if (param_val_to_ratio(param, val, &x, &reason)) {
+      parameters.randomness = x;
+    }
+    break;
+
+  case PARAM_RANDOM_SEED:
+    if (param_val_to_int32(param, val, &n, &reason)) {
+      parameters.random_seed = (uint32_t) n;
+    }
+    break;
+
+  case PARAM_BRANCHING:
+    if (param_val_to_branching(param, val, &b, &reason)) {
+      parameters.branching = b;
+    }
+    break;
+
+  case PARAM_CLAUSE_DECAY:
+    if (param_val_to_ratio(param, val, &x, &reason)) {
+      parameters.clause_decay = x;
+    }
+    break;
+
+  case PARAM_CACHE_TCLAUSES:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.cache_tclauses = tt;
+    }
+    break;
+
+  case PARAM_TCLAUSE_SIZE:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.tclause_size = n;
+    }
+    break;
+
+  case PARAM_DYN_ACK:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.use_dyn_ack = tt;
+    }
+    break;
+
+  case PARAM_DYN_BOOL_ACK:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.use_bool_dyn_ack = tt;
+    }
+    break;
+
+  case PARAM_OPTIMISTIC_FCHECK:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.use_optimistic_fcheck = tt;
+    }
+    break;
+
+  case PARAM_MAX_ACK:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.max_ackermann = n;
+    }
+    break;
+
+  case PARAM_MAX_BOOL_ACK:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.max_boolackermann = n;
+    }
+    break;
+
+  case PARAM_AUX_EQ_QUOTA:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.aux_eq_quota = n;
+    }
+    break;
+
+  case PARAM_AUX_EQ_RATIO:
+    if (param_val_to_posfloat(param, val, &x, &reason)) {
+      parameters.aux_eq_ratio = x;
+    }
+    break;
+
+  case PARAM_DYN_ACK_THRESHOLD:
+    if (param_val_to_pos16(param, val, &n, &reason)) {
+      parameters.dyn_ack_threshold = (uint16_t) n;
+    }
+    break;
+
+  case PARAM_DYN_BOOL_ACK_THRESHOLD:
+    if (param_val_to_pos16(param, val, &n, &reason)) {
+      parameters.dyn_bool_ack_threshold = (uint16_t) n;
+    }
+    break;
+
+  case PARAM_MAX_INTERFACE_EQS:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.max_interface_eqs = n;
+    }
+    break;
+
+  case PARAM_EAGER_LEMMAS:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.splx_eager_lemmas = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_splx_eager_lemmas(context);
+	} else {
+	  disable_splx_eager_lemmas(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_SIMPLEX_PROP:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.use_simplex_prop = tt;
+    }
+    break;
+
+  case PARAM_SIMPLEX_ADJUST:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      parameters.adjust_simplex_model = tt;
+    }
+    break;
+
+  case PARAM_PROP_THRESHOLD:
+    if (param_val_to_nonneg32(param, val, &n, &reason)) {
+      parameters.max_prop_row_size = n;
+    }
+    break;
+
+  case PARAM_BLAND_THRESHOLD:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.bland_threshold = n;
+    }
+    break;
+
+  case PARAM_ICHECK:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ctx_parameters.splx_periodic_icheck = tt;
+      context = __smt2_globals.ctx;
+      if (context != NULL) {
+	if (tt) {
+	  enable_splx_periodic_icheck(context);
+	} else {
+	  disable_splx_periodic_icheck(context);
+	}
+      }
+    }
+    break;
+
+  case PARAM_ICHECK_PERIOD:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.integer_check_period = n;
+    }
+    break;
+
+  case PARAM_MAX_UPDATE_CONFLICTS:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.max_update_conflicts = n;
+    }
+    break;
+
+  case PARAM_MAX_EXTENSIONALITY:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      parameters.max_extensionality = n;
+    }
+    break;
+
+  case PARAM_EF_FLATTEN_IFF:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ef_params->flatten_iff = tt;
+    }
+    break;
+
+  case PARAM_EF_FLATTEN_ITE:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ef_params->flatten_ite = tt;
+    }
+    break;
+
+  case PARAM_EF_GEN_MODE:
+    if (param_val_to_genmode(param, val, &g, &reason)) {
+      ef_params->gen_mode = g;
+    }
+    break;
+
+  case PARAM_EF_MAX_SAMPLES:
+    if (param_val_to_nonneg32(param, val, &n, &reason)) {
+      ef_params->max_samples = n;
+    }
+    break;
+
+  case PARAM_EF_MAX_ITERS:
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      ef_params->max_iters = n;
+    }
+    break;
+
+  case PARAM_MCSAT_NRA_MGCD:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      mcsat_options->nra_mgcd = tt;
+    }
+    break;
+
+  case PARAM_MCSAT_NRA_NLSAT:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      mcsat_options->nra_nlsat = tt;
+    }
+    break;
+
+  case PARAM_UNKNOWN:
+  default:
+    unsupported = true;
+    break;
+  }
+
+  if (unsupported) {
+    unsupported_option();
+    flush_out();
+  } else if (reason != NULL) {
+    print_error("in (set-option "YICES_SMT2_PREFIX"%s ...): %s", param, reason);
+  } else {
+    report_success();
+  }
+}
+
+
+
+
 /*
  * Set an option:
  * - name = option name (keyword)
- * - value = value (stored in the attribute_value table)
+ * - value = value (either stored in:
+ * 
+ *  the parameters struct
+ *  the ef_parametrs struct, or
+ *  the attribute_value table)
  *
  * SMT2 allows the syntax (set-option :keyword). In such a case,
  * this function is called with value = NULL_VALUE (i.e., -1).
@@ -3391,8 +4479,11 @@ void smt2_set_option(const char *name, aval_t value) {
   smt2_globals_t *g;
   smt2_keyword_t kw;
   uint32_t n;
-
+  const char* yices_option;
+  param_val_t param_val;
+  
   g = &__smt2_globals;
+
   n = kwlen(name);
   kw = smt2_string_to_keyword(name, n);
 
@@ -3447,9 +4538,19 @@ void smt2_set_option(const char *name, aval_t value) {
   case SMT2_KW_INTERACTIVE_MODE:
   case SMT2_KW_PRODUCE_PROOFS:
   case SMT2_KW_PRODUCE_UNSAT_CORES:
-  default:
     unsupported_option();
     flush_out();
+    break;
+
+  default:
+    // may be a Yices option
+    if (is_yices_option(name, &yices_option)) {
+      aval2param_val(value, &param_val);
+      yices_set_option(yices_option, &param_val, &g->ef_client_globals.ef_parameters, &g->mcsat_options);
+    } else {
+      unsupported_option();
+      flush_out();
+    }
     break;
   }
 }
@@ -3460,11 +4561,15 @@ void smt2_set_option(const char *name, aval_t value) {
  * - same conventions as set_option
  */
 void smt2_set_info(const char *name, aval_t value) {
+  smt2_globals_t *g;
   smt2_keyword_t kw;
-  uint32_t n;
+  uint32_t n, version;
+
+  g = &__smt2_globals;
 
   n = kwlen(name);
   kw = smt2_string_to_keyword(name, n);
+
   switch (kw) {
   case SMT2_KW_ERROR_BEHAVIOR:
   case SMT2_KW_NAME:
@@ -3475,8 +4580,24 @@ void smt2_set_info(const char *name, aval_t value) {
     print_error("can't overwrite %s", name);
     break;
 
+  case SMT2_KW_SMT_LIB_VERSION:
+    // quick hack to switch parser if 2.5 is selected
+    if (g->smtlib_version != 0) {
+      print_error("can't set :smt-lib-version twice");
+    } else if (aval_is_known_version(g->avtbl, value, &version)) {
+      assert(version == 2000 || version == 2500);
+      g->smtlib_version = version;
+      if (version == 2500) {
+	smt2_lexer_activate_two_dot_five();
+      }
+      report_success();
+    } else {
+      print_error("unsupported :smt-lib-version");
+    }
+    break;
+
   default:
-    add_info(&__smt2_globals, name, value);
+    add_info(g, name, value);
     report_success();
     break;
   }
@@ -3510,6 +4631,32 @@ void smt2_set_logic(const char *name) {
     tprintf(__smt2_globals.tracer, 2, "(Warning: logic %s is not an official SMT-LIB logic)\n", name);
   }
 
+  // if mcsat was requested, check whether the logic is supported by the MCSAT solver
+  if (__smt2_globals.mcsat && !logic_is_supported_by_mcsat(code)) {
+    print_error("logic %s is not supported by the mscat solver", name);
+    return;
+  }
+
+  // for logics that require mcsat: check that we're in benchamrk mode
+  if (arch_for_logic(code) == CTX_ARCH_MCSAT && !__smt2_globals.benchmark_mode) {
+    print_error("the mcsat solver can't be used in incremental mode");
+    return;
+  }
+  
+  // check to see if we are in efmode 
+  __smt2_globals.efmode = logic_has_quantifiers(code);
+  if (__smt2_globals.efmode) {
+    if (__smt2_globals.mcsat) {
+      print_error("the mcsat solver does not support quantifiers");
+      return;
+    }
+    // N.B. efmode is a submode of benchmark_mode (sanity check ahead)
+    if (! __smt2_globals.benchmark_mode) {
+      print_error("exists forall mode not allowed in incremental mode");
+      return;
+    }
+  }
+
   smt2_lexer_activate_logic(code);
   __smt2_globals.logic_code = code;
   __smt2_globals.logic_name = clone_string(name);
@@ -3521,6 +4668,10 @@ void smt2_set_logic(const char *name) {
   if (! __smt2_globals.benchmark_mode) {
     init_smt2_context(&__smt2_globals);
     init_search_parameters(&__smt2_globals);
+    save_ctx_params(&ctx_parameters, __smt2_globals.ctx);
+  } else {
+    // in benchmark_mode (or exists/forall) set the search parameters
+    default_ctx_params(&ctx_parameters, &parameters, code, arch_for_logic(code), CTX_MODE_ONECHECK);
   }
 
   report_success();
@@ -3575,18 +4726,20 @@ void smt2_pop(uint32_t n) {
   smt2_push_rec_t *r;
   uint32_t m;
 
-  __smt2_globals.stats.num_pop ++;
-  __smt2_globals.stats.num_commands ++;
-  tprint_calls("pop", __smt2_globals.stats.num_pop);
+  g = &__smt2_globals;
+
+  g->stats.num_pop ++;
+  g->stats.num_commands ++;
+  
+  tprint_calls("pop", g->stats.num_pop);
 
   if (check_logic()) {
-    if (__smt2_globals.benchmark_mode) {
+    if (g->benchmark_mode) {
       print_error("pop is not allowed in non-incremental mode");
     } else if (n == 0) {
       // do nothing
       report_success();
     } else {
-      g = &__smt2_globals;
       if (n > g->stack.levels) {
 	if (g->stack.levels > 1) {
 	  print_error("can't pop more than %"PRIu64" levels", g->stack.levels);
@@ -3642,21 +4795,27 @@ void smt2_pop(uint32_t n) {
  * - if t is a :named assertion then it should be recorded for unsat-core
  */
 void smt2_assert(term_t t) {
-  __smt2_globals.stats.num_assert ++;
-  __smt2_globals.stats.num_commands ++;
-  tprint_calls("assert", __smt2_globals.stats.num_assert);
+  smt2_globals_t *g;
+
+  g = &__smt2_globals;
+
+  g->stats.num_assert ++;
+  g->stats.num_commands ++;
+  tprint_calls("assert", g->stats.num_assert);
 
   if (check_logic()) {
     if (yices_term_is_bool(t)) {
-      if (__smt2_globals.benchmark_mode) {
-	if (__smt2_globals.frozen) {
+      if (g->benchmark_mode) {
+	if (g->efmode && g->ef_client_globals.efdone) {
+	  print_error("more assertions are not allowed after solving");
+	} else if (g->frozen) {
 	  print_error("assertions are not allowed after (check-sat) in non-incremental mode");
 	} else {
-	  add_delayed_assertion(&__smt2_globals, t);
+	  add_delayed_assertion(g, t);
 	  report_success();
 	}
       } else {
-	add_assertion(&__smt2_globals, t);
+	add_assertion(g, t);
       }
     } else {
       // not a Boolean term
@@ -3664,6 +4823,32 @@ void smt2_assert(term_t t) {
     }
   }
 }
+
+static void efsolve_cmd(smt2_globals_t *g) {
+  ef_client_t *efc;
+  efc = &g->ef_client_globals;
+
+  if (g->efmode) {
+
+    ef_solve(efc, &g->assertions, &parameters, g->logic_code, arch_for_logic(g->logic_code), g->tracer);
+
+    if (efc->efcode != EF_NO_ERROR) {
+      // error in preprocessing
+      print_ef_analyze_error(efc->efcode, g->out);
+      
+    } else {
+      print_ef_status(efc, g->verbosity, g->out);
+    }
+    
+
+  } else {
+
+    print_error("(ef-solve) not supported.");
+
+  }
+}
+
+
 
 
 /*
@@ -3676,10 +4861,11 @@ void smt2_check_sat(void) {
 
   if (check_logic()) {
     if (__smt2_globals.benchmark_mode) {
-      if (__smt2_globals.frozen) {
+      if (__smt2_globals.efmode) {
+	efsolve_cmd(&__smt2_globals);	
+      } else if (__smt2_globals.frozen) {
 	print_error("multiple calls to (check-sat) are not allowed in non-incremental mode");
       } else {
-	// PROVISIONAL
 	//	show_delayed_assertions(&__smt2_globals);
 	check_delayed_assertions(&__smt2_globals);
       }
@@ -3863,17 +5049,29 @@ void smt2_define_fun(const char *name, uint32_t n, term_t *var, term_t body, typ
 void smt2_get_model(void) {
   yices_pp_t printer;
   model_t *mdl;
+  int32_t code;
 
   if (check_logic()) {
-    mdl = get_model(&__smt2_globals);
-    if (mdl == NULL) return;
+    code = 0;
+    if (__smt2_globals.efmode) {      
+      mdl = ef_get_model(&__smt2_globals.ef_client_globals, &code);
+    } else {      
+      mdl = get_model(&__smt2_globals);
+    }
 
+    if (mdl == NULL) {
+      if (__smt2_globals.efmode) {
+	fputs(efmodelcode2error[code], stderr);
+	fflush(stderr);
+      }
+      return;
+    }
+      
     init_pretty_printer(&printer, &__smt2_globals);
     smt2_pp_full_model(&printer, mdl);
     delete_yices_pp(&printer, true);
   }
 }
-
 
 /*
  * Print s on the output channel
@@ -3978,4 +5176,11 @@ void smt2_add_name(int32_t op, term_t t, const char *name) {
  */
 void smt2_add_pattern(int32_t op, term_t t, term_t *p, uint32_t n) {
   // TBD
+}
+
+/*
+ * Enables the mcsat solver.
+ */
+void smt2_enable_mcsat(void) {
+  __smt2_globals.mcsat = true;
 }

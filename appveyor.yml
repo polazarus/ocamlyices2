@@ -1,0 +1,37 @@
+clone_folder: c:\oy # stands for 'ocamlyices'
+
+environment:
+  CYG_ROOT: c:\ocaml32
+  CYG_MIRROR: http://cygwin.mirror.constant.com
+  CYG_CACHE: c:\ocaml32\var\cache\setup
+  CYG_BASH: c:\ocaml32\bin\bash
+  CYG_SETUP: C:\cygwin\setup-x86.exe
+
+# Build cache to preserve files/folders between builds (saves time)
+cache:
+  - '%CYG_CACHE% -> appveyor.yml'
+  - '%CYG_ROOT%\home\appveyor\.opam -> appveyor.yml'
+
+
+# Scripts that run after cloning repository. "ps:" means windows PowerShell
+install:
+  # First, install cygwin + opam + gmp
+  - '%CYG_SETUP% --quiet-mode --no-shortcuts --only-site --root "%CYG_ROOT%" --site "%CYG_MIRROR%" --local-package-dir "%CYG_CACHE%" --packages rsync,patch,diffutils,curl,make,unzip,git,m4,perl,mingw64-i686-gcc-core,gperf,zip,gnupg,coreutils --upgrade-also'
+
+build_script:
+  - '%CYG_BASH% -lc "cd /cygdrive/c/oy && bash -ex appveyor-script.sh"'
+
+artifacts:
+  - path: ocamlyices2-*.tar.gz*
+
+skip_tags: false
+
+deploy: # Deploy to GitHub Releases
+  - provider: GitHub
+    auth_token:
+      secure: "ksCdtElKaNg37pjDiMEV8bcjL/kTrAqAb7b2Lrrj304L/P2hwyxm/G+rC+qGTgKs"
+    artifact: /ocamlyices2-.*\.tar\.gz.*/
+    #draft: true
+    #prerelease: true
+    on:
+      appveyor_repo_tag: true

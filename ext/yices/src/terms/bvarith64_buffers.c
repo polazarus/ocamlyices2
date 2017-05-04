@@ -27,8 +27,8 @@
  */
 
 #include "terms/bv64_constants.h"
-#include "utils/hash_functions.h"
 #include "terms/bvarith64_buffers.h"
+#include "utils/hash_functions.h"
 
 
 
@@ -193,6 +193,20 @@ uint64_t bvarith64_buffer_get_constant64(bvarith64_buffer_t *b) {
   }
 
   return c;
+}
+
+
+/*
+ * Copy the constant term of b into c
+ * - b must be nomralized
+ */
+void bvarith64_buffer_copy_constant(bvarith64_buffer_t *b, bvconstant_t *c) {
+  uint64_t a;
+
+  assert(b->bitsize > 0);
+
+  a = bvarith64_buffer_get_constant64(b);
+  bvconstant_copy64(c, b->bitsize, a);
 }
 
 

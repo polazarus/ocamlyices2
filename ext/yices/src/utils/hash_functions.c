@@ -6,33 +6,19 @@
  */
 
 #include <string.h>
+#include <stddef.h>
+
 #include "utils/hash_functions.h"
 
 /*
  * The source for Jenkins's mix and hash functions is
- * http://www.burtleburtle.net/bob/hash/index.html
- *
- * The specific function below is lookup2.c (this is Public Domain)
- * http://www.burtleburtle.net/bob/c/lookup2.c
+ * at http://www.burtleburtle.net/bob/hash/index.html.
+ * We use functions from Jenkins's lookup3.c
+ * (which is Public Domain).
  *
  * int_hash_sets.c uses another hash function from Bob Jenkins's web
  * site.
  */
-
-/* Jenkins's lookup2.c code */
-#define mix(a, b, c)                \
-{                                   \
-  a -= b; a -= c; a ^= (c>>13);     \
-  b -= c; b -= a; b ^= (a<<8);      \
-  c -= a; c -= b; c ^= (b>>13);     \
-  a -= b; a -= c; a ^= (c>>12);     \
-  b -= c; b -= a; b ^= (a<<16);     \
-  c -= a; c -= b; c ^= (b>>5);      \
-  a -= b; a -= c; a ^= (c>>3);      \
-  b -= c; b -= a; b ^= (a<<10);     \
-  c -= a; c -= b; c ^= (b>>15);     \
-}
-
 
 /* Jenkins's lookup3 code */
 #define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
@@ -59,10 +45,9 @@
 }
 
 
-
 /*
- * Variant of Jenkins's original lookup2 hash function
- * for null-terminated strings.
+ * Variant of jenkins's orignal hash function for null-terminated string
+ * using the lookup3 mixx and final.
  */
 uint32_t jenkins_hash_byte_var(const uint8_t *s, uint32_t seed) {
   uint32_t a, b, c, x;
@@ -72,7 +57,7 @@ uint32_t jenkins_hash_byte_var(const uint8_t *s, uint32_t seed) {
 
   for (;;) {
     x = *s ++;
-    if (x == 0) return c;
+    if (x == 0) break;
     a += x;
     a <<= 8;
     x = *s ++;
@@ -119,13 +104,14 @@ uint32_t jenkins_hash_byte_var(const uint8_t *s, uint32_t seed) {
     if (x == 0) break;
     c += x;
 
-    mix(a, b, c);
+    mixx(a, b, c);
   }
 
-  mix(a, b, c);
+  final(a, b, c);
 
   return c;
 }
+
 
 
 /*
@@ -265,7 +251,7 @@ uint32_t jenkins_hash_uint64(uint64_t x) {
  * Hash code for an arbitrary pointer p
  */
 uint32_t jenkins_hash_ptr(const void *p) {
-  return jenkins_hash_uint64((uint64_t) ((size_t) p));
+  return jenkins_hash_uint64((uint64_t) ((uintptr_t) p));
 }
 
 

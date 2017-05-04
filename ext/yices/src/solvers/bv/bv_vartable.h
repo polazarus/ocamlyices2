@@ -33,13 +33,12 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/refcount_int_arrays.h"
-#include "utils/int_hash_tables.h"
-#include "terms/bvpoly_buffers.h"
-#include "terms/power_products.h"
-
 #include "solvers/cdcl/smt_core.h"
 #include "solvers/egraph/egraph_base_types.h"
+#include "terms/bvpoly_buffers.h"
+#include "terms/power_products.h"
+#include "utils/int_hash_tables.h"
+#include "utils/refcount_int_arrays.h"
 
 
 
@@ -285,11 +284,13 @@ extern thvar_t find_srem(bv_vartable_t *table, thvar_t x, thvar_t y);
  * Auxiliary arithmetic nodes:
  * - n = number of bits
  * - x (and y is present) = operands
+ * - set new_var to true if a new variable is created
+ *   set new_var to false if the variable was already present in table
  */
-extern thvar_t get_bvadd(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y);
-extern thvar_t get_bvsub(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y);
-extern thvar_t get_bvmul(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y);
-extern thvar_t get_bvneg(bv_vartable_t *table, uint32_t n, thvar_t x);
+extern thvar_t get_bvadd(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y, bool *new_var);
+extern thvar_t get_bvsub(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y, bool *new_var);
+extern thvar_t get_bvmul(bv_vartable_t *table, uint32_t n, thvar_t x, thvar_t y, bool *new_var);
+extern thvar_t get_bvneg(bv_vartable_t *table, uint32_t n, thvar_t x, bool *new_var);
 
 extern thvar_t find_bvadd(bv_vartable_t *table, thvar_t x, thvar_t y);
 extern thvar_t find_bvsub(bv_vartable_t *table, thvar_t x, thvar_t y);

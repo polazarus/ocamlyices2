@@ -14,7 +14,7 @@
 
 #include <stdio.h>
 
-#include "context/context.h"
+#include "context/context_types.h"
 
 
 /*
@@ -30,6 +30,7 @@ extern void print_context_top_interns(FILE *f, context_t *ctx);
 // stored in the internalization table
 extern void print_context_intern_subst(FILE *f, context_t *ctx);
 extern void print_context_intern_mapping(FILE *f, context_t *ctx);
+
 
 
 /*

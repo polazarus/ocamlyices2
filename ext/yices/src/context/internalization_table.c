@@ -33,6 +33,10 @@
  *   2^rank[r] and all elements in the class are uninterpreted. It's
  *   possible to merge the class of r with another class.
  *
+ *   The table is a partial map. The domain is defined by the set of 
+ *   terms r such that type[r] != NULL_TYPE. If type[r] is NULL_TYPE
+ *   then r is considered to be a root.
+ *
  * - a non-root i must be an uninterpreted term index and map[i] is the
  *   parent of i in the union-find tree.
  *
@@ -46,8 +50,8 @@
  * of 'i' is '(not t)'.
  */
 
-#include "utils/memalloc.h"
 #include "context/internalization_table.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -126,6 +130,8 @@ void intern_tbl_pop(intern_tbl_t *tbl) {
 }
 
 
+#if 0
+// NOT USED
 /*
  * Get the internal cache.
  * Allocate and initialize it if needed.
@@ -142,7 +148,6 @@ static int_hset_t *intern_tbl_get_cache(intern_tbl_t *tbl) {
   return tmp;
 }
 
-
 /*
  * Same thing for the internal queue
  */
@@ -158,6 +163,7 @@ static int_queue_t *intern_tbl_get_queue(intern_tbl_t *tbl) {
   return tmp;
 }
 
+#endif
 
 
 
@@ -402,6 +408,10 @@ void intern_tbl_remap_root(intern_tbl_t *tbl, term_t r, int32_t x) {
 
 
 
+#if 0
+
+// NOT USED
+
 /*
  * CYCLE DETECTION
  */
@@ -555,6 +565,10 @@ static bool bfs_occurs_check(intern_tbl_t *tbl, term_t t, term_t v) {
 
     case ARITH_EQ_ATOM:
     case ARITH_GE_ATOM:
+    case ARITH_IS_INT_ATOM:
+    case ARITH_FLOOR:
+    case ARITH_CEIL:
+    case ARITH_ABS:
       bfs_visit_term(tbl, integer_value_for_idx(terms, x));
       break;
 
@@ -570,6 +584,10 @@ static bool bfs_occurs_check(intern_tbl_t *tbl, term_t t, term_t v) {
     case OR_TERM:
     case XOR_TERM:
     case ARITH_BINEQ_ATOM:
+    case ARITH_RDIV:
+    case ARITH_IDIV:
+    case ARITH_MOD:
+    case ARITH_DIVIDES_ATOM:
     case BV_ARRAY:
     case BV_DIV:
     case BV_REM:
@@ -643,7 +661,7 @@ bool intern_tbl_valid_subst(intern_tbl_t *tbl, term_t r1, term_t r2) {
   return intern_tbl_root_is_free(tbl, r1) && ! bfs_occurs_check(tbl, r1, r2);
 }
 
-
+#endif
 
 /*
  * Check whether the substitution [r1 := r2] is valid.

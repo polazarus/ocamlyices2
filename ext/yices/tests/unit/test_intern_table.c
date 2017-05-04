@@ -15,14 +15,13 @@
 
 #include "utils/int_vectors.h"
 #include "utils/string_buffers.h"
-
-#include "include/yices.h"
 #include "api/yices_globals.h"
-#include "io/yices_pp.h"
-#include "io/type_printer.h"
-#include "io/term_printer.h"
-
 #include "context/internalization_table.h"
+#include "io/term_printer.h"
+#include "io/type_printer.h"
+#include "io/yices_pp.h"
+
+#include "yices.h"
 
 #ifdef MINGW
 static inline long int random(void) {
@@ -862,7 +861,7 @@ static term_t random_bvand(test_store_t *s) {
   tau = yices_type_of_term(a);
   b = random_term_of_type(&s->terms, tau);
 
-  return yices_bvand(a, b);
+  return yices_bvand2(a, b);
 }
 
 
@@ -874,7 +873,7 @@ static term_t random_bvor(test_store_t *s) {
   tau = yices_type_of_term(a);
   b = random_term_of_type(&s->terms, tau);
 
-  return yices_bvor(a, b);
+  return yices_bvor2(a, b);
 }
 
 
@@ -886,7 +885,7 @@ static term_t random_bvxor(test_store_t *s) {
   tau = yices_type_of_term(a);
   b = random_term_of_type(&s->terms, tau);
 
-  return yices_bvxor(a, b);
+  return yices_bvxor2(a, b);
 }
 
 
@@ -932,7 +931,7 @@ static term_t random_bvconcat(test_store_t *s) {
   a = random_bv_term(&s->terms);
   b = random_bv_term(&s->terms);
 
-  return yices_bvconcat(a, b);
+  return yices_bvconcat2(a, b);
 }
 
 
@@ -1380,6 +1379,8 @@ static void test_subst(intern_tbl_t *tbl) {
     } else {
       printf("invaid constant substitution\n");
     }
+#if 0
+    // removed intern_tbl_valid_subst from the code
   } else {
     if (is_pos_term(x) && intern_tbl_valid_subst(tbl, x, t)) {
       printf("good substitution\n");
@@ -1387,6 +1388,8 @@ static void test_subst(intern_tbl_t *tbl) {
     } else {
       printf("invalid substitution\n");
     }
+#endif
+
   }
 }
 

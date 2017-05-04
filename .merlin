@@ -1,3 +1,5 @@
 PKG zarith
+PKG oUnit
+PKG yices2
 S src
 B src

@@ -17,9 +17,9 @@
 #include <stdbool.h>
 #include <gmp.h>
 
-#include "utils/object_stores.h"
 #include "io/pretty_printer.h"
 #include "terms/rationals.h"
+#include "utils/object_stores.h"
 #include "utils/string_buffers.h"
 
 
@@ -42,9 +42,13 @@ typedef enum pp_atom_type {
   PP_FALSE_ATOM,      // false
   PP_INT32_ATOM,      // signed integer
   PP_UINT32_ATOM,     // unsigned integer
+  PP_DOUBLE_ATOM,     // double number
   PP_RATIONAL_ATOM,   // rational
   PP_BV64_ATOM,       // bitvector constant stored in a 64bit unsigned integer
   PP_BV_ATOM,         // bitvector constant stored in an array of words
+  PP_BV_ZERO_ATOM,    // bitvector constant 0b00...00
+  PP_BV_ONE_ATOM,     // bitvector constant 0b00...01
+  PP_BV_NEGONE_ATOM,  // bitvector constant 0b11...11
   PP_QSTRING_ATOM,    // content = string with open and close quotes
   PP_SMT2_BV64_ATOM,  // like PP_BV64_ATOM but with SMT2 #b prefix
   PP_SMT2_BV_ATOM,    // like PP_BV_ATOM but with SMT2 prefix
@@ -74,7 +78,7 @@ typedef struct pp_bv_s {
 
 /*
  * Descriptor of quoted string atoms
- * - quote[0] = open quore
+ * - quote[0] = open quote
  * - quote[1] = close_quote
  * - str = what's between the quotes
  */
@@ -95,6 +99,7 @@ typedef struct pp_atom_s {
     pp_id_t id;
     int32_t i32;
     uint32_t u32;
+    double dbl;
     rational_t rat;
     pp_bv64_t bv64;
     pp_bv_t bv;
@@ -153,8 +158,13 @@ typedef enum {
   PP_OPEN_MINUS,
   PP_OPEN_GE,
   PP_OPEN_LT,
+  PP_OPEN_ROOT_ATOM,
 
   PP_OPEN_BV_ARRAY,
+  PP_OPEN_BV_SIGN_EXTEND,
+  PP_OPEN_BV_ZERO_EXTEND,
+  PP_OPEN_BV_EXTRACT,
+  PP_OPEN_BV_CONCAT,
   PP_OPEN_BV_SUM,
   PP_OPEN_BV_PROD,
   PP_OPEN_BV_POWER,
@@ -171,6 +181,15 @@ typedef enum {
   PP_OPEN_BV_SGE,
   PP_OPEN_BV_SLT,
 
+  // more arithmetic stuff
+  PP_OPEN_IS_INT,
+  PP_OPEN_FLOOR,
+  PP_OPEN_CEIL,
+  PP_OPEN_ABS,
+  PP_OPEN_IDIV,
+  PP_OPEN_IMOD,
+  PP_OPEN_DIVIDES,
+
   // blocks used in pp_model
   PP_OPEN_FUNCTION,   // (function ...)
   PP_OPEN_TYPE,       // (type ..)
@@ -179,7 +198,6 @@ typedef enum {
   PP_OPEN_CONST_DEF,  // (constant i of <type>)
   PP_OPEN_UNINT_DEF,  // (unint i of <type>)
   PP_OPEN_VAR_DEF,    // (var i of <type>)
-
 } pp_open_type_t;
 
 #define NUM_PP_OPENS ((uint32_t) (PP_OPEN_VAR_DEF + 1))
@@ -233,10 +251,14 @@ extern void init_yices_pp_tables(void);
 
 /*
  * Initialize a pretty printer
- * - file = output file (must be open for write)
- * - area = display area (cf. pretty_printer.h)
+ * - file = output file (must be NULL or a stream open for write)
+ * - area = display area (cf. pretty_printer.h) 
  * - mode = initial print mode (cf. pretty printer.h)
  * - indent = initial indentation
+ *
+ * If file is NULL, then the pretty printer is initialized for 
+ * a string buffer. Otherwise, it writes to file.
+ *
  * If area is NULL, then the default is used (cf. pretty_printer.h)
  */
 extern void init_yices_pp(yices_pp_t *printer, FILE *file, pp_area_t *area,
@@ -246,8 +268,7 @@ extern void init_yices_pp(yices_pp_t *printer, FILE *file, pp_area_t *area,
 /*
  * Variant: use default mode and indent
  */
-static inline void init_default_yices_pp(yices_pp_t *printer,
-                                         FILE *file, pp_area_t *area) {
+static inline void init_default_yices_pp(yices_pp_t *printer, FILE *file, pp_area_t *area) {
   init_yices_pp(printer, file, area, PP_VMODE, 0);
 }
 
@@ -257,6 +278,16 @@ static inline void init_default_yices_pp(yices_pp_t *printer,
  * - then reset the line counter to 0
  */
 extern void flush_yices_pp(yices_pp_t *printer);
+
+
+/*
+ * Extract the string constructed by printer
+ * - printer must be initialized for a string (i.e., with file = NULL)
+ * - this must be called after flush
+ * - the string length is stored in *len
+ * - the returned string must be deleted when no-longer needed using free.
+ */
+extern char *yices_pp_get_string(yices_pp_t *printer, uint32_t *len);
 
 
 /*
@@ -287,17 +318,13 @@ static inline uint32_t yices_pp_depth(yices_pp_t *printer) {
  * Check for print error and error code
  */
 static inline bool yices_pp_print_failed(yices_pp_t *printer) {
-  return printer->pp.printer.print_failed;
+  return writer_failed(&printer->pp.printer.writer);
 }
 
 static inline int yices_pp_errno(yices_pp_t *printer) {
-  return printer->pp.printer.pp_errno;
+  return writer_errno(&printer->pp.printer.writer);
 }
 
-static inline void yices_pp_clear_error(yices_pp_t *printer) {
-  printer->pp.printer.print_failed = false;
-  printer->pp.printer.pp_errno = 0;
-}
 
 
 /*
@@ -325,8 +352,16 @@ extern void pp_uint32(yices_pp_t *printer, uint32_t x);
 extern void pp_mpz(yices_pp_t *printer, mpz_t z);
 extern void pp_mpq(yices_pp_t *printer, mpq_t q);
 extern void pp_rational(yices_pp_t *printer, rational_t *q);
+extern void pp_algebraic(yices_pp_t *printer, void *a);
 extern void pp_bv64(yices_pp_t *printer, uint64_t bv, uint32_t n);
 extern void pp_bv(yices_pp_t *printer, uint32_t *bv, uint32_t n);
+
+/*
+ * Print 0b0...0, 0b0...01, or 0b1...1: n = number of bits
+ */
+extern void pp_bv_zero(yices_pp_t *printer, uint32_t n);
+extern void pp_bv_one(yices_pp_t *printer, uint32_t n);
+extern void pp_bv_minus_one(yices_pp_t *printer, uint32_t n);
 
 
 /*
@@ -338,7 +373,7 @@ extern void pp_separator(yices_pp_t *printer, const char *s);
 /*
  * Quoted string:
  * - open_quote = character before the string (or '\0' if nothing needed)
- * - close_quote = character after the strng (or '\0' if nothing needed)
+ * - close_quote = character after the string (or '\0' if nothing needed)
  *
  * Examples
  *   pp_qstring(printer, '"', '"', "abcde") will print "abcde" (quotes included)

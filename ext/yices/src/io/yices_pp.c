@@ -10,7 +10,9 @@
  */
 
 #include <string.h>
-
+#ifdef HAVE_MCSAT
+#include <poly/algebraic_number.h>
+#endif
 #include "io/yices_pp.h"
 
 
@@ -87,7 +89,7 @@ typedef struct pp_nonstandard_block_s {
 /*
  * Table of standard blocks
  */
-#define NUM_STANDARD_BLOCKS 40
+#define NUM_STANDARD_BLOCKS 52
 
 static const pp_standard_block_t standard_block[NUM_STANDARD_BLOCKS] = {
   { PP_OPEN_FUN_TYPE, "->" },
@@ -112,7 +114,11 @@ static const pp_standard_block_t standard_block[NUM_STANDARD_BLOCKS] = {
   { PP_OPEN_MINUS, "-" },
   { PP_OPEN_GE, ">=" },
   { PP_OPEN_LT, "<" },
-  { PP_OPEN_BV_ARRAY, "bit-array" },
+  { PP_OPEN_BV_ARRAY, "bool-to-bv" },
+  { PP_OPEN_BV_SIGN_EXTEND, "bv-sign-extend" },
+  { PP_OPEN_BV_ZERO_EXTEND, "bv-zero-extend" },
+  { PP_OPEN_BV_EXTRACT, "bv-extract" },
+  { PP_OPEN_BV_CONCAT, "bv-concat" },
   { PP_OPEN_BV_SUM, "bv-add" },
   { PP_OPEN_BV_PROD, "bv-mul" },
   { PP_OPEN_BV_POWER, "bv-pow" },
@@ -128,8 +134,16 @@ static const pp_standard_block_t standard_block[NUM_STANDARD_BLOCKS] = {
   { PP_OPEN_BV_LT, "bv-lt" },
   { PP_OPEN_BV_SGE, "bv-sge" },
   { PP_OPEN_BV_SLT, "bv-slt" },
+  { PP_OPEN_IS_INT, "is-int" },
+  { PP_OPEN_FLOOR, "floor" },
+  { PP_OPEN_CEIL, "ceil" },
+  { PP_OPEN_ABS, "abs" },
+  { PP_OPEN_IDIV, "div" },
+  { PP_OPEN_IMOD, "mod" },
+  { PP_OPEN_DIVIDES, "divides" },
   { PP_OPEN_TYPE, "type" },
   { PP_OPEN_DEFAULT, "default" },
+  { PP_OPEN_ROOT_ATOM, "arith-root-atom" },
 };
 
 
@@ -240,6 +254,11 @@ static void build_uint32(string_buffer_t *b, uint32_t x) {
   string_buffer_close(b);
 }
 
+static void build_double(string_buffer_t *b, double x) {
+  string_buffer_append_double(b, x);
+  string_buffer_close(b);
+}
+
 static void build_mpz(string_buffer_t *b, mpz_t z) {
   string_buffer_append_mpz(b, z);
   string_buffer_close(b);
@@ -273,6 +292,45 @@ static void build_bv64(string_buffer_t *b, uint64_t bv, uint32_t n) {
   build_bv(b, aux, n);
 }
 
+// bitvector constants 0, 1, and -1: n = number of bits
+static void build_bv_zero(string_buffer_t *b, uint32_t n) {
+  assert(0 < n);
+
+  string_buffer_append_char(b, '0');
+  string_buffer_append_char(b, 'b');
+  do {
+    string_buffer_append_char(b, '0');
+    n --;
+  } while (n > 0);
+  string_buffer_close(b);
+}
+
+static void build_bv_one(string_buffer_t *b, uint32_t n) {
+  assert(0 < n);
+
+  string_buffer_append_char(b, '0');
+  string_buffer_append_char(b, 'b');
+  while (n > 1) {
+    string_buffer_append_char(b, '0');
+    n --;
+  }
+  string_buffer_append_char(b, '1');
+  string_buffer_close(b);
+}
+
+static void build_bv_minus_one(string_buffer_t *b, uint32_t n) {
+  assert(0 < n);
+
+  string_buffer_append_char(b, '0');
+  string_buffer_append_char(b, 'b');
+  do {
+    string_buffer_append_char(b, '1');
+    n --;
+  } while (n > 0);
+  string_buffer_close(b);
+}
+
+// quoted string
 static void build_qstring(string_buffer_t *b, char quote[2], const char *str) {
   if (quote[0] != '\0') {
     string_buffer_append_char(b, quote[0]);
@@ -361,6 +419,10 @@ static const char *get_string(yices_pp_t *printer, pp_atomic_token_t *tk) {
     build_uint32(buffer, atm->data.u32);
     s = buffer->data;
     break;
+  case PP_DOUBLE_ATOM:
+    build_double(buffer, atm->data.dbl);
+    s = buffer->data;
+    break;
   case PP_RATIONAL_ATOM:
     build_rational(buffer, &atm->data.rat);
     s = buffer->data;
@@ -371,6 +433,18 @@ static const char *get_string(yices_pp_t *printer, pp_atomic_token_t *tk) {
     break;
   case PP_BV_ATOM:
     build_bv(buffer, atm->data.bv.bv, atm->data.bv.nbits);
+    s = buffer->data;
+    break;
+  case PP_BV_ZERO_ATOM:
+    build_bv_zero(buffer, atm->data.u32);
+    s = buffer->data;
+    break;
+  case PP_BV_ONE_ATOM:
+    build_bv_one(buffer, atm->data.u32);
+    s = buffer->data;
+    break;
+  case PP_BV_NEGONE_ATOM:
+    build_bv_minus_one(buffer, atm->data.u32);
     s = buffer->data;
     break;
   case PP_QSTRING_ATOM:
@@ -482,22 +556,38 @@ void init_yices_pp(yices_pp_t *printer, FILE *file, pp_area_t *area,
 
 
 /*
- * Flush: print everything pending + a newline
- * - then reset the line counter to 0
+ * Flush: print everything pending
+ * - if the printer is writing to file, print a newline
+ * - reset the line counter to 0
  */
 void flush_yices_pp(yices_pp_t *printer) {
-  flush_pp(&printer->pp);
+  bool nl;
+
+  nl = is_stream_pp(&printer->pp);
+  flush_pp(&printer->pp, nl);
 }
+
+/*
+ * Extract the string constructed by printer
+ * - printer must be initialized for a string (i.e., with file = NULL)
+ * - this must be called after flush
+ * - the string length is stored in *len
+ * - the returned string must be deleted when no-longer needed using free.
+ */
+char *yices_pp_get_string(yices_pp_t *printer, uint32_t *len) {
+  return pp_get_string(&printer->pp, len);
+}
+
 
 
 /*
  * Flush then delete a pretty printer
- * - if flush is true, print everything pending + a newline
+ * - if flush is true, print everything pending 
  * - then free all memory used
  */
 void delete_yices_pp(yices_pp_t *printer, bool flush) {
   if (flush) {
-    flush_pp(&printer->pp);
+    flush_yices_pp(printer);
   }
   delete_pp(&printer->pp);
   delete_objstore(&printer->open_store);
@@ -719,6 +809,28 @@ void pp_rational(yices_pp_t *printer, rational_t *q) {
   pp_push_token(&printer->pp, tk);
 }
 
+void pp_algebraic(yices_pp_t *printer, void *a) {
+#ifdef HAVE_MCSAT
+  pp_atom_t *atom;
+  void *tk;
+  string_buffer_t *buffer;
+  uint32_t n;
+
+  double a_value = lp_algebraic_number_to_double(a);
+
+  buffer = &printer->buffer;
+  assert(string_buffer_length(buffer) == 0);
+  build_double(buffer, a_value);
+  n = string_buffer_length(buffer);
+  string_buffer_reset(buffer);
+
+  atom = new_atom(printer);
+  tk = init_atomic_token(&atom->tk, n, PP_DOUBLE_ATOM);
+  atom->data.dbl = a_value;
+  pp_push_token(&printer->pp, tk);
+#endif
+}
+
 
 void pp_bv64(yices_pp_t *printer, uint64_t bv, uint32_t n) {
   pp_atom_t *atom;
@@ -756,6 +868,46 @@ void pp_bv(yices_pp_t *printer, uint32_t *bv, uint32_t n) {
 
 
 /*
+ * Bitvector contants: 0, 1, -1
+ */
+void pp_bv_zero(yices_pp_t *printer, uint32_t n) {
+  pp_atom_t *atom;
+  void *tk;
+
+  assert(0 < n);
+  atom = new_atom(printer);
+  tk = init_atomic_token(&atom->tk, n+2, PP_BV_ZERO_ATOM);
+  atom->data.u32 = n;
+
+  pp_push_token(&printer->pp, tk);
+}
+
+void pp_bv_one(yices_pp_t *printer, uint32_t n) {
+  pp_atom_t *atom;
+  void *tk;
+
+  assert(0 < n);
+  atom = new_atom(printer);
+  tk = init_atomic_token(&atom->tk, n+2, PP_BV_ONE_ATOM);
+  atom->data.u32 = n;
+
+  pp_push_token(&printer->pp, tk);
+}
+
+void pp_bv_minus_one(yices_pp_t *printer, uint32_t n) {
+  pp_atom_t *atom;
+  void *tk;
+
+  assert(0 < n);
+  atom = new_atom(printer);
+  tk = init_atomic_token(&atom->tk, n+2, PP_BV_NEGONE_ATOM);
+  atom->data.u32 = n;
+
+  pp_push_token(&printer->pp, tk);
+}
+
+
+/*
  * Separator s: no copy is made
  */
 void pp_separator(yices_pp_t *printer, const char *s) {
@@ -775,7 +927,7 @@ void pp_separator(yices_pp_t *printer, const char *s) {
 /*
  * Quoted string:
  * - open_quote = character before the string (or '\0' if nothing needed)
- * - close_quote = charcater after the string (or '\0' if nothing needed)
+ * - close_quote = character after the string (or '\0' if nothing needed)
  *
  * Examples
  *   pp_qstring(printer, '"', '"', "abcde") will print "abcde" (quotes included)

@@ -1,6 +1,6 @@
 opam-version: "1.2"
-name: "ocamlyices2"
-version: "0.1.0"
+name: "yices2"
+version: "0.0.2"
 maintainer: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
 authors: "Mickaël Delahaye <mickael.delahaye@gmail.com>"
 homepage: "http://micdel.fr/ocamlyices2.html"
@@ -12,10 +12,22 @@ build: [
   [make]
 ]
 install: [make "install"]
-remove: ["ocamlfind" "remove" "ocamlyices2"]
+remove: ["ocamlfind" "remove" "yices2"]
+build-test: [
+  ["./configure"]
+  [make test]
+]
 depends: [
   "ocamlfind" {build}
+  "conf-gmp" {build}     # needed for building src/yices
   "zarith"
+  "ounit" {test}
+]
+# gperf is needed for building ext/yices
+depexts: [
+  [["linux"] ["gperf"]]
+  [["osx" "homebrew"] ["gperf"]]
+  [["win32" "cygwinports"] ["gperf"]]
 ]
 post-messages: [
   "OCamlYices2 is free (BSD-like) but Yices is not!

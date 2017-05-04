@@ -1,6 +1,6 @@
 EXAMPLES=test
-OC=ocamlfind c -package ocamlyices2 -linkpkg
-OO=ocamlfind opt -package ocamlyices2 -linkpkg
+OC=ocamlfind c -package yices2 -linkpkg
+OO=ocamlfind opt -package yices2 -linkpkg
 
 all: byte native
 

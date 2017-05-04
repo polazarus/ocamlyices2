@@ -12,9 +12,9 @@
 
 #include <assert.h>
 
-#include "utils/memalloc.h"
-#include "utils/index_vectors.h"
 #include "solvers/simplex/offset_equalities.h"
+#include "utils/index_vectors.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -1048,7 +1048,7 @@ static void offset_hash_table_remove(offset_hash_table_t *table, int32_t i, uint
 
   table->data[j].index = -2; // mark as deleted
   table->nelems --;
-  table->ndeleted --;
+  table->ndeleted ++;
   if (table->ndeleted > table->cleanup_threshold) {
     offset_hash_table_cleanup(table);
   }

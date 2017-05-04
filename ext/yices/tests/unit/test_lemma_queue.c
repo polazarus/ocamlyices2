@@ -10,8 +10,8 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "utils/memalloc.h"
 #include "solvers/cdcl/smt_core.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -230,7 +230,7 @@ static void print_lemmas(lemma_queue_t *queue) {
   }
 }
 
-int main() {
+int main(void) {
   uint32_t i;
 
   // initialize lemma c

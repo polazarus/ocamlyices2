@@ -11,8 +11,8 @@
 
 #include <assert.h>
 
-#include "utils/memalloc.h"
 #include "terms/term_substitution.h"
+#include "utils/memalloc.h"
 
 /*
  * Check whether t is either a variable or an uninterpreted term
@@ -600,6 +600,38 @@ static term_t subst_arith_ge(term_subst_t *subst, term_t t) {
   return mk_arith_term_geq0(subst->mngr, u);
 }
 
+// (is-int t)
+static term_t subst_arith_is_int(term_subst_t *subst, term_t t) {
+  term_t u;
+
+  u = get_subst(subst, t);
+  return mk_arith_is_int(subst->mngr, u);
+}
+
+// (floor t)
+static term_t subst_arith_floor(term_subst_t *subst, term_t t) {
+  term_t u;
+
+  u = get_subst(subst, t);
+  return mk_arith_floor(subst->mngr, u);
+}
+
+// (ceil t)
+static term_t subst_arith_ceil(term_subst_t *subst, term_t t) {
+  term_t u;
+
+  u = get_subst(subst, t);
+  return mk_arith_ceil(subst->mngr, u);
+}
+
+// (abs t)
+static term_t subst_arith_abs(term_subst_t *subst, term_t t) {
+  term_t u;
+
+  u = get_subst(subst, t);
+  return mk_arith_abs(subst->mngr, u);
+}
+
 // (ite c t1 t2)
 static term_t subst_ite(term_subst_t *subst, composite_term_t *d) {
   term_table_t *tbl;
@@ -741,6 +773,46 @@ static term_t subst_arith_bineq(term_subst_t *subst, composite_term_t *d) {
   t1 = get_subst(subst, d->arg[0]);
   t2 = get_subst(subst, d->arg[1]);
   return mk_arith_eq(subst->mngr, t1, t2);
+}
+
+// (/ t1 t2)
+static term_t subst_arith_rdiv(term_subst_t *subst, composite_term_t *d) {
+  term_t t1, t2;
+
+  assert(d->arity == 2);
+  t1 = get_subst(subst, d->arg[0]);
+  t2 = get_subst(subst, d->arg[1]);
+  return mk_arith_rdiv(subst->mngr, t1, t2);
+}
+
+// (div t1 t2)
+static term_t subst_arith_idiv(term_subst_t *subst, composite_term_t *d) {
+  term_t t1, t2;
+
+  assert(d->arity == 2);
+  t1 = get_subst(subst, d->arg[0]);
+  t2 = get_subst(subst, d->arg[1]);
+  return mk_arith_idiv(subst->mngr, t1, t2);
+}
+
+// (mod t1 t2)
+static term_t subst_arith_mod(term_subst_t *subst, composite_term_t *d) {
+  term_t t1, t2;
+
+  assert(d->arity == 2);
+  t1 = get_subst(subst, d->arg[0]);
+  t2 = get_subst(subst, d->arg[1]);
+  return mk_arith_mod(subst->mngr, t1, t2);
+}
+
+// (divides t1 t2)
+static term_t subst_arith_divides(term_subst_t *subst, composite_term_t *d) {
+  term_t t1, t2;
+
+  assert(d->arity == 2);
+  t1 = get_subst(subst, d->arg[0]);
+  t2 = get_subst(subst, d->arg[1]);
+  return mk_arith_divides(subst->mngr, t1, t2);
 }
 
 // array of bits
@@ -1058,6 +1130,28 @@ static term_t subst_composite(term_subst_t *subst, term_t t) {
     result = subst_arith_ge(subst, arith_ge_arg(terms, t));
     break;
 
+  case ARITH_ROOT_ATOM:
+    // TODO
+    assert(false);
+    result = NULL_TERM;
+    break;
+
+  case ARITH_IS_INT_ATOM:
+    result = subst_arith_is_int(subst, arith_is_int_arg(terms, t));
+    break;
+
+  case ARITH_FLOOR:
+    result = subst_arith_floor(subst, arith_floor_arg(terms, t));
+    break;
+
+  case ARITH_CEIL:
+    result = subst_arith_ceil(subst, arith_ceil_arg(terms, t));
+    break;
+
+  case ARITH_ABS:
+    result = subst_arith_abs(subst, arith_abs_arg(terms, t));
+    break;
+
   case ITE_TERM:
   case ITE_SPECIAL:
     result = subst_ite(subst, ite_term_desc(terms, t));
@@ -1101,6 +1195,22 @@ static term_t subst_composite(term_subst_t *subst, term_t t) {
 
   case ARITH_BINEQ_ATOM:
     result = subst_arith_bineq(subst, arith_bineq_atom_desc(terms, t));
+    break;
+
+  case ARITH_RDIV:
+    result = subst_arith_rdiv(subst, arith_idiv_term_desc(terms, t));
+    break;
+ 
+  case ARITH_IDIV:
+    result = subst_arith_idiv(subst, arith_idiv_term_desc(terms, t));
+    break;
+
+ case ARITH_MOD:
+    result = subst_arith_mod(subst, arith_mod_term_desc(terms, t));
+    break;
+
+  case ARITH_DIVIDES_ATOM:
+    result = subst_arith_divides(subst, arith_divides_atom_desc(terms, t));
     break;
 
   case BV_ARRAY:

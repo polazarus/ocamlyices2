@@ -23,18 +23,17 @@
 #include <stdlib.h>
 #include <gmp.h>
 
-#include "utils/int_vectors.h"
-#include "utils/memalloc.h"
-#include "utils/bitvectors.h"
-
-#include "terms/rationals.h"
+#include "api/yices_globals.h"
+#include "io/term_printer.h"
+#include "io/type_printer.h"
 #include "terms/bv64_constants.h"
 #include "terms/bv_constants.h"
+#include "terms/rationals.h"
+#include "utils/bitvectors.h"
+#include "utils/int_vectors.h"
+#include "utils/memalloc.h"
 
 #include "yices.h"
-#include "api/yices_globals.h"
-#include "io/type_printer.h"
-#include "io/term_printer.h"
 
 
 
@@ -742,9 +741,9 @@ static bv_binop_t binop_array[NUM_BINOPS] = {
   { "bvsdiv", yices_bvsdiv },
   { "bvsrem", yices_bvsrem },
   { "bvsmod", yices_bvsmod },
-  { "bvand", yices_bvand },
-  { "bvor", yices_bvor },
-  { "bvxor", yices_bvxor },
+  { "bvand", yices_bvand2 },
+  { "bvor", yices_bvor2 },
+  { "bvxor", yices_bvxor2 },
   { "bvnand", yices_bvnand },
   { "bvnor", yices_bvnor },
   { "bvxnor", yices_bvxnor },
@@ -940,7 +939,7 @@ static term_t test_bvconcat(term_t t1, term_t t2) {
   printf(" ");
   print_term(stdout, __yices_globals.terms, t2);
   printf(") ---> ");
-  t = yices_bvconcat(t1, t2);
+  t = yices_bvconcat2(t1, t2);
   print_term(stdout, __yices_globals.terms, t);
   printf("\n");
 
@@ -1332,5 +1331,7 @@ int main(void) {
   delete_store();
   yices_exit();
 
+  printf("All tests succeeded\n");
+  
   return 0;
 }

@@ -16,9 +16,9 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "utils/symbol_tables.h"
 #include "utils/cputime.h"
 #include "utils/memsize.h"
+#include "utils/symbol_tables.h"
 
 static char buffer[1000];
 static char **words;
@@ -81,7 +81,7 @@ static void words_from_file(const char *filename) {
   exit(1);
 }
 
-static void clear_words() {
+static void clear_words(void) {
   uint32_t j;
 
   for (j=0; j<n_words; j++) free(words[j]);
@@ -136,6 +136,8 @@ int main(int argc, char *argv[]) {
   printf("\n*** Added %"PRIu32" words from %s ***\n", n_words, argv[1]);
 
   // repeated additions of the same symbols with multiple lookups
+  // warning: this code does not work (may give a false alarm)
+  // if the input file contains duplicates.
   n = (n_words < 200) ?  n_words : 200;
   printf("\n*** Repeated symbol addition ***\n");
   runtime = get_cpu_time();

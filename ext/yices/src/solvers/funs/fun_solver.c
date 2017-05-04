@@ -25,18 +25,17 @@
 
 #include <inttypes.h>
 
-#include "utils/memalloc.h"
-#include "utils/index_vectors.h"
-#include "utils/pointer_vectors.h"
-#include "utils/ptr_array_sort2.h"
-#include "utils/int_array_sort2.h"
-#include "utils/ptr_partitions.h"
-#include "utils/hash_functions.h"
-#include "utils/int_hash_classes.h"
 #include "io/tracer.h"
-
 #include "model/fun_trees.h"
 #include "solvers/funs/fun_solver.h"
+#include "utils/hash_functions.h"
+#include "utils/index_vectors.h"
+#include "utils/int_array_sort2.h"
+#include "utils/int_hash_classes.h"
+#include "utils/memalloc.h"
+#include "utils/pointer_vectors.h"
+#include "utils/ptr_array_sort2.h"
+#include "utils/ptr_partitions.h"
 
 
 #define TRACE 0
@@ -680,7 +679,7 @@ static void fun_solver_delete_fresh_hmap(fun_solver_t *solver) {
  **************************************/
 
 /*
- * Edge descriptor of egde i
+ * Edge descriptor of edge i
  */
 static inline fun_edge_t *get_edge(fun_edgetable_t *table, int32_t i) {
   assert(0 <= i && i < table->nedges);
@@ -1804,7 +1803,11 @@ static bool update_conflicts(fun_solver_t *solver) {
 
  done:
   if (num_updates > 0) {
-    tprintf(solver->core->trace, 5, "(array solver: %"PRIu32" update lemmas)\n", num_updates);
+    if (num_updates == 1) {
+      tprintf(solver->core->trace, 5, "(array solver: 1 update lemma)\n");
+    } else {
+      tprintf(solver->core->trace, 5, "(array solver: %"PRIu32" update lemmas)\n", num_updates);
+    }
 #if TRACE
     printf("---> ARRAY SOLVER: update axioms in %"PRIu32" classes out of %"PRIu32"\n", num_updates, n);
 #endif

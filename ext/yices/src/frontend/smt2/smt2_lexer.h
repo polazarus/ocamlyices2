@@ -19,8 +19,8 @@
 #include <assert.h>
 #include <stdint.h>
 
-#include "parser_utils/lexer.h"
 #include "api/smt_logic_codes.h"
+#include "parser_utils/lexer.h"
 
 
 /*
@@ -333,6 +333,13 @@ static inline bool smt2_string_is_keyword(const char *s) {
  * - return SMT2_KW_UNKNOWN if s is not in the keyword table
  */
 extern smt2_keyword_t smt2_string_to_keyword(const char *s, uint32_t n);
+
+
+/*
+ * Switch to version 2.5 of SMT-LIB. This currently affects only the 
+ * parsing of strings.
+ */
+extern void smt2_lexer_activate_two_dot_five(void);
 
 
 /*

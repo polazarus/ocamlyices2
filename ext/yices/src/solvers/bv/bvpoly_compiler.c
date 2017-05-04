@@ -12,9 +12,9 @@
 
 #include <assert.h>
 
-#include "utils/bit_tricks.h"
-#include "terms/bv64_constants.h"
 #include "solvers/bv/bvpoly_compiler.h"
+#include "terms/bv64_constants.h"
+#include "utils/bit_tricks.h"
 
 
 #define TRACE 0
@@ -284,6 +284,7 @@ static void bv_compiler_map_to_zero(bvc_t *c, thvar_t x, uint32_t n) {
  */
 static thvar_t bv_compiler_mk_bvadd(bvc_t *c, uint32_t n, thvar_t x, thvar_t y) {
   thvar_t v;
+  bool new;
 
   assert(0 < x && x < c->vtbl->nvars && 0 < y && y < c->vtbl->nvars);
 
@@ -292,28 +293,31 @@ static thvar_t bv_compiler_mk_bvadd(bvc_t *c, uint32_t n, thvar_t x, thvar_t y) 
     v = x; x = y; y = v;
   }
 
-  assert(find_bvadd(c->vtbl, x, y) == -1); // not already present
-
-  v = get_bvadd(c->vtbl, n, x, y);
-  bvc_queue_push(&c->elemexp, v);
+  v = get_bvadd(c->vtbl, n, x, y, &new);
+  if (new) {
+    bvc_queue_push(&c->elemexp, v);
+  }
 
   return v;
 }
 
 static thvar_t bv_compiler_mk_bvsub(bvc_t *c, uint32_t n, thvar_t x, thvar_t y) {
   thvar_t v;
+  bool new;
 
   assert(0 < x && x < c->vtbl->nvars && 0 < y && y < c->vtbl->nvars);
-  assert(find_bvsub(c->vtbl, x, y) == -1); // not already present
 
-  v = get_bvsub(c->vtbl, n, x, y);
-  bvc_queue_push(&c->elemexp, v);
+  v = get_bvsub(c->vtbl, n, x, y, &new);
+  if (new) {
+    bvc_queue_push(&c->elemexp, v);
+  }
 
   return v;
 }
 
 static thvar_t bv_compiler_mk_bvmul(bvc_t *c, uint32_t n, thvar_t x, thvar_t y) {
   thvar_t v;
+  bool new;
 
   assert(0 < x && x < c->vtbl->nvars && 0 < y && y < c->vtbl->nvars);
 
@@ -322,22 +326,24 @@ static thvar_t bv_compiler_mk_bvmul(bvc_t *c, uint32_t n, thvar_t x, thvar_t y) 
     v = x; x = y; y = v;
   }
 
-  assert(find_bvmul(c->vtbl, x, y) == -1); // not already present
-
-  v = get_bvmul(c->vtbl, n, x, y);
-  bvc_queue_push(&c->elemexp, v);
+  v = get_bvmul(c->vtbl, n, x, y, &new);
+  if (new) {
+    bvc_queue_push(&c->elemexp, v);
+  }
 
   return v;
 }
 
 static thvar_t bv_compiler_mk_bvneg(bvc_t *c, uint32_t n, thvar_t x) {
   thvar_t v;
+  bool new;
 
   assert(0 < x && x < c->vtbl->nvars);
-  assert(find_bvneg(c->vtbl, x) == -1);
 
-  v = get_bvneg(c->vtbl, n, x);
-  bvc_queue_push(&c->elemexp, v);
+  v = get_bvneg(c->vtbl, n, x, &new);
+  if (new) {
+    bvc_queue_push(&c->elemexp, v);
+  }
 
   return v;
 }
@@ -369,6 +375,27 @@ static thvar_t bv_compiler_mk_zero(bvc_t *c, uint32_t n) {
 
   return v;
 }
+
+static thvar_t bv_compiler_mk_const64(bvc_t *c, uint64_t a, uint32_t n) {
+  thvar_t v;
+
+  assert(1 <= n && n <= 64 && a == norm64(a, n));
+  v = get_bvconst64(c->vtbl, n, a);
+  bvc_queue_push(&c->elemexp, v);
+
+  return v;
+}
+
+static thvar_t bv_compiler_mk_const(bvc_t *c, uint32_t *a, uint32_t n) {
+  thvar_t v;
+
+  assert(n > 64 && bvconst_is_normalized(a, n));
+  v = get_bvconst(c->vtbl, n, a);
+  bvc_queue_push(&c->elemexp, v);
+
+  return v;
+}
+
 
 /*
  * POWER-PRODUCT CONSTRUCTION
@@ -586,7 +613,7 @@ static void bv_compiler_push_pprod(bvc_t *c, pprod_t *p) {
 
 
 /*
- * Add x queue and all the variables x depends on to the queue:a
+ * Add x and all the variables on which x depends to the queue
  * - mark x first (to prevent looping if there are  circular dependencies)
  * - recursively push the children
  * - then add x to the queue
@@ -1000,6 +1027,21 @@ static void bvc_process_zero(bvc_t *c, bvnode_t i, bvc_zero_t *d) {
 }
 
 
+// case 6: i is a constant node
+static void bvc_process_constant(bvc_t *c, bvnode_t i, bvc_constant_t *d) {
+  uint32_t nbits;
+  thvar_t x;
+
+  nbits = d->header.bitsize;
+  if (nbits <= 64) {
+    x = bv_compiler_mk_const64(c, d->value.c, nbits);
+  } else {
+    x = bv_compiler_mk_const(c, d->value.w, nbits);
+  }
+  bvc_dag_convert_to_leaf(&c->dag, i, x);
+}
+
+
 static void bvc_process_elem_node(bvc_t *c, bvnode_t i) {
   bvc_dag_t *dag;
 
@@ -1007,6 +1049,10 @@ static void bvc_process_elem_node(bvc_t *c, bvnode_t i) {
   switch (bvc_dag_node_type(dag, i)) {
   case BVC_ZERO:
     bvc_process_zero(c, i, bvc_dag_node_zero(dag, i));
+    break;
+
+  case BVC_CONSTANT:
+    bvc_process_constant(c, i, bvc_dag_node_constant(dag, i));
     break;
 
   case BVC_OFFSET:
@@ -1207,6 +1253,7 @@ static void bvc_process_node_if_simple(bvc_t *c, bvnode_t i) {
   case BVC_LEAF:
   case BVC_ALIAS:
   case BVC_ZERO:
+  case BVC_CONSTANT:
     assert(false);
     break;
   }

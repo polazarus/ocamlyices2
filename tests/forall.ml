@@ -1,6 +1,7 @@
 open Yices2
+open OUnit2
 
-let () =
+let forall _ =
   let int = Type.int () in
   let input = Term.new_uninterpreted int in
   Term.set_name input "x";
@@ -9,6 +10,4 @@ let () =
   in
   let term = Term.Bool.forall int body in
   ()
-
   (* quantifier are not yet supported for anything else :( *)
-

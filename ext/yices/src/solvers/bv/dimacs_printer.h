@@ -15,10 +15,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "solvers/cdcl/smt_core.h"
-#include "solvers/bv/remap_table.h"
+#include "context/context_types.h"
 #include "solvers/bv/bvsolver_types.h"
-#include "context/context.h"
+#include "solvers/bv/remap_table.h"
+#include "solvers/cdcl/smt_core.h"
 
 
 /*
@@ -131,7 +131,7 @@ extern void dimacs_print_term_map_array(FILE *f, context_t *ctx, term_t *a, uint
  */
 
 /*
- * Print the term map for every uinterpreted term present in ctx->intern_tbl
+ * Print the term map for every uninterpreted term present in ctx->intern_tbl
  * then print the core
  */
 extern void dimacs_print_bvcontext(FILE *f, context_t *ctx);

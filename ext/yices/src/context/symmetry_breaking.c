@@ -12,10 +12,12 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/int_array_sort.h"
-#include "utils/ptr_array_sort2.h"
-#include "utils/memalloc.h"
+#include "context/context_utils.h"
+#include "context/internalization_codes.h"
 #include "context/symmetry_breaking.h"
+#include "utils/int_array_sort.h"
+#include "utils/memalloc.h"
+#include "utils/ptr_array_sort2.h"
 
 #define TRACE 0
 
@@ -385,7 +387,7 @@ static bool false_eq(term_table_t *table, term_t t1, term_t t2) {
 /*
  * Check whether t is of the following forms
  * - false term
- * - disjuction: (or t1 ... tn)
+ * - disjunction: (or t1 ... tn)
  * - equality (x == constant) or (constant == x)
  * - boolean equivalence: (x == true) or (x == false)
  *
@@ -523,7 +525,7 @@ static term_t formula_is_range_constraint(sym_breaker_t *breaker, term_t f, ivec
    * Invariants:
    * - neqs = number of equality atoms seen so far
    * - if neq == 1, then the first equality is stored as (y == b) where b is a constant
-   * - if neq >= 2, then all equalities seen so far were of the form (x == constant)
+   * - if neq >= 2, then all equalities seen so far were of the form (y == constant)
    */
   do {
     // r := root of the first term in the queue
@@ -587,7 +589,7 @@ static term_t formula_is_range_constraint(sym_breaker_t *breaker, term_t f, ivec
 
     case MATCH_IFF:
       /*
-       * the returned term x is equivalent to t
+       * the returned term x is equivalent to r
        */
       push_term(queue, cache, x);
       break;
@@ -598,10 +600,10 @@ static term_t formula_is_range_constraint(sym_breaker_t *breaker, term_t f, ivec
     }
   } while (! int_queue_is_empty(queue));
 
-  assert(y != NULL_TERM && t == NULL_TERM);
+  assert(t == NULL_TERM);
 
   if (neqs >= 2) {
-    assert(v->size == neqs);
+    assert(y != NULL_TERM && v->size == neqs);
     t = y;
   }
 
@@ -748,7 +750,7 @@ static inline void reset_ctx_subst(ctx_subst_t *s) {
 
 /*
  * Get the term mapped to t in s
- * - raise an exception (bu longjmp(s->env, -1) if something goes wrong
+ * - raise an exception (by longjmp(s->env, -1) if something goes wrong
  *   (i.e., t is not in the QF_UF fragment)
  */
 static term_t ctx_subst(ctx_subst_t *s, term_t t);
@@ -1040,7 +1042,7 @@ static void make_cycle(ctx_subst_t *s, term_t *c, uint32_t n) {
 
 /*
  * Check whether the assertions in ctx are invariant with respect
- * to permutations of the contants in array c
+ * to permutations of the constants in array c
  * - n = size of c (must be >= 2)
  * - use s to build the substitutions
  */
@@ -1203,7 +1205,15 @@ static void collect_constants(sym_breaker_t *breaker, term_t t, term_t *c, uint3
 
     case ARITH_EQ_ATOM:
     case ARITH_GE_ATOM:
+    case ARITH_IS_INT_ATOM:
+    case ARITH_FLOOR:
+    case ARITH_CEIL:
+    case ARITH_ABS:
       push_term(queue, cache, arith_atom_arg(terms, r));
+      break;
+
+    case ARITH_ROOT_ATOM:
+      // ignore it
       break;
 
     case ITE_TERM:
@@ -1216,6 +1226,10 @@ static void collect_constants(sym_breaker_t *breaker, term_t t, term_t *c, uint3
     case OR_TERM:
     case XOR_TERM:
     case ARITH_BINEQ_ATOM:
+    case ARITH_RDIV:
+    case ARITH_IDIV:
+    case ARITH_MOD:
+    case ARITH_DIVIDES_ATOM:
     case BV_ARRAY:
     case BV_DIV:
     case BV_REM:
@@ -1477,8 +1491,8 @@ static void update_costs(sym_breaker_t *breaker, sym_breaker_sets_t *s) {
 
 /*
  * Select a term t from s->candidates then remove t from the candidate set.
- * - heuristic: terms with lower cost are prefered, in case of ties (equal costs)
- *   t is prefered over u if t is a constant and u is not
+ * - heuristic: terms with lower cost are preferred, in case of ties (equal costs)
+ *   t is preferred over u if t is a constant and u is not
  * - return NULL_TERM if nothing is found
  */
 static term_t select_candidate(sym_breaker_t *breaker, sym_breaker_sets_t *s) {

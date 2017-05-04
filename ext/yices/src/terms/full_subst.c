@@ -9,8 +9,8 @@
  * FULL SUBSTITUTION
  */
 
-#include "terms/term_substitution.h"
 #include "terms/full_subst.h"
+#include "terms/term_substitution.h"
 
 /*
  * Marks for cycle detection
@@ -143,8 +143,8 @@ static void full_subst_remove_map(full_subst_t *subst, term_t x) {
  * NOTE: we attach the mark to term indices (so t and not(t) have the
  * same mark)
  *
- * - if subst->remove_cycles is false, then the function just detect cycles.
- * - if subst->remove_cylces is true, then it removes cycles by
+ * - if subst->remove_cycles is false, then the function just detects cycles.
+ * - if subst->remove_cycles is true, then it removes cycles by
  *   removing [x := t] from the map, for the first x that causes a cycle.
  *
  */
@@ -281,7 +281,16 @@ static bool fsubst_explore(full_subst_t *subst, int32_t i) {
 
   case ARITH_EQ_ATOM:
   case ARITH_GE_ATOM:
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
     result = fsubst_visit(subst, integer_value_for_idx(terms, i));
+    break;
+
+  case ARITH_ROOT_ATOM:
+    // TODO: not sure what substituion means yet
+    assert(false);
     break;
 
   case ITE_TERM:
@@ -296,6 +305,10 @@ static bool fsubst_explore(full_subst_t *subst, int32_t i) {
   case OR_TERM:
   case XOR_TERM:
   case ARITH_BINEQ_ATOM:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_ARRAY:
   case BV_DIV:
   case BV_REM:
@@ -575,6 +588,45 @@ static term_t full_subst_arith_ge(full_subst_t *subst, term_t t) {
   return mk_arith_term_geq0(subst->mngr, s);
 }
 
+// root atom
+static term_t full_subst_arith_root_atom(full_subst_t *subst, root_atom_t* r) {
+  // TODO: what does this even mean?
+  assert(false);
+  return NULL_TERM;
+}
+
+// is_int t
+static term_t full_subst_arith_is_int(full_subst_t *subst, term_t t) {
+  term_t s;
+
+  s = full_subst(subst, t);
+  return mk_arith_is_int(subst->mngr, s);
+}
+
+// floor t
+static term_t full_subst_arith_floor(full_subst_t *subst, term_t t) {
+  term_t s;
+
+  s = full_subst(subst, t);
+  return mk_arith_floor(subst->mngr, s);
+}
+
+// ceil t
+static term_t full_subst_arith_ceil(full_subst_t *subst, term_t t) {
+  term_t s;
+
+  s = full_subst(subst, t);
+  return mk_arith_ceil(subst->mngr, s);
+}
+
+// abs t
+static term_t full_subst_arith_abs(full_subst_t *subst, term_t t) {
+  term_t s;
+
+  s = full_subst(subst, t);
+  return mk_arith_abs(subst->mngr, s);
+}
+
 static term_t full_subst_ite(full_subst_t *subst, composite_term_t *ite) {
   term_table_t *tbl;
   term_t c, a, b, s;
@@ -732,6 +784,42 @@ static term_t full_subst_arith_bineq(full_subst_t *subst, composite_term_t *eq) 
   a = full_subst(subst, eq->arg[0]);
   b = full_subst(subst, eq->arg[1]);
   return mk_arith_eq(subst->mngr, a, b);
+}
+
+static term_t full_subst_arith_rdiv(full_subst_t *subst, composite_term_t *div) {
+  term_t a, b;
+
+  assert(div->arity == 2);
+  a = full_subst(subst, div->arg[0]);
+  b = full_subst(subst, div->arg[1]);
+  return mk_arith_rdiv(subst->mngr, a, b);
+}
+
+static term_t full_subst_arith_idiv(full_subst_t *subst, composite_term_t *div) {
+  term_t a, b;
+
+  assert(div->arity == 2);
+  a = full_subst(subst, div->arg[0]);
+  b = full_subst(subst, div->arg[1]);
+  return mk_arith_idiv(subst->mngr, a, b);
+}
+
+static term_t full_subst_arith_mod(full_subst_t *subst, composite_term_t *mod) {
+  term_t a, b;
+
+  assert(mod->arity == 2);
+  a = full_subst(subst, mod->arg[0]);
+  b = full_subst(subst, mod->arg[1]);
+  return mk_arith_mod(subst->mngr, a, b);
+}
+
+static term_t full_subst_arith_divides(full_subst_t *subst, composite_term_t *divides) {
+  term_t a, b;
+
+  assert(divides->arity == 2);
+  a = full_subst(subst, divides->arg[0]);
+  b = full_subst(subst, divides->arg[1]);
+  return mk_arith_divides(subst->mngr, a, b);
 }
 
 static term_t full_subst_bvarray(full_subst_t *subst, composite_term_t *bvarray) {
@@ -1075,6 +1163,27 @@ static term_t full_subst_composite(full_subst_t *subst, term_t t) {
     s = full_subst_arith_ge(subst, arith_ge_arg(terms, t));
     break;
 
+  case ARITH_IS_INT_ATOM:
+    s = full_subst_arith_is_int(subst, arith_is_int_arg(terms, t));
+    break;
+
+  case ARITH_FLOOR:
+    s = full_subst_arith_floor(subst, arith_floor_arg(terms, t));
+    break;
+
+  case ARITH_CEIL:
+    s = full_subst_arith_ceil(subst, arith_ceil_arg(terms, t));
+    break;
+
+  case ARITH_ABS:
+    s = full_subst_arith_abs(subst, arith_abs_arg(terms, t));
+    break;
+
+  case ARITH_ROOT_ATOM:
+    // TODO:
+    s = full_subst_arith_root_atom(subst, arith_root_atom_desc(terms, t));
+    break;
+
   case ITE_TERM:
   case ITE_SPECIAL:
     s = full_subst_ite(subst, ite_term_desc(terms, t));
@@ -1118,6 +1227,22 @@ static term_t full_subst_composite(full_subst_t *subst, term_t t) {
 
   case ARITH_BINEQ_ATOM:
     s = full_subst_arith_bineq(subst, arith_bineq_atom_desc(terms, t));
+    break;
+
+  case ARITH_RDIV:
+    s = full_subst_arith_rdiv(subst, arith_rdiv_term_desc(terms, t));
+    break;
+
+  case ARITH_IDIV:
+    s = full_subst_arith_idiv(subst, arith_idiv_term_desc(terms, t));
+    break;
+
+  case ARITH_MOD:
+    s = full_subst_arith_mod(subst, arith_mod_term_desc(terms, t));
+    break;
+
+  case ARITH_DIVIDES_ATOM:
+    s = full_subst_arith_divides(subst, arith_divides_atom_desc(terms, t));
     break;
 
   case BV_ARRAY:
@@ -1250,7 +1375,6 @@ static term_t full_subst(full_subst_t *subst, term_t t) {
     }
     break;
   }
-
 
   return s ^ polarity;
 }

@@ -68,9 +68,10 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "utils/tagged_pointers.h"
-#include "utils/ptr_vectors.h"
+#include "io/writer.h"
 #include "utils/ptr_queues.h"
+#include "utils/ptr_vectors.h"
+#include "utils/tagged_pointers.h"
 
 
 /*
@@ -387,7 +388,7 @@ static inline pp_atomic_token_t *untag_separator(void *p) {
  *   string of length <= n (where n < tk->size).
  *
  * All the conversions take a generic user-provided pointer as first
- * argument and must return character string (terminated by '\0').
+ * argument and must return a character string (terminated by '\0').
  * For consistency,
  * - get_label(ptr, tk) should return a string of length equal to tk->label_size.
  * - get_string(ptr, tk) should return a string of length equal to tk->size.
@@ -482,7 +483,7 @@ typedef struct pp_stack_s {
 
 
 /*
- * The printer is attached to an output file, to a converter
+ * The printer is attached to a writer, to a converter
  * structure, and to a display area.
  *
  * It keeps track of a current print-line, defined by
@@ -509,8 +510,8 @@ typedef struct pp_stack_s {
  * - overfull_count = number of open blocks seen since the line has been full
  */
 typedef struct printer_s {
-  // output file + display area + converter
-  FILE *file;
+  // writer object + display area + converter
+  writer_t writer;
   pp_area_t area;
   pp_token_converter_t conv;
 
@@ -528,11 +529,6 @@ typedef struct printer_s {
   uint32_t line;
   uint32_t col;
   uint32_t margin;
-
-  // if fputc, fputs, or fflush fails, we set print_failed to true
-  // and we keep a copy of errno in p->pp_errno
-  bool print_failed;
-  int pp_errno;
 
   // pending tokens
   pvector_t pending_tokens;
@@ -716,9 +712,11 @@ typedef struct pp_s {
  */
 
 /*
- * Initialization:
+ * Initialization for a file
  * - converter = converter interface (copied internally).
- * - file = output stream to use (must be an open, writable file)
+ * - file = output stream to use (must either be NULL or an open, writable file)
+ *   if file is NULL, pp is initialized for a string buffer
+ *   otherwise, pp writes to the file.
  * - area = specify display area + truncate + stretch
  * - mode = initial print mode
  * - indent = initial indentation (increment)
@@ -726,7 +724,19 @@ typedef struct pp_s {
  * width = 80, height = infinite, offset = 0, don't stretch, truncate.
  */
 extern void init_pp(pp_t *pp, pp_token_converter_t *converter, FILE *file,
-                    pp_area_t *area, pp_print_mode_t mode, uint32_t indent);
+		    pp_area_t *area, pp_print_mode_t mode, uint32_t indent);
+
+
+/*
+ * Check the writer type: either a stream or a string writer.
+ */
+static inline bool is_stream_pp(pp_t *pp) {
+  return is_stream_writer(&pp->printer.writer);
+}
+
+static inline bool is_string_pp(pp_t *pp) {
+  return is_string_writer(&pp->printer.writer);
+}
 
 
 /*
@@ -738,8 +748,18 @@ extern void pp_push_token(pp_t *pp, void *tk);
 /*
  * Flush the printer: empty the internal queues and print
  * the pending tokens. Reset the line counter to 0.
+ * - if new_line is true, also print '\n'
  */
-extern void flush_pp(pp_t *pp);
+extern void flush_pp(pp_t *pp, bool new_line);
+
+
+/*
+ * After flush: extract the string constructed by pp
+ * - pp must be initialized for a string buffer (i.e., file = NULL)
+ * - the string's length is stored in *len
+ * - the string must be deleted by free when it's no longer needed
+ */
+extern char *pp_get_string(pp_t *pp, uint32_t *len);
 
 
 /*

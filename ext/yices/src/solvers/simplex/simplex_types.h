@@ -123,29 +123,27 @@
 #include <stdbool.h>
 #include <setjmp.h>
 
-#include "utils/int_vectors.h"
-#include "utils/ptr_vectors.h"
-#include "utils/int_heap.h"
-#include "utils/cache.h"
+#include "context/context_types.h"
+#include "solvers/cdcl/gates_manager.h"
+#include "solvers/cdcl/smt_core.h"
+#include "solvers/egraph/diseq_stacks.h"
+#include "solvers/egraph/egraph.h"
+#include "solvers/egraph/egraph_assertion_queues.h"
+#include "solvers/simplex/arith_atomtable.h"
+#include "solvers/simplex/arith_vartable.h"
+#include "solvers/simplex/diophantine_systems.h"
+#include "solvers/simplex/matrices.h"
+#include "solvers/simplex/offset_equalities.h"
+#include "terms/extended_rationals.h"
+#include "terms/poly_buffer.h"
+#include "terms/polynomials.h"
+#include "terms/rationals.h"
 #include "utils/arena.h"
 #include "utils/bitvectors.h"
-#include "terms/rationals.h"
-#include "terms/extended_rationals.h"
-#include "terms/polynomials.h"
-
-#include "solvers/simplex/arith_vartable.h"
-#include "solvers/simplex/arith_atomtable.h"
-#include "terms/poly_buffer.h"
-#include "solvers/simplex/matrices.h"
-#include "solvers/simplex/diophantine_systems.h"
-#include "solvers/egraph/egraph_assertion_queues.h"
-#include "solvers/egraph/diseq_stacks.h"
-#include "solvers/simplex/offset_equalities.h"
-
-#include "solvers/cdcl/smt_core.h"
-#include "solvers/cdcl/gates_manager.h"
-#include "solvers/egraph/egraph.h"
-#include "context/context.h"
+#include "utils/cache.h"
+#include "utils/int_heap.h"
+#include "utils/int_vectors.h"
+#include "utils/ptr_vectors.h"
 
 
 /*******************
@@ -631,14 +629,19 @@ typedef struct simplex_stats_s {
   uint32_t num_conflicts;
 
   // stats on integer arithmetic solver
-  uint32_t num_make_intfeasible; // calls to make_integer_feasible
-  uint32_t num_branch_atoms;     // new branch&bound atoms created
-  uint32_t num_extended_branch;  // more general branch atoms
-  uint32_t num_gcd_conflicts;    // failed GCD tests
-  uint32_t num_dioph_checks;     // number of calls to dsolver_check
-  uint32_t num_dioph_conflicts;  // number of dsolver unsat
-  uint32_t num_bound_conflicts;  // unsat by bound strengthening
-  uint32_t num_recheck_conflicts;  // unsat after recheck
+  uint32_t num_make_intfeasible;        // calls to make_integer_feasible
+  uint32_t num_bound_conflicts;         // unsat by ordinary bound strengthening
+  uint32_t num_bound_recheck_conflicts; // unsat by bound strengthening + recheck
+  uint32_t num_itest_conflicts;         // unsat by the integrality test
+  uint32_t num_itest_bound_conflicts;   // unsat by itest bound strengthening
+  uint32_t num_itest_recheck_conflicts; // unsat by itest bounds + recheck
+  uint32_t num_dioph_checks;            // number of calls to dsolver_check
+  uint32_t num_dioph_gcd_conflicts;     // failed GCD tests in dsolver
+  uint32_t num_dioph_conflicts;         // number of dsolver unsat
+  uint32_t num_dioph_bound_conflicts;   // unset by dioph bound strengthening
+  uint32_t num_dioph_recheck_conflicts; // unsat after dioph bounds + recheck
+
+  uint32_t num_branch_atoms;            // new branch&bound atoms created
 
 } simplex_stats_t;
 
@@ -702,6 +705,7 @@ typedef struct simplex_solver_s {
    * Flag and parameter for integer arithmetic
    */
   bool integer_solving;
+  bool enable_dfeas;
   int32_t check_counter;
   int32_t check_period;
   bvar_t last_branch_atom;
@@ -813,6 +817,7 @@ typedef struct simplex_solver_s {
   rational_t gcd;
   xrational_t bound;
   xrational_t delta;
+  xrational_t xq0;         // general purpose buffer
 
   ivector_t expl_vector;   // vector of literals for conflicts/explanations
   ivector_t expl_queue;    // vector used as a queue for building explanations

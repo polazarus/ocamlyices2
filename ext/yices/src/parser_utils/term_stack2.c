@@ -19,20 +19,18 @@
 #include <assert.h>
 #include <string.h>
 
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
-#include "terms/bv_constants.h"
-#include "terms/bv64_constants.h"
-
-#include "terms/rba_buffer_terms.h"
-#include "terms/bvarith_buffer_terms.h"
-#include "terms/bvarith64_buffer_terms.h"
-
-#include "yices.h"
 #include "api/yices_extensions.h"
 #include "api/yices_globals.h"
-
 #include "parser_utils/term_stack2.h"
+#include "terms/bv64_constants.h"
+#include "terms/bv_constants.h"
+#include "terms/bvarith64_buffer_terms.h"
+#include "terms/bvarith_buffer_terms.h"
+#include "terms/rba_buffer_terms.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
+
+#include "yices.h"
 
 
 #ifndef NDEBUG
@@ -1494,6 +1492,61 @@ rational_t *get_divisor(tstack_t *stack, stack_elem_t *den) {
 }
 
 
+/*
+ * Variant: Check whether e stores a non-zero rational constant
+ * If so, store the value in result.
+ */
+static bool elem_is_nz_constant(stack_elem_t *e, rational_t *result) {
+  rational_t *d;
+  term_t t;
+  bool ok;
+  rba_buffer_t *c;
+  term_table_t *terms;
+  mono_t *m;
+
+  ok = false;
+
+  switch (e->tag) {
+  case TAG_RATIONAL:
+    d = &e->val.rational;
+    if (q_is_nonzero(d)) {
+      q_set(result, d);
+      ok = true;
+    }
+    break;
+
+  case TAG_TERM:
+    terms = __yices_globals.terms;
+    t = e->val.term;
+    if (term_kind(terms, t) == ARITH_CONSTANT) {
+      d = rational_term_desc(terms, t);
+      if (q_is_nonzero(d)) {
+	q_set(result, d);
+	ok =true;
+      }
+    }
+    break;
+
+  case TAG_ARITH_BUFFER:
+    c = e->val.arith_buffer;
+    if (rba_buffer_is_constant(c)) {
+      m = rba_buffer_get_constant_mono(c);
+      if (m != NULL) {
+	assert(q_is_nonzero(&m->coeff));
+	q_set(result, &m->coeff);
+	ok = true;
+      }
+    }
+    break;
+
+  default:
+    break;
+  }
+
+  return ok;
+}
+
+
 
 /*
  * Bitsize of element e
@@ -1550,7 +1603,7 @@ static uint32_t elem_bitsize(tstack_t *stack, stack_elem_t *e) {
 /*
  * Get the i-th bit of element e
  * - e must be a bitvector element
- * - i must statisfy 0 <= i < n (where n = bitsize of e)
+ * - i must satisfy 0 <= i < n (where n = bitsize of e)
  */
 static term_t elem_bit_select(tstack_t *stack, stack_elem_t *e, uint32_t i) {
   term_t  t;
@@ -2440,6 +2493,10 @@ void bvconst_set_elem(bvconstant_t *c, stack_elem_t *e) {
 
   case TAG_TERM:
     bvconstant_copy_term(c, e->val.term);
+    break;
+
+  case TAG_BVARITH64_BUFFER:
+    bvarith64_buffer_copy_constant(e->val.bvarith64_buffer, c);
     break;
 
   case TAG_BVARITH_BUFFER:
@@ -3577,6 +3634,8 @@ static void check_mk_division(tstack_t *stack, stack_elem_t *f, uint32_t n) {
   check_size(stack, n == 2);
 }
 
+#if 0
+// THIS VERSION ONLY ALLOWS DIVISION BY NON-ZERO CONSTANTS
 static void eval_mk_division(tstack_t *stack, stack_elem_t *f, uint32_t n) {
   rational_t *divisor;
   rba_buffer_t *b;
@@ -3596,6 +3655,49 @@ static void eval_mk_division(tstack_t *stack, stack_elem_t *f, uint32_t n) {
     set_arith_result(stack, b);
   }
 }
+#endif
+
+// GENERIC VERSION: THE DIVIDER CAN BE ZERO OF NON-CONSTANT
+static void eval_mk_division(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  rba_buffer_t *b;
+  rational_t divider;
+  term_t t1, t2, t;
+
+  q_init(&divider);
+  if (elem_is_nz_constant(f + 1, &divider)) {
+    assert(q_is_nonzero(&divider));
+    // Division by a non-zero constant
+    if (f->tag == TAG_RATIONAL) {
+      q_div(&f->val.rational, &divider);
+      copy_result_and_pop_frame(stack, f);
+    } else {
+      b = tstack_get_abuffer(stack);
+      add_elem(stack, b, f);
+      rba_buffer_div_const(b, &divider);
+      tstack_pop_frame(stack);
+      set_arith_result(stack, b);
+    }
+  } else {
+    // Not a constant
+    t1 = get_term(stack, f);
+    t2 = get_term(stack, f+1);
+    t = yices_division(t1, t2);
+    check_term(stack, t);
+    tstack_pop_frame(stack);
+    set_term_result(stack, t);
+  }
+
+  /*
+   * It's safe to clear the divider only here.
+   * If the code above raises an exception, divider is still 0/1
+   * and q_clear would do nothing anyway.
+   */
+  q_clear(&divider);
+}
+
+
+
+
 
 
 /*
@@ -4998,6 +5100,7 @@ static void eval_mk_bool2bv(tstack_t *stack, stack_elem_t *f, uint32_t n) {
 static void check_mk_bit(tstack_t *stack, stack_elem_t *f, uint32_t n) {
   check_op(stack, MK_BIT);
   check_size(stack, n == 2);
+  check_tag(stack, f+1, TAG_RATIONAL);
 }
 
 static void eval_mk_bit(tstack_t *stack, stack_elem_t *f, uint32_t n) {
@@ -5017,6 +5120,152 @@ static void eval_mk_bit(tstack_t *stack, stack_elem_t *f, uint32_t n) {
   tstack_pop_frame(stack);
   set_term_result(stack, t);
 }
+
+
+/*
+ * MORE ARITHMETIC FUNCTIONS (FROM SMT-LIB2)
+ */
+
+/*
+ * Floor/ceil/absolute value: all take a single argument
+ */
+static void check_mk_floor(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_FLOOR);
+  check_size(stack, n == 1);
+}
+
+static void eval_mk_floor(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t;
+
+  t = get_term(stack, f);
+  t = yices_floor(t);
+  check_term(stack, t);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t);
+}
+
+
+static void check_mk_ceil(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_CEIL);
+  check_size(stack, n == 1);
+}
+
+static void eval_mk_ceil(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t;
+
+  t = get_term(stack, f);
+  t = yices_ceil(t);
+  check_term(stack, t);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t);
+}
+
+
+
+static void check_mk_abs(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_ABS);
+  check_size(stack, n == 1);
+}
+
+static void eval_mk_abs(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t;
+
+  t = get_term(stack, f);
+  t = yices_abs(t);
+  check_term(stack, t);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t);
+}
+
+
+/*
+ * Integer division and modulo: two parameters.
+ * NOTE: to support QF_NIA/QF_NRA and variants, we allow arbitrary dividers.
+ */
+static void check_mk_idiv(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_IDIV);
+  check_size(stack, n == 2);
+}
+
+static void eval_mk_idiv(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t1, t2;
+
+  t1 = get_term(stack, f);
+  t2 = get_term(stack, f+1); // divider
+  t1 = yices_idiv(t1, t2);
+  check_term(stack, t1);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t1);
+}
+
+
+static void check_mk_mod(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_MOD);
+  check_size(stack, n == 2);
+}
+
+static void eval_mk_mod(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t1, t2;
+
+  t1 = get_term(stack, f);
+  t2 = get_term(stack, f+1); // divider
+  t1 = yices_imod(t1, t2);
+  check_term(stack, t1);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t1);
+}
+
+
+/*
+ * [mk-is-int <term>]
+ */
+static void check_mk_is_int(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_IS_INT);
+  check_size(stack, n == 1);
+}
+
+static void eval_mk_is_int(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t;
+
+  t = get_term(stack, f);
+  t = yices_is_int_atom(t);
+  check_term(stack, t);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t);
+}
+
+
+
+/*
+ * [mk-divides <arith> <arith> ]
+ * - the first term must be an arithmetic constant
+ */
+static void check_mk_divides(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, MK_DIVIDES);
+  check_size(stack, n == 2);
+}
+
+static void eval_mk_divides(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t1, t2;
+
+  t1 = get_term(stack, f); // divider
+  t2 = get_term(stack, f+1);
+  t1 = yices_divides_atom(t1, t2);
+  check_term(stack, t1);
+
+  tstack_pop_frame(stack);
+  set_term_result(stack, t1);
+}
+
+
+
+
 
 
 /*
@@ -5211,6 +5460,13 @@ static const uint8_t assoc[NUM_BASE_OPCODES] = {
   0, // MK_BV_SLT
   0, // MK_BOOL_TO_BV
   0, // MK_BIT
+  0, // MK_FLOOR
+  0, // MK_CEIL
+  0, // MK_ABS
+  0, // MK_IDIV
+  0, // MK_MOD
+  0, // MK_DIVIDES
+  0, // MK_IS_INT
   0, // BUILD_TERM
   0, // BUILD_TYPE
 };
@@ -5302,6 +5558,13 @@ static const check_fun_t check[NUM_BASE_OPCODES] = {
   check_mk_bv_slt,
   check_mk_bool2bv,
   check_mk_bit,
+  check_mk_floor,
+  check_mk_ceil,
+  check_mk_abs,
+  check_mk_idiv,
+  check_mk_mod,
+  check_mk_divides,
+  check_mk_is_int,
   check_build_term,
   check_build_type,
 };
@@ -5393,6 +5656,13 @@ static const eval_fun_t eval[NUM_BASE_OPCODES] = {
   eval_mk_bv_slt,
   eval_mk_bool2bv,
   eval_mk_bit,
+  eval_mk_floor,
+  eval_mk_ceil,
+  eval_mk_abs,
+  eval_mk_idiv,
+  eval_mk_mod,
+  eval_mk_divides,
+  eval_mk_is_int,
   eval_build_term,
   eval_build_type,
 };

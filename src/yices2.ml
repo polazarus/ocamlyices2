@@ -143,7 +143,7 @@ end
 
 exception YicesError of Error.code * Error.report
 
-let () =
+let register_exn () =
   let report = let open Error in {
     name = "NO_ERROR";
     line = 0;
@@ -156,6 +156,8 @@ let () =
   } in
   let exc = YicesError (Error.NO_ERROR, report) in
   Callback.register_exception "ocamlyices2.exception" exc
+
+let () = register_exn ()
 
 external info : unit -> string*string*string*string
   = "ocamlyices_info"

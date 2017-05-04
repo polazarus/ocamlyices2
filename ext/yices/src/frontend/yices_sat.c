@@ -23,13 +23,12 @@
 #include <inttypes.h>
 
 #include "solvers/cdcl/sat_solver.h"
+#include "utils/command_line.h"
 #include "utils/cputime.h"
 #include "utils/memsize.h"
-#include "utils/command_line.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
-
 
 
 /*
@@ -58,6 +57,18 @@ static char line[MAX_LINE];
 static int nvars, nclauses;
 static literal_t *clause;
 static uint32_t buffer_size;
+
+
+/*
+ * Read until the end of the line
+ */
+static void finish_line(FILE *f) {
+  int c;
+
+  do {
+    c = getc(f);
+  } while (c != '\n');
+}
 
 
 /*
@@ -178,24 +189,29 @@ static int build_instance(char *filename) {
   }
 
   s = fgets(line, MAX_LINE, f);
-  l = 1; /* line number */
-
   if (s == NULL) {
     fprintf(stderr, "%s: empty file\n", filename);
     fclose(f);
     return FORMAT_ERROR;
   }
+  if (strlen(s) == MAX_LINE-1) {
+    finish_line(f);
+  }
+  l = 1; /* line number */
+
 
   /* skip empty lines and comments */
   while (*s == 'c' || *s == '\n') {
     s = fgets(line, MAX_LINE, f);
-    l ++;
-
     if (s == NULL) {
       fprintf(stderr, "Format error: file %s, line %d\n", filename, l);
       fclose(f);
       return FORMAT_ERROR;
     }
+    if (strlen(s) == MAX_LINE-1) {
+      finish_line(f);
+    }
+    l ++;    
   }
 
   /* read problem size */
@@ -252,12 +268,14 @@ static int build_instance(char *filename) {
  * - model = true for produce model (if SAT)
  * - seed_given = true if a seed is given on the command line
  *   seed_value = value of the seed
+ * - stats = true for showing statistics at the end
  */
 static char *input_filename = NULL;
 static bool verbose;
 static bool model;
 static bool seed_given;
 static uint32_t seed_value;
+static bool stats;
 
 enum {
   version_flag,
@@ -265,9 +283,10 @@ enum {
   verbose_flag,
   model_flag,
   seed_opt,
+  stats_flag,
 };
 
-#define NUM_OPTIONS (seed_opt+1)
+#define NUM_OPTIONS (stats_flag+1)
 
 static option_desc_t options[NUM_OPTIONS] = {
   { "version", 'V', FLAG_OPTION, version_flag },
@@ -275,6 +294,7 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "verbose", 'v', FLAG_OPTION, verbose_flag },
   { "model", 'm', FLAG_OPTION, model_flag },
   { "seed", 's', MANDATORY_INT, seed_opt },
+  { "stats", '\0', FLAG_OPTION, stats_flag },
 };
 
 
@@ -300,6 +320,7 @@ static void print_help(char *progname) {
          "   --help, -h           Print this message and exit\n"
          "   --model, -m          Show a model if the problem is satisfiable\n"
          "   --verbose, -v        Print statistics during the search\n"
+	 "   --stats              Print statistics at the end of the search\n"
          "\n"
          "For bug reporting and other information, please see http://yices.csl.sri.com/\n");
   fflush(stdout);
@@ -327,6 +348,7 @@ static void parse_command_line(int argc, char *argv[]) {
   model = false;
   verbose = false;
   seed_given = false;
+  stats = false;
 
   init_cmdline_parser(&parser, options, NUM_OPTIONS, argv, argc);
 
@@ -368,6 +390,10 @@ static void parse_command_line(int argc, char *argv[]) {
 	seed_given = true;
 	seed_value = elem.i_value;
 	break;
+
+      case stats_flag:
+        stats = true;
+        break;
       }
       break;
 
@@ -410,6 +436,7 @@ static void show_stats(solver_stats_t *stat) {
   fprintf(stderr, "deleted pb. clauses     : %"PRIu64"\n", stat->prob_clauses_deleted);
   fprintf(stderr, "deleted learned clauses : %"PRIu64"\n", stat->learned_clauses_deleted);
   fprintf(stderr, "deleted binary clauses  : %"PRIu64"\n", stat->bin_clauses_deleted);
+  fprintf(stderr, "\n");
 }
 
 
@@ -417,19 +444,22 @@ static void print_results(void) {
   solver_stats_t *stat;
   int resu;
   double mem_used;
+  double speed;
 
   search_time = get_cpu_time() - construction_time;
 
   stat = &solver.stats;
   resu = solver.status;
 
-  if (verbose) {
+  if (verbose || stats) {
     show_stats(stat);
     fprintf(stderr, "Search time             : %.4f s\n", search_time);
     mem_used = mem_size() / (1024 * 1024);
     if (mem_used > 0) {
       fprintf(stderr, "Memory used             : %.2f MB\n", mem_used);
     }
+    speed = stat->propagations/search_time;
+    fprintf(stderr, "Speed                   : %.2f prop/s\n", speed);
     fprintf(stderr, "\n\n");
   }
 
@@ -536,7 +566,7 @@ int main(int argc, char* argv[]) {
   } else if (resu == FORMAT_ERROR) {
     return YICES_EXIT_SYNTAX_ERROR;
   } else {
-    if (verbose) {
+    if (verbose || stats) {
       construction_time = get_cpu_time();
       fprintf(stderr, "Construction time    : %.4f s\n", construction_time);
       print_solver_size(stderr, &solver);

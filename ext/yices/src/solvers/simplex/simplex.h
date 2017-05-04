@@ -301,14 +301,13 @@ extern void simplex_assert_cond_vareq_axiom(simplex_solver_t *solver, literal_t 
 extern void simplex_start_search(simplex_solver_t *solver);
 
 /*
- * Stop the search: this just sets flag solver->interrupted to true.
- * - this flag is set to false by start_search
+ * Stop the search: sets flag solver->interrupted to true and 
+ * stops the diophantine solver if it's active.
+ * - the solver->interrupted flag is set to false by start_search
  * - currently, the interrupted flag is checked in every iteration
  *   of the make feasible procedure
  */
-static inline void simplex_stop_search(simplex_solver_t *solver) {
-  solver->interrupted = true;
-}
+extern void simplex_stop_search(simplex_solver_t *solver);
 
 /*
  * Assert atom attached to literal l
@@ -403,18 +402,35 @@ extern void simplex_collect_statistics(simplex_solver_t *solver);
 
 
 /*
- * Statistics on problem size
+ * Statistics on problem size (at the start of search)
+ * - these are set on a call to simplex_start_search
  */
-static inline uint32_t simplex_num_vars(simplex_solver_t *solver) {
+static inline uint32_t simplex_num_init_vars(simplex_solver_t *solver) {
   return solver->stats.num_init_vars;
 }
 
-static inline uint32_t simplex_num_rows(simplex_solver_t *solver) {
+static inline uint32_t simplex_num_init_rows(simplex_solver_t *solver) {
   return solver->stats.num_init_rows;
 }
 
-static inline uint32_t simplex_num_atoms(simplex_solver_t *solver) {
+static inline uint32_t simplex_num_init_atoms(simplex_solver_t *solver) {
   return solver->stats.num_atoms;
+}
+
+
+/*
+ * Problem size
+ */
+static inline uint32_t simplex_num_vars(simplex_solver_t *solver) {
+  return solver->vtbl.nvars;
+}
+
+static inline uint32_t simplex_num_rows(simplex_solver_t *solver) {
+  return solver->matrix.nrows;
+}
+
+static inline uint32_t simplex_num_atoms(simplex_solver_t *solver) {
+  return solver->atbl.natoms;
 }
 
 
@@ -453,8 +469,28 @@ static inline uint32_t simplex_num_branch_and_bound(simplex_solver_t *solver) {
   return solver->stats.num_branch_atoms;
 }
 
-static inline uint32_t simplex_num_gcd_conflicts(simplex_solver_t *solver) {
-  return solver->stats.num_gcd_conflicts;
+static inline uint32_t simplex_num_bound_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_bound_conflicts;
+}
+
+static inline uint32_t simplex_num_bound_recheck_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_bound_recheck_conflicts;
+}
+
+static inline uint32_t simplex_num_itest_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_itest_conflicts;
+}
+
+static inline uint32_t simplex_num_itest_bound_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_itest_bound_conflicts;
+}
+
+static inline uint32_t simplex_num_itest_recheck_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_itest_recheck_conflicts;
+}
+
+static inline uint32_t simplex_num_dioph_gcd_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_dioph_gcd_conflicts;
 }
 
 static inline uint32_t simplex_num_dioph_checks(simplex_solver_t *solver) {
@@ -465,13 +501,15 @@ static inline uint32_t simplex_num_dioph_conflicts(simplex_solver_t *solver) {
   return solver->stats.num_dioph_conflicts;
 }
 
-static inline uint32_t simplex_num_bound_conflicts(simplex_solver_t *solver) {
-  return solver->stats.num_bound_conflicts;
+static inline uint32_t simplex_num_dioph_bound_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_dioph_bound_conflicts;
 }
 
-static inline uint32_t simplex_num_recheck_conflicts(simplex_solver_t *solver) {
-  return solver->stats.num_recheck_conflicts;
+static inline uint32_t simplex_num_dioph_recheck_conflicts(simplex_solver_t *solver) {
+  return solver->stats.num_dioph_recheck_conflicts;
 }
+
+
 
 
 

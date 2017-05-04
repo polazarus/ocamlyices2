@@ -10,9 +10,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "terms/rationals.h"
-#include "terms/pprod_table.h"
 #include "terms/balanced_arith_buffers.h"
+#include "terms/pprod_table.h"
+#include "terms/rationals.h"
 
 #ifdef MINGW
 static inline long int random(void) {
@@ -339,7 +339,7 @@ static void test_remove(rba_buffer_t *b, pprod_t *p) {
 
 static pprod_t *test[NUM_TESTS];
 
-static int32_t random_var() {
+static int32_t random_var(void) {
   return random() & 0xFFFF;
 }
 

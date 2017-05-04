@@ -1,4 +1,5 @@
 open Yices2
+open OUnit2
 
 let trim s =
   let is_space = function
@@ -31,15 +32,15 @@ let new_input name typ =
     Term.set_name term name;
     term
 
-let () =
+let pp _ =
   let bv1 = Term.Bitvector.zero 5 in
   let i64 = Term.Int.of_int64 64L in
 
   let bv_string = prstr Term.print bv1 in
-  assert (bv_string = "0b00000");
+  OUnit2.assert_equal ~printer:(fun v -> v) bv_string "0b00000";
 
   let i64_string = prstr Term.print i64 in
-  assert (i64_string = "64");
+  OUnit2.assert_equal ~printer:(fun v -> v) i64_string "64";
 
   let bool_typ = Type.bool () in
   let v1 = new_input "v1" bool_typ
@@ -48,8 +49,8 @@ let () =
 
   let form = Term.Bool.or2 v3 (Term.Bool.and2 v1 v2) in
   let form_string = prstr Term.print form in
-  assert (form_string = "(or v3 (and v1 v2))");
+  OUnit2.assert_equal ~printer:(fun v -> v) form_string "(or v3 (and v1 v2))";
 
   let typ1 = Type.bitvector 1 in
   let typ1_string = prstr Type.print typ1 in
-  assert (typ1_string = "(bitvector 1)");
+  OUnit2.assert_equal ~printer:(fun v -> v) typ1_string "(bitvector 1)"
