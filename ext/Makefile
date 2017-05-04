@@ -1,19 +1,21 @@
 SHELL=/bin/bash
 
-all: yices
+all: lib/libyices.a
 
-yices: libyices.a yices.h
+CONFIGURE_ARGS = --prefix=$(realpath .) \
+	--host=$(HOST) --disable-shared --enable-static \
+	$(if $(filter yes,$(FORCE_SHARED_GMP)),--with-shared-gmp) \
+	$(if $(STATIC_GMP),--with-static-gmp=$(STATIC_GMP))
 
 yices/make.include:
-	cd yices && ./configure --prefix=$(realpath .)
-libyices.a: yices/make.include
-	$(MAKE) lib -j -C yices; cp yices/build/*/lib/libyices.a ./
+	cd yices && ./configure $(CONFIGURE_ARGS)
 
-yices.h:
-	cp yices/src/include/* ./
+lib/libyices.a: yices/make.include
+	make lib -C yices -j$$(nproc 2>/dev/null || echo 4)
+	make install -C yices
 
 clean:
-	$(RM) -rf lib/ share/ bin/
-	$(MAKE) -C yices clean
+	rm -rf lib/ share/ bin/ include/
+	make -C yices distclean
 
 .PHONY: yices

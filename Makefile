@@ -1,7 +1,7 @@
-all: ext build
+all: ext/lib/libyices.a build
 # Be helpful if not configured
 Makefile.config: configure
-	@./configure
+	@echo "Please run ./configure first."; exit 1
 include Makefile.config
 
 ################################################################################
@@ -25,7 +25,7 @@ CMA_FILE       = src/$(LIB_NAME).cma
 CMXA_FILE      = src/$(LIB_NAME).cmxa
 LIB_FILE       = src/lib$(LIB_NAME)_stubs.a
 A_FILE         = src/$(LIB_NAME).a                # Generated with the .cmxa
-DLL_FILE       = src/dll$(LIB_NAME)_stubs.so
+DLL_FILE       = src/dll$(LIB_NAME)_stubs.$(SO)
 
 ANNOT_FILES    = $(ML_SOURCE:%.ml=%.annot)
 ifdef BIN_ANNOT
@@ -37,13 +37,21 @@ TESTS_OPT    = $(TESTS:%.ml=%.opt)
 
 
 # Build and install files
-
-BUILD_FILES         = $(CMA_FILE) $(DLL_FILE) $(LIB_FILE)
+# For now, DLL_FILE is not built because it needs either a PIC libyices.a
+# that we could build with --with-pic, or the shared library libyices.so.
+# For now, only the static stub is built and linked statically against
+# non-PIC libyices.a.
+# We also put libgmp.a (if a static libgmp has been found/given) to be sure
+# that a static version of libgmp is picked in priority when linking against
+# Zarith. To avoid this behaviour, just pass --with-shared-gmp.
+BUILD_FILES         = $(CMA_FILE) $(LIB_FILE)
 INSTALL_FILES       = META \
-                      $(CMA_FILE) $(DLL_FILE) $(LIB_FILE)\
+                      $(CMA_FILE) $(LIB_FILE) \
                       $(MLI_SOURCE) $(CMI_FILES) \
                       $(ANNOT_FILES) \
-					  src/libyices.a
+					  ext/lib/libyices.a \
+					  $(if $(STATIC_GMP),src/libgmp.a)
+
 ifdef HAVE_OCAMLOPT
   BUILD_FILES      += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
   INSTALL_FILES    += $(CMXA_FILE) $(CMXS_FILE) $(A_FILE)
@@ -61,13 +69,15 @@ ifdef HAVE_OUNIT
 endif
 
 ################################################################################
+src/libyices.a: ext/lib/libyices.a
+	cp $^ $@
 
-ext: ext/libyices.a
-
-ext/libyices.a:
-	$(MAKE) -C ext
-src/libyices.a: ext/libyices.a
-	cp ext/libyices.a src/libyices.a
+MAKE_VARIABLES = \
+	$(if $(STATIC_GMP),STATIC_GMP=$(STATIC_GMP)) \
+	$(if $(FORCE_SHARED_GMP),FORCE_SHARED_GMP=$(FORCE_SHARED_GMP)) \
+	HOST=$(HOST)
+ext/lib/libyices.a:
+	$(MAKE) -C ext $(MAKE_VARIABLES)
 
 debug: CFLAGS += -DDEBUG
 debug: build
@@ -96,16 +106,26 @@ src/types.o: src/types.c src/config.h src/types.h src/terms.h src/misc.h
 # -custom will simply integrate the ocamlrun.a in the library. With -custom,
 # the resulting library will be forced to be a static library (.a).
 %.o: %.c
-	$(OCAMLFIND) ocamlc -g -custom -c $< -ccopt '-std=c99 -fPIC $(CFLAGS) -I$(OCAML_LIBDIR) -I$(ZARITH_LIBDIR) -Iext -Isrc'
+	$(OCAMLFIND) ocamlc $(PACKAGES) -g -custom -c $< -ccopt '-std=c99 $(CFLAGS) -Iext/include -Isrc $(CPPFLAGS)'
 	mv $(notdir $@) $@
+
+ifneq ($(STATIC_GMP),)
+src/libgmp.a: $(STATIC_GMP)
+	cp $^ $@
+$(LIB_FILE) $(DLL_FILE): | src/libgmp.a
+endif
 
 # Compile libyices2_stubs.a and dllyices2_stubs.so.
 # NOTE: If I use the flag -Lext for finding the library -lyices, the resulting
 # library will complain about -Lext being useless.
 # To avoid that, we ocamlmklib in the same dir as libyices.a and use -L. (which
 # should not output any warning when building with the yices2 package).
-src/lib$(LIB_NAME)_stubs.a src/dll$(LIB_NAME)_stubs.so: $(OBJECTS) | src/libyices.a
-	cd $(dir $@) && $(OCAMLFIND) ocamlmklib -o $(LIB_NAME)_stubs $(notdir $^) $(LDFLAGS) $(LIBS) -L.
+#
+# The preprocessor variable -DNOYICES_DLL allows to disable the linking to a dll
+# and thus you can link to a static libyices.a instead of libyices.dll.a/libyices.a.
+# -custom = only produce static libyices_stubs.a, not the shared dllyices_stubs.so.
+$(LIB_FILE) $(DLL_FILE): $(OBJECTS) | src/libyices.a
+	cd src && $(OCAMLFIND) ocamlmklib -o $(LIB_NAME)_stubs $(notdir $^) $(LDFLAGS) $(LIBS) -custom -lyices -L. -ccopt -DNOYICES_DLL
 
 src/%.cmi: src/%.mli
 	$(OCAMLFIND) ocamlc $(PACKAGES) -I src -annot $(BIN_ANNOT) -c -o $@ $<
@@ -116,17 +136,17 @@ src/%.cmx: src/%.ml
 
 # Library compilation ##########################################################
 
-%$(LIB_NAME).cma: %$(LIB_NAME).cmo | %lib$(LIB_NAME)_stubs.a %dll$(LIB_NAME)_stubs.so
+%$(LIB_NAME).cma: %$(LIB_NAME).cmo | %lib$(LIB_NAME)_stubs.a %dll$(LIB_NAME)_stubs.$(SO)
 	$(OCAMLFIND) ocamlc -a \
-	-cclib '-l$(LIB_NAME)_stubs -lyices -lgmp $(LDFLAGS) $(LIBS)' \
+	-cclib '-l$(LIB_NAME)_stubs -lyices $(LDFLAGS) $(LIBS)' \
 	-custom $^ -o $@
 
 %$(LIB_NAME).cmxa %$(LIB_NAME).a: %$(LIB_NAME).cmx | %lib$(LIB_NAME)_stubs.a
 	$(OCAMLFIND) ocamlopt -a \
-	-cclib '-l$(LIB_NAME)_stubs -lyices -lgmp $(LDFLAGS) $(LIBS)' \
+	-cclib '-l$(LIB_NAME)_stubs -lyices $(LDFLAGS) $(LIBS)' \
 	$^ -o $@
 
-%$(LIB_NAME).cmxs %$(LIB_NAME).so: %$(LIB_NAME).cmxa %$(LIB_NAME).cmx | %dll$(LIB_NAME)_stubs.so
+%$(LIB_NAME).cmxs %$(LIB_NAME).$(SO): %$(LIB_NAME).cmxa %$(LIB_NAME).cmx | %dll$(LIB_NAME)_stubs.$(SO)
 	$(OCAMLFIND) ocamlopt -shared -I $(dir $@) $^ -o $@
 
 # Documentation ################################################################
