@@ -8,7 +8,8 @@ run_test_tt_main (
   "bitsize">::(Bitsize.bitsize);
   "checkoverflow">::(Checkoverflow.checkoverflow);
   "forall">::(Forall.forall);
-  "pp">::(Pp.pp);
+  "pp">::(fun _ -> (OUnit2.skip_if (not (print_supported ()))
+          "'print' functions won't work on mingw, alpine and some other systems"; Pp.pp ()));
   "type_consistency">::(Type_consistency.type_consistency);
   "z_nocrash">::(Z_nocrash.z_nocrash);
   "z_nocrash">::(Z_nocrash.z_nocrash2);
