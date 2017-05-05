@@ -2,7 +2,9 @@ all: ext/lib/libyices.a build
 # Be helpful if not configured
 Makefile.config: configure
 	@echo Please run ./configure first; exit 1
+ifeq ($(filter clean%,$(MAKECMDGOALS)),)
 include Makefile.config
+endif
 
 ################################################################################
 
@@ -235,4 +237,6 @@ cleantest:
 # intermediate file. I have no idea why!
 .SECONDARY: $(DLL_FILE) $(LIB_FILE)
 
+ifeq ($(filter clean%,$(MAKECMDGOALS)),)
 -include .depend
+endif
