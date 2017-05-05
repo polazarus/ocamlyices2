@@ -19,6 +19,7 @@ build-test: [
 ]
 depends: [
   "ocamlfind" {build}
+  "conf-gmp" {build}     # needed for building src/yices
   "zarith"
   "ounit" {test}
 ]
