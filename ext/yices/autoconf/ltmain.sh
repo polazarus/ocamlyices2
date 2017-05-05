@@ -3501,10 +3501,10 @@ compiler."
       fbsd_hideous_sh_bug=$base_compile
 
       if test no != "$pic_mode"; then
-	command="$base_compile $qsrcfile $pic_flag"
+	command="$base_compile $LT_SHARED_CFLAGS $qsrcfile $pic_flag"
       else
 	# Don't build PIC code
-	command="$base_compile $qsrcfile"
+	command="$base_compile $LT_SHARED_CFLAGS $qsrcfile"
       fi
 
       func_mkdir_p "$xdir$objdir"
@@ -3553,9 +3553,9 @@ compiler."
     if test yes = "$build_old_libs"; then
       if test yes != "$pic_mode"; then
 	# Don't build PIC code
-	command="$base_compile $qsrcfile$pie_flag"
+	command="$base_compile $LT_STATIC_CFLAGS $qsrcfile$pie_flag"
       else
-	command="$base_compile $qsrcfile $pic_flag"
+	command="$base_compile $LT_STATIC_CFLAGS $qsrcfile $pic_flag"
       fi
       if test yes = "$compiler_c_o"; then
 	func_append command " -o $obj"
