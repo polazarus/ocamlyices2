@@ -33,6 +33,15 @@ CAMLprim value ocamlyices_info(value unit) {
   CAMLreturn (tuple);
 }
 
+CAMLprim value ocamlyices_print_supported(value unit) {
+  CAMLparam1 (unit);
+  #if defined(HAVE_FUNOPEN) || defined(HAVE_FOPENCOOKIE)
+  CAMLreturn(Val_bool(1));
+  #else
+  CAMLreturn(Val_bool(0));
+  #endif
+}
+
 void _oy_check_init () {
   if (!_oy_initialized) {
     yices_init();

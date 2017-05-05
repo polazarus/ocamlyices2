@@ -164,6 +164,9 @@ external info : unit -> string*string*string*string
 let version, build_arch, build_mode, build_date =
   info ()
 
+external print_supported : unit -> bool
+  = "ocamlyices_print_supported"
+
 module Experimental = struct
   (** Reset Yices *)
   external reset : unit -> unit

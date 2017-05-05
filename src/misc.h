@@ -25,6 +25,7 @@ void _oy_check_init();
 int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *), void *arg);
 
 CAMLprim value ocamlyices_info (value unit);
+CAMLprim value ocamlyices_print_supported (value unit);
 CAMLprim value ocamlyices_reset (value unit);
 
 

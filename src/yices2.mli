@@ -148,6 +148,13 @@ exception YicesError of Error.code * Error.report
     run [register_exn] yourself. *)
 val register_exn : unit -> unit
 
+(** On some systems, like mingw or alpine, fopen or fcookieopen
+   are not available and thus the functions Type.print,
+   Term.print and Model.print are not available.
+   This function tells you if it is available. *)
+external print_supported : unit -> bool
+  = "ocamlyices_print_supported"
+
 module Experimental : sig
   (** Reset Yices *)
   external reset : unit -> unit
