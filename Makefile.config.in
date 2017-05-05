@@ -18,4 +18,16 @@ CC = @CC@
 
 # Configuration
 CFLAGS = @CFLAGS@
-LIBS = -lyices @LIBS@
+LIBS = @LIBS@
+
+CPPFLAGS = @CPPFLAGS@
+CFLAGS = @CFLAGS@
+LDFLAGS = @LDFLAGS@
+
+HOST_OS = @host_os@
+HOST = @host@
+HOST_CPU = @host_cpu@
+
+SO = @SO@
+STATIC_GMP = @STATIC_GMP@
+FORCE_SHARED_GMP = @FORCE_SHARED_GMP@

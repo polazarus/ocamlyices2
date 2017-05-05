@@ -6,6 +6,9 @@
 /* Define if funopen available */
 #undef HAVE_FUNOPEN
 
+/* Define to 1 if you have the <gmp.h> header file. */
+#undef HAVE_GMP_H
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
