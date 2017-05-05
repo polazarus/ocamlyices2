@@ -5,6 +5,7 @@
 #endif
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <caml/callback.h>
 #include <caml/memory.h> // CAMLparam & co
