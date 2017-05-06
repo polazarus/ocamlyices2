@@ -46,4 +46,10 @@ make dist
 DIST=ocamlyices2-$(git describe --tags)-${HOST}
 mv dist $DIST
 tar czf ${DIST}.tar.gz $DIST
-echo "$(sha256sum ${DIST}.tar.gz)" > ${DIST}.tar.gz.sha256sum
+echo "$(sha256sum ${DIST}.tar.gz)" > ${DIST}.tar.gz.sha256
+
+DIST=gmp-6.1.2-static-${HOST}
+mkdir ${DIST}
+cp /usr/${HOST}/sys-root/mingw/lib/libgmp.a /usr/${HOST}/sys-root/mingw/include/gmp.h ${DIST}
+tar czf ${DIST}.tar.gz $DIST
+echo "$(sha256sum ${DIST}.tar.gz)" > ${DIST}.tar.gz.sha256

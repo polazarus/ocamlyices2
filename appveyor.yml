@@ -23,6 +23,7 @@ build_script:
 
 artifacts:
   - path: ocamlyices2-*.tar.gz*
+  - path: gmp-*.tar.gz*
 
 skip_tags: false
 
@@ -30,7 +31,7 @@ deploy: # Deploy to GitHub Releases
   - provider: GitHub
     auth_token:
       secure: "ksCdtElKaNg37pjDiMEV8bcjL/kTrAqAb7b2Lrrj304L/P2hwyxm/G+rC+qGTgKs"
-    artifact: /ocamlyices2-.*\.tar\.gz.*/
+    artifact: /.*\.tar\.gz.*/
     #draft: true
     #prerelease: true
     on:

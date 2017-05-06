@@ -40,5 +40,4 @@ deploy:
   file: ocamlyices2-*.tar.gz*
   on:
     condition: "($TRAVIS_OS_NAME = linux && $OCAML_VERSION = 4.02.0) || $TRAVIS_OS_NAME = osx"
-    branch: master
     tags: true
