@@ -5,6 +5,9 @@ HOST=$(./autoconf/config.guess)
 eval `opam config env`
 ./configure
 make
+# We must uninstall first in case any previous build installed but failed before
+# uninstalling.
+make uninstall
 make install
 make test
 

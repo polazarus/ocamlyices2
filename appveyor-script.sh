@@ -29,6 +29,9 @@ CFLAGS="-I/usr/${HOST}/sys-root/mingw/include -L/usr/${HOST}/sys-root/mingw/lib/
 
 ./configure --host=${HOST} --with-static-gmp=/usr/${HOST}/sys-root/mingw/lib/libgmp.a
 make
+# We must uninstall first in case any previous build installed but failed before
+# uninstalling.
+make uninstall
 make install
 make test
 
