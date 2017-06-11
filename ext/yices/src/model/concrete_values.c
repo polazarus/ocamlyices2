@@ -12,11 +12,15 @@
 
 #include <inttypes.h>
 
-#include "utils/memalloc.h"
+#include "model/concrete_values.h"
+#include "terms/bv64_constants.h"
 #include "utils/hash_functions.h"
 #include "utils/int_array_sort.h"
-#include "terms/bv64_constants.h"
-#include "model/concrete_values.h"
+#include "utils/memalloc.h"
+
+#ifdef HAVE_MCSAT
+#include <poly/algebraic_number.h>
+#endif
 
 
 
@@ -574,7 +578,7 @@ void init_value_table(value_table_t *table, uint32_t n, type_table_t *ttbl) {
   table->nobjects = 0;
   table->kind = (uint8_t *) safe_malloc(n * sizeof(uint8_t));
   table->desc = (value_desc_t *) safe_malloc(n * sizeof(value_desc_t));
-  table->canonical = allocate_bitvector(n);
+  table->canonical = allocate_bitvector0(n);
 
   table->type_table = ttbl;
   init_int_htbl(&table->htbl, 0);
@@ -589,6 +593,11 @@ void init_value_table(value_table_t *table, uint32_t n, type_table_t *ttbl) {
   table->unknown_value = null_value;
   table->true_value = null_value;
   table->false_value = null_value;
+
+  table->zero_rdiv_fun = null_value;
+  table->zero_idiv_fun = null_value;
+  table->zero_mod_fun = null_value;
+
   table->first_tmp = -1; // no temporary objects
 
   table->aux_namer = NULL;
@@ -613,7 +622,7 @@ static void extend_value_table(value_table_t *table) {
   table->size = n;
   table->kind = (uint8_t *) safe_realloc(table->kind, n * sizeof(uint8_t));
   table->desc = (value_desc_t *) safe_realloc(table->desc, n * sizeof(value_desc_t));
-  table->canonical = extend_bitvector(table->canonical, n);
+  table->canonical = extend_bitvector0(table->canonical, n, table->size);
 }
 
 
@@ -723,6 +732,14 @@ static void vtbl_delete_descriptors(value_table_t *table, uint32_t k) {
       break;
     case RATIONAL_VALUE:
       q_clear(&table->desc[i].rational);
+      break;
+    case ALGEBRAIC_VALUE:
+#ifdef HAVE_MCSAT
+      lp_algebraic_number_destruct(table->desc[i].ptr);
+      safe_free(table->desc[i].ptr);
+#else
+      assert(false);
+#endif
       break;
     case UNINTERPRETED_VALUE:
       delete_value_unint(table->desc[i].ptr);
@@ -866,39 +883,6 @@ value_t vtbl_mk_not(value_table_t *table, value_t v) {
 }
 
 
-#if 0
-// not used
-/*
- * Uninterpreted constant of type tau
- * - tau must be a scalar or uninterpreted type
- * - if name is non-NULL then a copy is made
- * This function always create a new object and the index is set to -1.
- */
-value_t vtbl_mk_unint(value_table_t *table, type_t tau, char *name) {
-  value_unint_t *d;
-  value_t i;
-
-  assert(type_kind(table->type_table, tau) == SCALAR_TYPE ||
-         type_kind(table->type_table, tau) == UNINTERPRETED_TYPE);
-
-  d = (value_unint_t *) safe_malloc(sizeof(value_unint_t));
-  d->type = tau;
-  d->index = -1;
-  d->name = NULL;
-  if (name != NULL) {
-    d->name = (char *) safe_malloc(strlen(name) + 1);
-    strcpy(d->name, name);
-  }
-
-  i = allocate_object(table);
-  table->kind[i] = UNINTERPRETED_VALUE;
-  table->desc[i].ptr = d;
-  set_bit(table->canonical, i);
-
-  return i;
-}
-
-#endif
 
 
 /********************************************
@@ -1182,7 +1166,7 @@ static uint32_t swap_default_for_map(value_table_t *table, type_t tau, uint32_t 
  * the function returns the number of elements in a. Otherwise, the function returns n.
  *
  * NOTE: this must be called after the standard normalization procedure:
- * - array a must not contain duplicate maps nor any map that give the same value as def
+ * - array a must not contain duplicate maps nor any map that gives the same value as def
  */
 static uint32_t normalize_finite_domain_function(value_table_t *table, type_t tau, uint32_t n, value_t *a, value_t *def) {
   uint32_t dsize, def_count, new_count;
@@ -1264,8 +1248,14 @@ static bool canonical_array(value_table_t *table, value_t *a, uint32_t n) {
 typedef struct {
   int_hobj_t m;
   value_table_t *table;
-  rational_t v;
+  rational_t *v;
 } rational_hobj_t;
+
+typedef struct {
+  int_hobj_t m;
+  value_table_t *table;
+  void *a;
+} algebraic_hobj_t;
 
 typedef struct {
   int_hobj_t m;
@@ -1340,8 +1330,14 @@ typedef struct {
  */
 static uint32_t hash_rational_value(rational_hobj_t *o) {
   uint32_t h_num, h_den;
-  q_hash_decompose(&o->v, &h_num, &h_den);
+  q_hash_decompose(o->v, &h_num, &h_den);
   return jenkins_hash_mix2(h_num, h_den);
+}
+
+static uint32_t hash_algebraic_value(void *a) {
+  // Can't hash, internal representation can change and they are not canonical
+  // We just return 0 and hope for the best
+  return 0;
 }
 
 static uint32_t hash_const_value(const_hobj_t *o) {
@@ -1387,7 +1383,20 @@ static bool equal_rational_value(rational_hobj_t *o, value_t i) {
   value_table_t *table;
 
   table = o->table;
-  return table->kind[i] == RATIONAL_VALUE && q_eq(&table->desc[i].rational, &o->v);
+  return table->kind[i] == RATIONAL_VALUE && q_eq(&table->desc[i].rational, o->v);
+}
+
+static bool equal_algebraic_value(algebraic_hobj_t *o, value_t i) {
+#ifdef HAVE_MCSAT
+  value_table_t *table;
+
+  table = o->table;
+  return table->kind[i] == ALGEBRAIC_VALUE && lp_algebraic_number_cmp(table->desc[i].ptr, o->a) == 0;
+#else
+  assert(false);
+  return false;
+#endif
+
 }
 
 static bool equal_const_value(const_hobj_t *o, value_t i) {
@@ -1438,7 +1447,6 @@ static bool equal_map_value(map_hobj_t *o, value_t i) {
   d = table->desc[i].ptr;
   return d->val == o->val && d->arity == o->arity && equal_arrays(o->arg, d->arg, d->arity);
 }
-
 
 
 static bool equal_fun_value(fun_hobj_t *o, value_t i) {
@@ -1511,11 +1519,30 @@ static value_t build_rational_value(rational_hobj_t *o) {
   i = allocate_object(table);
   table->kind[i] = RATIONAL_VALUE;
   q_init(&table->desc[i].rational);
-  q_set(&table->desc[i].rational, &o->v);
+  q_set(&table->desc[i].rational, o->v);
   set_bit(table->canonical, i);
 
   return i;
 }
+
+static value_t build_algebraic_value(algebraic_hobj_t *o) {
+#ifdef HAVE_MCSAT
+  value_table_t *table;
+  value_t i;
+
+  table = o->table;
+  i = allocate_object(table);
+  table->kind[i] = ALGEBRAIC_VALUE;
+  table->desc[i].ptr = safe_malloc(sizeof(lp_algebraic_number_t));
+  lp_algebraic_number_construct_copy(table->desc[i].ptr, o->a);
+  clr_bit(table->canonical, i);
+
+  return i;
+#else
+  return null_value;
+#endif
+}
+
 
 static value_t build_const_value(const_hobj_t *o) {
   value_table_t *table;
@@ -1700,7 +1727,13 @@ static value_t build_update_value(update_hobj_t *o) {
 static rational_hobj_t rational_hobj = {
   { (hobj_hash_t) hash_rational_value, (hobj_eq_t) equal_rational_value, (hobj_build_t) build_rational_value },
   NULL,
-  { 0, 1}, // represents rational zero
+  NULL,
+};
+
+static algebraic_hobj_t algebraic_hobj = {
+  { (hobj_hash_t) hash_algebraic_value, (hobj_eq_t) equal_algebraic_value, (hobj_build_t) build_algebraic_value },
+  NULL,
+  NULL,
 };
 
 static const_hobj_t const_hobj = {
@@ -1749,7 +1782,7 @@ static update_hobj_t update_hobj = {
  */
 value_t vtbl_mk_rational(value_table_t *table, rational_t *v) {
   rational_hobj.table = table;
-  q_set(&rational_hobj.v, v);
+  rational_hobj.v = v;
 
   return int_htbl_get_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
 }
@@ -1758,12 +1791,34 @@ value_t vtbl_mk_rational(value_table_t *table, rational_t *v) {
  * Return a rational constant equal to i
  */
 value_t vtbl_mk_int32(value_table_t *table, int32_t i) {
-  rational_hobj.table = table;
-  q_set32(&rational_hobj.v, i);
+  rational_t aux;
+  value_t k;
 
-  return int_htbl_get_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
+  q_init(&aux);
+  q_set32(&aux, i);
+  rational_hobj.table = table;
+  rational_hobj.v = &aux;
+
+  k = int_htbl_get_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
+  q_clear(&aux);
+
+  return k;
 }
 
+
+/*
+ * Copy of the algebraic number
+ */
+value_t vtbl_mk_algebraic(value_table_t *table, void* a) {
+#ifdef HAVE_MCSAT
+  algebraic_hobj.table = table;
+  algebraic_hobj.a = a;
+
+  return int_htbl_get_obj(&table->htbl, (int_hobj_t *) &algebraic_hobj);
+#else
+  return null_value;
+#endif
+}
 
 
 /*
@@ -2004,6 +2059,81 @@ value_t vtbl_mk_update(value_table_t *table, value_t f, uint32_t n, value_t *a, 
 
 
 
+/***********************************************
+ *  LOCAL INTEPRETATION FOR DIVISION BY ZERO   *
+ **********************************************/
+
+/*
+ * In SMT-LIB 2.x, the division operators have an uninterpreted
+ * semantics if the divisor is zero. The value table can store
+ * a mapping that gives an interpretation for these operations.
+ *
+ * Example: if mcsat says (/ 1 0) = 5 then we can build a function f
+ * that maps 1 to 5, then assign f to table->zero_rdiv_fun.  We store
+ * this information in the value table so that model_eval can use it.
+ */
+
+#ifndef NDEBUG
+static bool is_arith_map_type(type_table_t *tbl, type_t tau) {
+  function_type_t *d;
+
+  if (is_function_type(tbl, tau)) {
+    d = function_type_desc(tbl, tau);
+    return d->ndom == 1 && is_arithmetic_type(d->range) && is_arithmetic_type(d->domain[0]);
+  }
+
+  return false;
+}
+
+static bool is_plausible_div_by_zero(value_table_t *table, value_t f) {
+  value_fun_t *fun;
+  value_update_t *upd;
+
+  while (object_is_update(table, f)) {
+    upd = vtbl_update(table, f);
+    if (upd->arity != 1) return false;
+    f = upd->fun;
+  }
+
+  if (object_is_function(table, f)) {
+    fun = vtbl_function(table, f);
+    return fun->arity == 1 && is_arith_map_type(table->type_table, fun->type);
+  }
+
+  return false;
+}
+#endif
+
+/*
+ * Give a meaning to real division by zero
+ */
+void vtbl_set_zero_rdiv(value_table_t *table, value_t f) {
+  assert(is_plausible_div_by_zero(table, f));
+  assert(table->zero_rdiv_fun == null_value);
+  table->zero_rdiv_fun = f;
+}
+
+/*
+ * Integer division
+ */
+void vtbl_set_zero_idiv(value_table_t *table, value_t f) {
+  assert(is_plausible_div_by_zero(table, f));
+  assert(table->zero_idiv_fun == null_value);
+  table->zero_idiv_fun = f;
+}
+
+/*
+ * Modulo
+ */
+void vtbl_set_zero_mod(value_table_t *table, value_t f) {
+  assert(is_plausible_div_by_zero(table, f));
+  assert(table->zero_mod_fun == null_value);
+  table->zero_mod_fun = f;
+}
+
+
+
+
 /********************
  *  DEFAULT VALUES  *
  *******************/
@@ -2204,17 +2334,36 @@ bool vtbl_make_two_objects(value_table_t *vtbl, type_t tau, value_t a[2]) {
  */
 value_t vtbl_find_rational(value_table_t *table, rational_t *v) {
   rational_hobj.table = table;
-  q_set(&rational_hobj.v, v);
+  rational_hobj.v = v;
 
   return int_htbl_find_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
 }
 
 value_t vtbl_find_int32(value_table_t *table, int32_t x) {
-  rational_hobj.table = table;
-  q_set32(&rational_hobj.v, x);
+  rational_t aux;
+  value_t k;
 
-  return int_htbl_find_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
+  q_init(&aux);
+  q_set32(&aux, x);
+  rational_hobj.table = table;
+  rational_hobj.v = &aux;
+
+  k = int_htbl_find_obj(&table->htbl, (int_hobj_t *) &rational_hobj);
+  q_clear(&aux);
+
+  return k;
 }
+
+/*
+ * Check whether the algebraic number is in the table.
+ */
+value_t vtbl_find_algebraic(value_table_t *table, void* a) {
+  algebraic_hobj.table = table;
+  algebraic_hobj.a = a;
+
+  return int_htbl_find_obj(&table->htbl, (int_hobj_t *) &algebraic_hobj);
+}
+
 
 /*
  * Check presence of a bitvector constant defined by array of n integers:
@@ -2383,7 +2532,7 @@ void vtbl_gen_object_tuple(value_table_t *table, uint32_t n, type_t *tau, uint32
 
 
 /*
- * Build object of a typle type d and index i
+ * Build object of a tuple type d and index i
  */
 static value_t vtbl_gen_tuple(value_table_t *table, tuple_type_t *d, uint32_t i) {
   value_t buffer[10];
@@ -2574,7 +2723,7 @@ static value_t vtbl_gen_bitvector(value_table_t *table, uint32_t n, uint32_t i) 
 
 /*
  * If tau is a finite type, then we can enumerate its elements from
- * 0 to card(tau) - 1. The following function construct and element
+ * 0 to card(tau) - 1. The following function constructs an element
  * of finite type tau given an enumeration index i.
  * - tau must be finite
  * - i must be smaller than card(tau)
@@ -3159,6 +3308,56 @@ value_t vtbl_eval_application(value_table_t *table, value_t f, uint32_t n, value
 
   return j;
 }
+
+
+/*
+ * Evaluate (/ v 0) by a lookup in table->zero_rdiv_dun
+ * - v should be an arithmetic object (but we don't check)
+ * - return unknown if either zero_rdiv_fun is null or if the mapping of v is not defined.
+ */
+value_t vtbl_eval_rdiv_by_zero(value_table_t *table, value_t v) {
+  value_t f, r;
+
+  f = table->zero_rdiv_fun;
+  if (f != null_value) {
+    r = vtbl_eval_application(table, f, 1, &v);
+  } else {
+    r = vtbl_mk_unknown(table);
+  }
+  return r;
+}
+
+
+/*
+ * Same thing for integer division: use table->zero_idiv_fun
+ */
+value_t vtbl_eval_idiv_by_zero(value_table_t *table, value_t v) {
+  value_t f, r;
+
+  f = table->zero_idiv_fun;
+  if (f != null_value) {
+    r = vtbl_eval_application(table, f, 1, &v);
+  } else {
+    r = vtbl_mk_unknown(table);
+  }
+  return r;
+}
+
+/*
+ * Same thing for modulo: use table->zero_mod_fun
+ */
+value_t vtbl_eval_mod_by_zero(value_table_t *table, value_t v) {
+  value_t f, r;
+
+  f = table->zero_mod_fun;
+  if (f != null_value) {
+    r = vtbl_eval_application(table, f, 1, &v);
+  } else {
+    r = vtbl_mk_unknown(table);
+  }
+  return r;
+}
+
 
 
 

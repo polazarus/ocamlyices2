@@ -22,38 +22,40 @@
 #include <inttypes.h>
 #include <gmp.h>
 
-#include "utils/cputime.h"
-#include "utils/memsize.h"
-#include "utils/timeout.h"
+#include "api/smt_logic_codes.h"
+#include "api/yices_globals.h"
+
+#include "context/context.h"
+#include "context/context_printer.h"
 
 #include "frontend/smt1/smt_lexer.h"
 #include "frontend/smt1/smt_parser.h"
 #include "frontend/smt1/smt_term_stack.h"
-#include "context/context.h"
-#include "api/smt_logic_codes.h"
-#include "utils/command_line.h"
 
+#include "io/concrete_value_printer.h"
+#include "io/model_printer.h"
 #include "io/term_printer.h"
 #include "io/type_printer.h"
-#include "solvers/floyd_warshall/idl_fw_printer.h"
-#include "solvers/floyd_warshall/rdl_fw_printer.h"
-#include "solvers/simplex/simplex_printer.h"
-#include "solvers/bv/bvsolver_printer.h"
-#include "solvers/egraph/egraph_printer.h"
-#include "solvers/cdcl/smt_core_printer.h"
-#include "context/context_printer.h"
-#include "model/concrete_value_printer.h"
 
-#include "solvers/simplex/simplex.h"
-#include "solvers/floyd_warshall/idl_floyd_warshall.h"
-#include "solvers/floyd_warshall/rdl_floyd_warshall.h"
-#include "solvers/funs/fun_solver.h"
 #include "solvers/bv/bvsolver.h"
-#include "model/model_printer.h"
+#include "solvers/bv/bvsolver_printer.h"
+#include "solvers/cdcl/smt_core_printer.h"
+#include "solvers/egraph/egraph_printer.h"
+#include "solvers/floyd_warshall/idl_floyd_warshall.h"
+#include "solvers/floyd_warshall/idl_fw_printer.h"
+#include "solvers/floyd_warshall/rdl_floyd_warshall.h"
+#include "solvers/floyd_warshall/rdl_fw_printer.h"
+#include "solvers/funs/fun_solver.h"
+#include "solvers/simplex/simplex.h"
+#include "solvers/simplex/simplex_printer.h"
+
+#include "utils/command_line.h"
+#include "utils/cputime.h"
+#include "utils/memsize.h"
+#include "utils/timeout.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
-#include "api/yices_globals.h"
 
 
 /*
@@ -106,6 +108,9 @@ static const char * const code2error[NUM_INTERNALIZATION_ERRORS] = {
   "formula contains free variables",
   "logic not supported",
   "context does not support UF",
+  "context does not support scalar types",
+  "context does not support tuples",
+  "context does not support uninterpreted types",
   "context does not support arithmetic",
   "context does not support bitvectors",
   "context does not support function equalities",
@@ -170,7 +175,7 @@ static uint32_t timeout;
 static char *filename;
 
 /*
- * If this flag is true, no search paramters was given on the command line,
+ * If this flag is true, no search parameters was given on the command line,
  * so the default should be used.
  */
 static bool use_default_params;
@@ -440,15 +445,15 @@ static void yices_usage(char *progname) {
 /*
  * Name of options k in the options table
  */
-static inline char *opt_name(optid_t k) {
+static inline const char *opt_name(optid_t k) {
   return options[k].name;
 }
 
 /*
  * Name of option that select branching mode b
  */
-static char *branching_name(branch_t b) {
-  char *name;
+static const char *branching_name(branch_t b) {
+  const char *name;
 
   name = NULL;
   switch (b) {
@@ -1137,12 +1142,20 @@ static void show_simplex_stats(simplex_stats_t *stat) {
   if (stat->num_make_intfeasible > 0 || stat->num_dioph_checks > 0) {
     printf("Integer arithmetic\n");
     printf(" make integer feasible   : %"PRIu32"\n", stat->num_make_intfeasible);
-    printf(" branch & bound          : %"PRIu32"\n", stat->num_branch_atoms);
-    printf(" gcd conflicts           : %"PRIu32"\n", stat->num_gcd_conflicts);
+    printf(" branch atoms            : %"PRIu32"\n", stat->num_branch_atoms);
+    printf("bound strengthening\n");
+    printf(" conflicts               : %"PRIu32"\n", stat->num_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_bound_recheck_conflicts);
+    printf("integrality tests\n");
+    printf(" conflicts               : %"PRIu32"\n", stat->num_itest_conflicts);
+    printf(" bound conflicts         : %"PRIu32"\n", stat->num_itest_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_itest_recheck_conflicts);
+    printf("diohpantine solver\n");
+    printf(" gcd conflicts           : %"PRIu32"\n", stat->num_dioph_gcd_conflicts);
     printf(" dioph checks            : %"PRIu32"\n", stat->num_dioph_checks);
     printf(" dioph conflicts         : %"PRIu32"\n", stat->num_dioph_conflicts);
-    printf(" bound conflicts         : %"PRIu32"\n", stat->num_bound_conflicts);
-    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_recheck_conflicts);
+    printf(" bound conflicts         : %"PRIu32"\n", stat->num_dioph_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_dioph_recheck_conflicts);
   }
 }
 
@@ -1178,7 +1191,7 @@ static inline simplex_solver_t *context_get_simplex_solver(context_t *ctx) {
 /*
  * Statistics + result, after the search
  */
-static void print_results() {
+static void print_results(void) {
   smt_core_t *core;
   egraph_t *egraph;
   simplex_solver_t *simplex;
@@ -1242,7 +1255,7 @@ static void print_results() {
 /*
  * Statistics on problem size, before the search
  */
-static void print_presearch_stats() {
+static void print_presearch_stats(void) {
   smt_core_t *core;
   egraph_t *egraph;
 
@@ -1612,7 +1625,7 @@ static void handler(int signum) {
  * Set the signal handler: to print statistics on
  * SIGINT, SIGABRT, SIGXCPU
  */
-static void init_handler() {
+static void init_handler(void) {
   signal(SIGINT, handler);
   signal(SIGABRT, handler);
 #ifndef MINGW
@@ -2001,7 +2014,7 @@ static int process_benchmark(char *filename) {
   /*
    * Cleanup and return code
    *
-   * To cleanup aftere an error: jump to cleanup_context if the error
+   * To cleanup after an error: jump to cleanup_context if the error
    * is detected after the context is initialized or to cleanup_benchmark
    * if the error is detected before the context is initialized.
    */

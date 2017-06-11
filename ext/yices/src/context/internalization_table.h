@@ -34,7 +34,12 @@
  *   that r is an uninterpreted term and is not mapped to any object
  *   yet (i.e., map[r] = NULL). The class of r has size >= 2^rank[r]
  *   and all elements in the class are uninterpreted. It's possible to
- *   merge the r's class with another class.
+ *   merge r's class with another class.
+ *
+ *   The table is a partial map. The domain is defined by the set of 
+ *   terms r such that type[r] != NULL_TYPE. If type[r] is NULL_TYPE,
+ *   then r is implicitly considered to be a root (cf. intern_tbl_is_root
+ *   and intern_tbl_get_root).
  *
  * - a non-root i must be an uninterpreted term index and map[i] is the
  *   parent of i in the union-find tree.
@@ -70,10 +75,10 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "terms/terms.h"
+#include "utils/backtrack_arrays.h"
 #include "utils/int_hash_sets.h"
 #include "utils/int_queues.h"
-#include "utils/backtrack_arrays.h"
-#include "terms/terms.h"
 
 
 /*
@@ -147,7 +152,7 @@ static inline uint32_t intern_tbl_num_terms(intern_tbl_t *tbl) {
  * Check whether t is in the table
  */
 static inline bool intern_tbl_term_present(intern_tbl_t *tbl, term_t t) {
-  assert(good_term(tbl->terms, t));
+  assert(good_term(tbl->terms, t));  
   return ai32_read(&tbl->type, index_of(t)) != NULL_TYPE;
 }
 
@@ -264,7 +269,9 @@ extern void intern_tbl_remap_root(intern_tbl_t *tbl, term_t r, int32_t x);
  */
 extern bool intern_tbl_root_is_free(intern_tbl_t *tbl, term_t r);
 
+#if 0
 
+// NOT USED
 /*
  * Check whether the substitution [r1 := r2] is valid
  * - both r1 and r2 must be roots and they must have compatible types.
@@ -276,7 +283,7 @@ extern bool intern_tbl_root_is_free(intern_tbl_t *tbl, term_t r);
  * NOTE: if r2 is a constant, the next function should be used instead.
  */
 extern bool intern_tbl_valid_subst(intern_tbl_t *tbl, term_t r1, term_t r2);
-
+#endif
 
 /*
  * Check whether the substitution [r1 := r2] is valid.
@@ -304,8 +311,6 @@ extern void intern_tbl_add_subst(intern_tbl_t *tbl, term_t r1, term_t r2);
  * This adds either the substitution [r1 := r2] or [r2 := r1]
  */
 extern void intern_tbl_merge_classes(intern_tbl_t *tbl, term_t r1, term_t r2);
-
-
 
 /*
  * SUPPORT FOR GARBAGE COLLECTION

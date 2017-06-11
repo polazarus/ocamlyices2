@@ -9,17 +9,21 @@
  * ASSERTION CONTEXT
  */
 
-#include "utils/memalloc.h"
-#include "terms/term_utils.h"
-#include "terms/poly_buffer_terms.h"
-
 #include "context/context.h"
+#include "context/context_simplifier.h"
+#include "context/context_utils.h"
+#include "context/internalization_codes.h"
+#include "context/ite_flattener.h"
+#include "solvers/bv/bvsolver.h"
 #include "solvers/floyd_warshall/idl_floyd_warshall.h"
 #include "solvers/floyd_warshall/rdl_floyd_warshall.h"
-#include "solvers/simplex/simplex.h"
 #include "solvers/funs/fun_solver.h"
-#include "solvers/bv/bvsolver.h"
+#include "solvers/simplex/simplex.h"
+#include "terms/poly_buffer_terms.h"
+#include "terms/term_utils.h"
+#include "utils/memalloc.h"
 
+#include "mcsat/solver.h"
 
 #define TRACE 0
 
@@ -32,6 +36,7 @@
 #include "solvers/cdcl/smt_core_printer.h"
 
 #endif
+
 
 
 
@@ -51,6 +56,7 @@ static occ_t internalize_to_eterm(context_t *ctx, term_t t);
 static literal_t internalize_to_literal(context_t *ctx, term_t t);
 static thvar_t internalize_to_arith(context_t *ctx, term_t t);
 static thvar_t internalize_to_bv(context_t *ctx, term_t t);
+
 
 
 /****************************************
@@ -88,11 +94,27 @@ static eterm_t make_egraph_variable(context_t *ctx, type_t type) {
 
 
 /*
+ * For debugging: check that the arith solver agrees that x has type tau
+ */
+#ifndef NDEBUG
+static bool arithvar_has_right_type(context_t *ctx, thvar_t x, type_t tau) {
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    return is_integer_type(tau);
+  } else {
+    return is_real_type(tau);
+  }
+}
+#endif
+
+
+/*
  * Convert arithmetic variable x to an egraph term
  * - tau = type of x (int or real)
  */
 static occ_t translate_arithvar_to_eterm(context_t *ctx, thvar_t x, type_t tau) {
   eterm_t u;
+
+  assert(arithvar_has_right_type(ctx, x, tau));
 
   u = ctx->arith.eterm_of_var(ctx->arith_solver, x);
   if (u == null_eterm) {
@@ -102,9 +124,24 @@ static occ_t translate_arithvar_to_eterm(context_t *ctx, thvar_t x, type_t tau) 
   return pos_occ(u);
 }
 
+/*
+ * Type of arithmetic variable x
+ */
+static type_t type_of_arithvar(context_t *ctx, thvar_t x) {
+  type_t tau;
+
+  tau = real_type(ctx->types);
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    tau = int_type(ctx->types);
+  }
+
+  return tau;
+}
+
 
 /*
- * Same thing for a bit-vector variable x
+ * Convert bit-vector variable x to an egraph term
+ * - tau = type of x
  */
 static occ_t translate_bvvar_to_eterm(context_t *ctx, thvar_t x, type_t tau) {
   eterm_t u;
@@ -181,6 +218,42 @@ static occ_t translate_code_to_eterm(context_t *ctx, term_t t, int32_t x) {
   return u;
 }
 
+
+/*
+ * Internalization error for term t 
+ * - t can't be processed because there's no egraph
+ * - the error code depends on t's type
+ */
+static int32_t uf_error_code(context_t *ctx, term_t t) {
+  int32_t code;
+
+  assert(! context_has_egraph(ctx));
+
+  switch (term_type_kind(ctx->terms, t)) {
+  case UNINTERPRETED_TYPE:
+    code = UTYPE_NOT_SUPPORTED;
+    break;
+      
+  case SCALAR_TYPE:
+    code = SCALAR_NOT_SUPPORTED;
+    break;
+
+  case FUNCTION_TYPE:
+    code = UF_NOT_SUPPORTED;
+    break;
+
+  case TUPLE_TYPE:
+    code = TUPLE_NOT_SUPPORTED;
+    break;
+
+  default:
+    assert(false);
+    code = INTERNAL_ERROR;
+    break;
+  }
+
+  return code;
+}
 
 
 /***********************************************
@@ -342,6 +415,98 @@ static occ_t map_conditional_to_eterm(context_t *ctx, conditional_t *c, type_t t
 
 
 /*
+ * Auxiliary function for flattening if-then-else
+ * - v contains a conjunction of n literals: l0 /\ ... /\ l_n
+ * - we something like (l0 /\ ... /\ l_n implies (x = y))
+ *   (i.e., (not l0) \/ ... \/ (not l_n) \/ (x = y)
+ * - this function negates all the literals in place
+ */
+static void ite_prepare_antecedents(ivector_t *v) {
+  uint32_t i, n;
+
+  n = v->size;
+  for (i=0; i<n; i++) {
+    v->data[i] = not(v->data[i]);
+  }
+}
+
+
+/*
+ * Convert nested if-then-else to  an egraph term
+ * - ite = term of the form (ite c1 t1 t2)
+ * - c = internalization of c1
+ * - tau = type of the term (ite c1 t1 t2)
+ */
+static occ_t flatten_ite_to_eterm(context_t *ctx, composite_term_t *ite, literal_t c, type_t tau) {
+  ite_flattener_t flattener;
+  ivector_t *buffer;
+  term_t x;
+  occ_t u, v;
+  literal_t l;
+
+  u = pos_occ(make_egraph_variable(ctx, tau));
+
+  init_ite_flattener(&flattener);
+  ite_flattener_push(&flattener, ite, c);
+
+  while (ite_flattener_is_nonempty(&flattener)) {
+    if (ite_flattener_last_lit_false(&flattener)) {
+      // dead branch
+      ite_flattener_next_branch(&flattener);
+      continue;
+    }
+    assert(ite_flattener_branch_is_live(&flattener));
+
+    x = ite_flattener_leaf(&flattener);
+    x = intern_tbl_get_root(&ctx->intern, x);
+
+    /*
+     * x is the current leaf.
+     * If it's (ite ...) then we can expand the tree by pushing x.
+     *
+     * Heuristic: we don't do it if x is a shared term or if it's
+     * already internalized.
+     * - we also need a cutoff since the number of branches grows
+     *   exponentially.
+     */
+    if (is_pos_term(x) && 
+	is_ite_term(ctx->terms, x) && 
+	!intern_tbl_root_is_mapped(&ctx->intern, x) &&
+	term_is_not_shared(&ctx->sharing, x)) {
+      /*
+       * x is of the form (ite c a b) and not internalized already,
+       * we push (ite c a b) on the flattener.
+       */
+      ite = ite_term_desc(ctx->terms, x);
+      assert(ite->arity == 3);
+      c = internalize_to_literal(ctx, ite->arg[0]);
+      ite_flattener_push(&flattener, ite, c);
+    } else {
+      /*
+       * Add the clause [branch conditions => x = u]
+       */
+      v = internalize_to_eterm(ctx, x);
+      l = egraph_make_eq(ctx->egraph, u, v);
+
+      buffer = &ctx->aux_vector;
+      assert(buffer->size == 0);
+      ite_flattener_get_clause(&flattener, buffer);
+      ite_prepare_antecedents(buffer);
+      ivector_push(buffer, l);
+      add_clause(ctx->core, buffer->size, buffer->data);
+      ivector_reset(buffer);
+
+      ite_flattener_next_branch(&flattener);
+    }
+  }
+
+  delete_ite_flattener(&flattener);
+
+  return u;
+}
+
+
+/*
  * Convert (ite c t1 t2) to an egraph term
  * - tau = type of (ite c t1 t2)
  */
@@ -365,6 +530,10 @@ static occ_t map_ite_to_eterm(context_t *ctx, composite_term_t *ite, type_t tau)
   }
   if (c == false_literal) {
     return internalize_to_eterm(ctx, ite->arg[2]);
+  }
+
+  if (context_ite_flattening_enabled(ctx)) {
+    return flatten_ite_to_eterm(ctx, ite, c, tau);
   }
 
   u2 = internalize_to_eterm(ctx, ite->arg[1]);
@@ -492,6 +661,358 @@ static occ_t map_bvconst_to_eterm(context_t *ctx, bvconst_term_t *c) {
 
 
 
+/***************************************
+ *  AXIOMS FOR DIV/MOD/FLOOR/CEIL/ABS  *
+ **************************************/
+
+/*
+ * Auxiliary function: p and map to represent (x - y)
+ * - in polynomial p, only the coefficients are relevant
+ * - map[0] stores x and map[1] stores y
+ * - both p map must be large enough (at least 2 elements)
+ */
+static void context_store_diff_poly(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y) {
+  p->nterms = 2;
+  p->mono[0].var = 1;
+  q_set_one(&p->mono[0].coeff);       // coeff of x = 1 
+  p->mono[1].var = 2;
+  q_set_minus_one(&p->mono[1].coeff); // coeff of y = -1
+  p->mono[2].var = max_idx; // end marker
+
+  map[0] = x;
+  map[1] = y;
+}
+
+
+/*
+ * Same thing for the polynomial (x - y - 1)
+ */
+static void context_store_diff_minus_one_poly(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y) {
+  p->nterms = 3;
+  p->mono[0].var = const_idx;
+  q_set_minus_one(&p->mono[0].coeff);  // constant = -1
+  p->mono[1].var = 1;
+  q_set_one(&p->mono[1].coeff);        // coeff of x = 1
+  p->mono[2].var = 2;
+  q_set_minus_one(&p->mono[2].coeff);  // coeff of y = -1
+  p->mono[3].var = max_idx;
+
+  map[0] = null_thvar; // constant
+  map[1] = x;
+  map[2] = y;
+}
+
+
+/*
+ * Same thing for the polynomial (x + y)
+ */
+static void context_store_sum_poly(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y) {
+  p->nterms = 2;
+  p->mono[0].var = 1;
+  q_set_one(&p->mono[0].coeff); // coeff of x = 1
+  p->mono[1].var = 2;
+  q_set_one(&p->mono[1].coeff); // coeff of y = 1
+  p->mono[2].var = max_idx;
+
+  map[0] = x;
+  map[1] = y;
+}
+
+
+/*
+ * The lower bound on y = (div x k)  is (k * y <= x) or (x - k * y >= 0)
+ * We store the polynomial x - k * y
+ */
+static void context_store_div_lower_bound(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y, const rational_t *k) {
+  p->nterms = 2;
+  p->mono[0].var = 1;
+  q_set_one(&p->mono[0].coeff);    // coeff of x = 1
+  p->mono[1].var = 2;
+  q_set_neg(&p->mono[1].coeff, k); // coeff of y = -k
+  p->mono[2].var = max_idx;
+
+  map[0] = x;
+  map[1] = y;
+}
+
+
+/*
+ * For converting (divides k x), we use (divides k x) <=> (x <= k * (div x k))
+ * or (k * y - x >= 0) for y = (div x k).
+ * We store the polynomial - x + k * y.
+ */
+static void context_store_divides_constraint(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y, const rational_t *k) {
+  p->nterms = 2;
+  p->mono[0].var = 1;
+  q_set_minus_one(&p->mono[0].coeff);  // coeff of x = -1
+  p->mono[1].var = 2;
+  q_set(&p->mono[1].coeff, k);         // coeff of y = k
+  p->mono[2].var = max_idx;
+
+  map[0] = x;
+  map[1] = y;
+}
+
+/*
+ * Upper bound on y = (div x k) when both x and y are integer:
+ * We have x <= k * y + |k| - 1 or (-x + k y + |k| - 1 >= 0).
+ *
+ * We store the polynomial - x + k y + |k| - 1
+ *
+ * NOTE: we don't normalize the constant (|k| - 1) to zero if |k| = 1.
+ * This is safe as the simplex solver does not care.
+ */
+static void context_store_integer_div_upper_bound(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y, const rational_t *k) {
+  p->nterms = 3;
+  p->mono[0].var = const_idx;
+  q_set_abs(&p->mono[0].coeff, k);
+  q_sub_one(&p->mono[0].coeff);        // constant term = |k| - 1
+  p->mono[1].var = 1;
+  q_set_minus_one(&p->mono[1].coeff);  // coeff of x = -1
+  p->mono[2].var = 2;
+  q_set(&p->mono[2].coeff, k);         // coeff of y = k
+  p->mono[3].var = max_idx;
+
+  map[0] = null_thvar;
+  map[1] = x;
+  map[2] = y;
+}
+
+/*
+ * Upper bound on y = (div x k) when x or k is not an integer.
+ * We have x < k * y + |k| or x - k*y - |k| < 0 or (not (x - k*y - |k| >= 0))
+ *
+ * We store the polynomial x - ky - |k|
+ */
+static void context_store_rational_div_upper_bound(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y, const rational_t *k) {
+  p->nterms = 3;
+  p->mono[0].var = const_idx;
+  q_set_abs(&p->mono[0].coeff, k);
+  q_neg(&p->mono[0].coeff);           // constant term: -|k|
+  p->mono[1].var = 1;
+  q_set_one(&p->mono[1].coeff);       // coeff of x = +1
+  p->mono[2].var = 2;
+  q_set_neg(&p->mono[2].coeff, k);    // coeff of y = -k
+  p->mono[3].var = max_idx;
+
+  map[0] = null_thvar;
+  map[1] = x;
+  map[2] = y;
+}
+
+
+/*
+ * Polynomial x - y + k d (for asserting y = k * (div y k) + (mod y k)
+ * - d is assumed to be (div y k)
+ * - x is assumed to be (mod y k)
+ */
+static void context_store_divmod_eq(polynomial_t *p, thvar_t *map, thvar_t x, thvar_t y, thvar_t d, const rational_t *k) {
+  p->nterms = 3;
+  p->mono[0].var = 1;
+  q_set_one(&p->mono[0].coeff);       // coefficient of x = 1
+  p->mono[1].var = 2;
+  q_set_minus_one(&p->mono[1].coeff); // coefficient of y = -1
+  p->mono[2].var = 3;
+  q_set(&p->mono[2].coeff, k);        // coefficient of d = k
+  p->mono[3].var = max_idx;
+
+  map[0] = x;
+  map[1] = y;
+  map[2] = d;
+}
+
+
+/*
+ * Bound on x = (mod y k) assuming x and k are integer:
+ * - the bound is x <= |k| - 1 (i.e., |k| - 1 - x >= 0) 
+ *   so we construct |k| - 1 - x 
+ */
+static void context_store_integer_mod_bound(polynomial_t *p, thvar_t *map, thvar_t x, const rational_t *k) {
+  p->nterms = 2;
+  p->mono[0].var = const_idx;
+  q_set_abs(&p->mono[0].coeff, k);
+  q_sub_one(&p->mono[0].coeff);        // constant = |k| - 1
+  p->mono[1].var = 1;
+  q_set_minus_one(&p->mono[1].coeff);  // coeff of x = -1
+  p->mono[2].var = max_idx;
+
+  map[0] = null_thvar;
+  map[1] = x;
+}
+
+
+/*
+ * Bound on x = (mod y k) when x or k are rational
+ * - the bound is x < |k| or x - |k| < 0 or (not (x - |k| >= 0))
+ *   so we construct x - |k|
+ */
+static void context_store_rational_mod_bound(polynomial_t *p, thvar_t *map, thvar_t x, const rational_t *k) {
+  p->nterms = 2;
+  p->mono[0].var = const_idx;
+  q_set_abs(&p->mono[0].coeff, k);
+  q_neg(&p->mono[0].coeff);            // constant = -|k|
+  p->mono[1].var = 1;
+  q_set_one(&p->mono[1].coeff);        // coeff of x = +1
+  p->mono[2].var = max_idx;
+
+  map[0] = null_thvar;
+  map[1] = x;
+}
+
+
+/*
+ * Assert constraints for x := floor(y)
+ * - both x and y are variables in the arithmetic solver
+ * - x has type integer
+ *
+ * We assert (x <= y && y < x+1)
+ */
+static void assert_floor_axioms(context_t *ctx, thvar_t x, thvar_t y) {
+  polynomial_t *p;
+  thvar_t map[3];
+
+  assert(ctx->arith.arith_var_is_int(ctx->arith_solver, x));
+
+  p = context_get_aux_poly(ctx, 4);
+  
+  // assert (y - x >= 0)
+  context_store_diff_poly(p, map, y, x);
+  ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, true);
+
+  // assert (y - x - 1 < 0) <=> (not (y - x - 1) >= 0)
+  context_store_diff_minus_one_poly(p, map, y, x);
+  ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, false);
+}
+
+
+/*
+ * Assert constraints for x == ceil(y)
+ * - both x and y are variables in the arithmetic solver
+ * - x has type integer
+ *
+ * We assert (x - 1 < y && y <= x)
+ */
+static void assert_ceil_axioms(context_t *ctx, thvar_t x, thvar_t y) {
+  polynomial_t *p;
+  thvar_t map[3];
+
+  assert(ctx->arith.arith_var_is_int(ctx->arith_solver, x));
+
+  p = context_get_aux_poly(ctx, 4);
+
+  // assert (x - y >= 0)
+  context_store_diff_poly(p, map, x, y);
+  ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, true);
+
+  // assert (x - y - 1 < 0) <=> (not (x - y - 1) >= 0)
+  context_store_diff_minus_one_poly(p, map, x, y);
+  ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, false);
+}
+
+
+/*
+ * Assert constraints for x == abs(y)
+ * - x and y must be variables in the arithmetic solver
+ *
+ * We assert (x >= 0) AND ((x == y) or (x == -y))
+ */
+static void assert_abs_axioms(context_t *ctx, thvar_t x, thvar_t y) {
+  polynomial_t *p;
+  thvar_t map[2];
+  literal_t l1, l2;
+
+  // assert (x >= 0)
+  ctx->arith.assert_ge_axiom(ctx->arith_solver, x, true);
+
+  // create l1 := (x == y)
+  l1 = ctx->arith.create_vareq_atom(ctx->arith_solver, x, y);
+
+  // create l2 := (x == -y) that is (x + y == 0)
+  p = context_get_aux_poly(ctx, 3);
+  context_store_sum_poly(p, map, x, y);
+  l2 = ctx->arith.create_poly_eq_atom(ctx->arith_solver, p, map);
+
+  // assert (or l1 l2)
+  add_binary_clause(ctx->core, l1, l2);
+}
+
+
+/*
+ * Constraints for x == (div y k)
+ * - x and y must be variables in the arithmetic solver
+ * - x must be an integer variable
+ * - k is a non-zero rational constant
+ *
+ * If k and y are integer, we assert
+ *   k * x <= y <= k * x + |k| - 1
+ *
+ * Otherwise, we assert
+ *   k * x <= y < k * x + |k|
+ */
+static void assert_div_axioms(context_t *ctx, thvar_t x, thvar_t y, const rational_t *k) {
+  polynomial_t *p;
+  thvar_t map[3];
+
+  p = context_get_aux_poly(ctx, 4);  
+
+  // assert k*x <= y (i.e., y - k*x >= 0)
+  context_store_div_lower_bound(p, map, y, x, k);
+  ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, true);
+
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, y) && q_is_integer(k)) {
+    // y and k are both integer
+    // assert y <= k*x + |k| - 1 (i.e., - y + k x + |k| - 1 >= 0)
+    context_store_integer_div_upper_bound(p, map, y, x, k);
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, true);
+    
+  } else {
+    // assert y < k*x + |k| (i.e., y - k*x - |k| < 0) or (not (y - k*x - |k| >= 0))
+    context_store_rational_div_upper_bound(p, map, y, x, k);
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, false);
+  }  
+}
+
+
+/*
+ * Constraints for x == (mod y k)
+ * - d must be the variable equal to (div y k)
+ * - x and y must be variables in the arithmetic solver
+ * - k is a non-zero rational constant.
+ *
+ * We assert x = y - k * d (i.e., (mod y k) = x - k * (div y k))
+ * and 0 <= x < |k|.
+ *
+ * NOTE: The 0 <= x < |k| part is redundant. It's implied by the
+ * div_axioms for d = (div y k). It's cheap enough that I can't
+ * see a problem with adding it anyway (it's just an interval for x).
+ */
+static void assert_mod_axioms(context_t *ctx, thvar_t x, thvar_t y, thvar_t d, const rational_t *k) {
+  polynomial_t *p;
+  thvar_t map[3];
+
+  p = context_get_aux_poly(ctx, 4);
+
+  // assert y = k * d + x (i.e., x - y + k *d = 0)
+  context_store_divmod_eq(p, map, x, y, d, k);
+  ctx->arith.assert_poly_eq_axiom(ctx->arith_solver, p, map, true);
+
+  // assert x >= 0
+  ctx->arith.assert_ge_axiom(ctx->arith_solver, x, true);
+
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x) && q_is_integer(k)) {
+    // both x and |k| are integer
+    // assert x <= |k| - 1, i.e., -x + |k| - 1 >= 0
+    context_store_integer_mod_bound(p, map, x, k);
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, true);
+  } else {
+    // assert x < |k|, i.e., x - |k| <0, i.e., (not (x - |k| >= 0))
+    context_store_rational_mod_bound(p, map, x, k);
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, false);
+  }
+}
+
+
+
 /******************************************************
  *  CONVERSION OF COMPOSITES TO ARITHMETIC VARIABLES  *
  *****************************************************/
@@ -574,6 +1095,72 @@ static thvar_t map_conditional_to_arith(context_t *ctx, conditional_t *c, bool i
 
 
 /*
+ * Convert nested if-then-else to  an arithmetic variable
+ * - ite = term of the form (ite c1 t1 t2)
+ * - c = internalization of c1
+ * - is_int = true if the if-then-else term is integer (otherwise it's real)
+ */
+static thvar_t flatten_ite_to_arith(context_t *ctx, composite_term_t *ite, literal_t c, bool is_int) {
+  ite_flattener_t flattener;
+  ivector_t *buffer;
+  term_t x;
+  thvar_t u, v;
+
+  u = ctx->arith.create_var(ctx->arith_solver, is_int);
+
+  init_ite_flattener(&flattener);
+  ite_flattener_push(&flattener, ite, c);
+
+  while (ite_flattener_is_nonempty(&flattener)) {
+    if (ite_flattener_last_lit_false(&flattener)) {
+      // dead branch
+      ite_flattener_next_branch(&flattener);      
+      continue;
+    }
+    assert(ite_flattener_branch_is_live(&flattener));
+
+    x = ite_flattener_leaf(&flattener);
+    x = intern_tbl_get_root(&ctx->intern, x);
+
+    /*
+     * x is the current leaf
+     * If x is of the form (ite c a b) we can push (ite c a b) on the flattener.
+     *
+     * Heuristics: don't push the term if x is already internalized or if it's
+     * shared.
+     */
+    if (is_pos_term(x) && 
+	is_ite_term(ctx->terms, x) && 
+	!intern_tbl_root_is_mapped(&ctx->intern, x) &&
+	term_is_not_shared(&ctx->sharing, x)) {
+      ite = ite_term_desc(ctx->terms, x);
+      assert(ite->arity == 3);
+      c = internalize_to_literal(ctx, ite->arg[0]);
+      ite_flattener_push(&flattener, ite, c);
+    } else {
+      /*
+       * Add the clause [branch conditions => x = u]
+       */
+      v = internalize_to_arith(ctx, x);
+
+      buffer = &ctx->aux_vector;
+      assert(buffer->size == 0);
+      ite_flattener_get_clause(&flattener, buffer);
+      ite_prepare_antecedents(buffer);
+      // assert [buffer \/ v = u]
+      ctx->arith.assert_clause_vareq_axiom(ctx->arith_solver, buffer->size, buffer->data, v, u);
+      ivector_reset(buffer);
+
+      ite_flattener_next_branch(&flattener);
+    }
+  }
+
+  delete_ite_flattener(&flattener);
+
+  return u;
+}
+
+/*
  * Convert if-then-else to an arithmetic variable
  * - if is_int is true, the if-then-else term is integer
  * - otherwise, it's real
@@ -599,6 +1186,11 @@ static thvar_t map_ite_to_arith(context_t *ctx, composite_term_t *ite, bool is_i
   if (c == false_literal) {
     return internalize_to_arith(ctx, ite->arg[2]);
   }
+
+  if (context_ite_flattening_enabled(ctx)) {
+    return flatten_ite_to_arith(ctx, ite, c, is_int);
+  }
+
 
   /*
    * no simplification: create a fresh variable v and assert (c ==> v = t1)
@@ -721,6 +1313,199 @@ static thvar_t map_poly_to_arith(context_t *ctx, polynomial_t *p) {
   free_istack_array(&ctx->istack, a);
 
   return x;
+}
+
+
+/*
+ * Auxiliary function: return y := (floor x) 
+ * - check the divmod table first.
+ *   If there's a record for (floor x), return the corresponding variable. 
+ * - Otherwise, create a fresh integer variable y,
+ *   assert the axioms for y = (floor x)
+ *   add a record to the divmod table and return y.
+ */
+static thvar_t get_floor(context_t *ctx, thvar_t x) {
+  thvar_t y;
+
+  y = context_find_var_for_floor(ctx, x);
+  if (y == null_thvar) {
+    y = ctx->arith.create_var(ctx->arith_solver, true); // y is an integer variable
+    assert_floor_axioms(ctx, y, x); // assert y = floor(x)
+    context_record_floor(ctx, x, y); // save the mapping y --> floor(x)
+  }
+
+  return y;
+}
+
+
+/*
+ * Return y := (div x k)
+ * - check the divmod table first
+ * - if (div x k) has already been processed, return the corresponding variable
+ * - otherwise create a new variable y, assert the axioms for y = (div x k)
+ *   add a record in the divmod table, and return y.
+ */
+static thvar_t get_div(context_t *ctx, thvar_t x, const rational_t *k) {
+  thvar_t y;
+
+  y = context_find_var_for_div(ctx, x, k);
+  if (y == null_thvar) {
+    // create y := (div x k)
+    y = ctx->arith.create_var(ctx->arith_solver, true); // y is an integer
+    assert_div_axioms(ctx, y, x, k);
+    context_record_div(ctx, x, k, y);
+  }
+
+  return y;
+}
+
+
+
+/*
+ * Convert (floor t) to an arithmetic variable
+ */
+static thvar_t map_floor_to_arith(context_t *ctx, term_t t) {
+  thvar_t x, y;
+
+  x = internalize_to_arith(ctx, t);
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    // x is integer so (floor x) = x
+    y = x;
+  } else {
+    y = get_floor(ctx, x);
+  }
+
+  return y;
+}
+
+
+/*
+ * Convert (ceil t) to an arithmetic variable
+ */
+static thvar_t map_ceil_to_arith(context_t *ctx, term_t t) {
+  thvar_t x, y;
+
+  x = internalize_to_arith(ctx, t);
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    // x is integer so (ceil x) = x
+    y = x;
+  } else {
+    y = context_find_var_for_ceil(ctx, x);
+    if (y == null_thvar) {
+      y = ctx->arith.create_var(ctx->arith_solver, true); // y is an integer variable
+      assert_ceil_axioms(ctx, y, x); // assert y = ceil(x)
+      context_record_ceil(ctx, x, y); // save the mapping y --> ceil(x)
+    }
+  }
+
+  return y;
+}
+
+
+/*
+ * Convert (abs t) to an arithmetic variable
+ */
+static thvar_t map_abs_to_arith(context_t *ctx, term_t t) {
+  thvar_t x, y;
+  bool is_int;
+
+  x = internalize_to_arith(ctx, t);
+  is_int = ctx->arith.arith_var_is_int(ctx->arith_solver, x);
+  y = ctx->arith.create_var(ctx->arith_solver, is_int); // y := abs(x) has the same type as x
+  assert_abs_axioms(ctx, y, x);
+
+  return y;
+}
+
+
+/*
+ * Auxiliary function: check whether t is a non-zero arithmetic constant
+ * - if so, store t's value in *val
+ */
+static bool is_non_zero_rational(term_table_t *tbl, term_t t, rational_t *val) {
+  assert(is_arithmetic_term(tbl, t));
+
+  if (term_kind(tbl, t) == ARITH_CONSTANT) {
+    q_set(val, rational_term_desc(tbl, t));
+    return q_is_nonzero(val);
+  }
+  return false;
+}
+
+/*
+ * Convert (/ t1 t2) to an arithmetic variable
+ * - t2 must be a non-zero arithmetic constant
+ */
+static thvar_t map_rdiv_to_arith(context_t *ctx, composite_term_t *div) {
+  // Could try to evaluate t2 then check whether that's a constant
+  assert(div->arity == 2);
+  longjmp(ctx->env, FORMULA_NOT_LINEAR);
+}
+
+
+/*
+ * Convert (div t1 t2) to an arithmetic variable.
+ * - fails if t2 is not an arithmetic constant or if it's zero
+ */
+static thvar_t map_idiv_to_arith(context_t *ctx, composite_term_t *div) {
+  rational_t k;
+  thvar_t x, y;
+
+  assert(div->arity == 2);
+
+  q_init(&k);
+  if (is_non_zero_rational(ctx->terms, div->arg[1], &k)) { // k := value of t2
+    assert(q_is_nonzero(&k));
+    x = internalize_to_arith(ctx, div->arg[0]); // t1
+    y = get_div(ctx, x, &k);    
+
+  } else {
+    // division by a non-constant or by zero: not supported by default
+    // arithmetic solver for now
+    longjmp(ctx->env, FORMULA_NOT_LINEAR);
+  }
+  q_clear(&k);
+
+  return y;
+}
+
+
+/*
+ * Convert (mod t1 t2) to an arithmetic variable
+ * - t2 must be a non-zero constant
+ */
+static thvar_t map_mod_to_arith(context_t *ctx, composite_term_t *mod) {
+  rational_t k;
+  thvar_t x, y, r;
+  bool is_int;
+
+  assert(mod->arity == 2);
+
+  q_init(&k);
+  if (is_non_zero_rational(ctx->terms, mod->arg[1], &k)) { // k := divider
+    x = internalize_to_arith(ctx, mod->arg[0]);
+
+    // get y := (div x k)
+    assert(q_is_nonzero(&k));
+    y = get_div(ctx, x, &k);
+
+    /*
+     * r := (mod x k) is x - k * y where y is an integer.
+     * If both x and k are integer, then r has integer type. Otherwise,
+     * r is a real variable.
+     */
+    is_int = ctx->arith.arith_var_is_int(ctx->arith_solver, x) && q_is_integer(&k);
+    r = ctx->arith.create_var(ctx->arith_solver, is_int);
+    assert_mod_axioms(ctx, r, x, y, &k);
+
+  } else {
+    // Non-constant or zero divider
+    longjmp(ctx->env, FORMULA_NOT_LINEAR);
+  }
+
+  q_clear(&k);
+  
+  return r;
 }
 
 
@@ -1224,7 +2009,7 @@ static literal_t map_distinct_to_literal(context_t *ctx, composite_term_t *disti
     l = make_bv_distinct(ctx, n, a);
 
   } else {
-    longjmp(ctx->env, UF_NOT_SUPPORTED);
+    longjmp(ctx->env, uf_error_code(ctx, distinct->arg[0]));
   }
 
   free_istack_array(&ctx->istack, a);
@@ -1233,9 +2018,6 @@ static literal_t map_distinct_to_literal(context_t *ctx, composite_term_t *disti
 }
 
 
-/*
- * ARITHMETIC ATOMS
- */
 
 /*
  * Arithmetic atom: p == 0
@@ -1480,6 +2262,73 @@ static literal_t map_arith_eq_to_literal(context_t *ctx, term_t t) {
 }
 
 
+/*
+ * DIVIDES AND IS_INT ATOMS
+ */
+
+/*
+ * We use the rules
+ * - (is_int x)    <=> (x <= floor(x))
+ * - (divides k x) <=> (x <= k * div(x, k))
+ */
+
+// atom (is_int t)
+static literal_t map_arith_is_int_to_literal(context_t *ctx, term_t t) {
+  polynomial_t *p;
+  thvar_t map[2];
+  thvar_t x, y;
+  literal_t l;
+
+  x = internalize_to_arith(ctx, t);
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    l = true_literal;
+  } else {
+    // we convert (is_int x) to (x <= floor(x))
+    y = get_floor(ctx, x); // y is floor x
+    p = context_get_aux_poly(ctx, 3);
+    context_store_diff_poly(p, map, y, x); // (p, map) := (y - x)
+    // atom (x <= y) is the same as (p >= 0)
+    l = ctx->arith.create_poly_ge_atom(ctx->arith_solver, p, map);
+  }
+
+  return l;
+}
+
+// atom (divides k t)  we assume k != 0
+static literal_t map_arith_divides_to_literal(context_t *ctx, composite_term_t *divides) {
+  rational_t k;
+  polynomial_t *p;
+  thvar_t map[2];
+  thvar_t x, y;
+  term_t d;
+  literal_t l;
+
+  assert(divides->arity == 2);
+
+  d = divides->arg[0];
+  if (term_kind(ctx->terms, d) == ARITH_CONSTANT) {
+    // make a copy of divides->arg[0] in k
+    q_init(&k);
+    q_set(&k, rational_term_desc(ctx->terms, d));
+    assert(q_is_nonzero(&k));
+
+    x = internalize_to_arith(ctx, divides->arg[1]); // this is t
+    y = get_div(ctx, x, &k);  // y := (div x k)
+    p = context_get_aux_poly(ctx, 3);
+    context_store_divides_constraint(p, map, x, y, &k); // p is (- x + k * y)
+    // atom (x <= k * y) is (p >= 0)
+    l = ctx->arith.create_poly_ge_atom(ctx->arith_solver, p, map);
+
+    q_clear(&k);
+
+    return l;
+
+  } else {
+    // k is not a constant: not supported
+    longjmp(ctx->env, FORMULA_NOT_LINEAR);
+  }
+}
+
 
 /*
  * BITVECTOR ATOMS
@@ -1568,7 +2417,7 @@ static occ_t internalize_to_eterm(context_t *ctx, term_t t) {
   thvar_t x;
 
   if (! context_has_egraph(ctx)) {
-    exception = UF_NOT_SUPPORTED;
+    exception = uf_error_code(ctx, t);
     goto abort;
   }
 
@@ -1633,6 +2482,23 @@ static occ_t internalize_to_eterm(context_t *ctx, term_t t) {
 	//        add_type_constraints(ctx, u, tau);
         break;
 
+      case ARITH_FLOOR:
+	assert(is_integer_type(tau));
+	x = map_floor_to_arith(ctx, arith_floor_arg(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, tau);
+	break;
+
+      case ARITH_CEIL:
+	assert(is_integer_type(tau));
+	x = map_ceil_to_arith(ctx, arith_ceil_arg(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, tau);
+	break;
+
+      case ARITH_ABS:
+	x = map_abs_to_arith(ctx, arith_abs_arg(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, tau);
+	break;
+
       case ITE_TERM:
       case ITE_SPECIAL:
         u = map_ite_to_eterm(ctx, ite_term_desc(terms, r), tau);
@@ -1642,6 +2508,23 @@ static occ_t internalize_to_eterm(context_t *ctx, term_t t) {
         u = map_apply_to_eterm(ctx, app_term_desc(terms, r), tau);
         break;
 
+      case ARITH_RDIV:
+	assert(is_real_type(tau));
+	x = map_rdiv_to_arith(ctx, arith_rdiv_term_desc(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, type_of_arithvar(ctx, x));
+	break;
+
+      case ARITH_IDIV:
+	assert(is_integer_type(tau));
+	x = map_idiv_to_arith(ctx, arith_idiv_term_desc(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, tau); // (div t u) has type int
+	break;
+
+      case ARITH_MOD:
+	x = map_mod_to_arith(ctx, arith_mod_term_desc(terms, r));
+	u = translate_arithvar_to_eterm(ctx, x, tau);
+	break;
+	
       case TUPLE_TERM:
         u = map_tuple_to_eterm(ctx, tuple_term_desc(terms, r), tau);
         break;
@@ -1822,6 +2705,21 @@ static thvar_t internalize_to_arith(context_t *ctx, term_t t) {
       intern_tbl_map_root(&ctx->intern, r, thvar2code(x));
       break;
 
+    case ARITH_FLOOR:
+      x = map_floor_to_arith(ctx, arith_floor_arg(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));
+      break;
+
+    case ARITH_CEIL:
+      x = map_ceil_to_arith(ctx, arith_ceil_arg(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));
+      break;
+
+    case ARITH_ABS:
+      x = map_abs_to_arith(ctx, arith_abs_arg(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));
+      break;      
+
     case ITE_TERM:
       x = map_ite_to_arith(ctx, ite_term_desc(terms, r), is_integer_root(ctx, r));
       intern_tbl_map_root(&ctx->intern, r, thvar2code(x));
@@ -1841,6 +2739,21 @@ static thvar_t internalize_to_arith(context_t *ctx, term_t t) {
       intern_tbl_map_root(&ctx->intern, r, occ2code(u));
       x = egraph_term_base_thvar(ctx->egraph, term_of_occ(u));
       assert(x != null_thvar);
+      break;
+
+    case ARITH_RDIV:
+      x = map_rdiv_to_arith(ctx, arith_rdiv_term_desc(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));      
+      break;
+
+    case ARITH_IDIV:
+      x = map_idiv_to_arith(ctx, arith_idiv_term_desc(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));      
+      break;
+
+    case ARITH_MOD:
+      x = map_mod_to_arith(ctx, arith_mod_term_desc(terms, r));
+      intern_tbl_map_root(&ctx->intern, r, thvar2code(x));      
       break;
 
     case SELECT_TERM:
@@ -2159,6 +3072,10 @@ static literal_t internalize_to_literal(context_t *ctx, term_t t) {
       l = map_xor_to_literal(ctx, xor_term_desc(terms, r));
       break;
 
+    case ARITH_IS_INT_ATOM:
+      l = map_arith_is_int_to_literal(ctx, arith_is_int_arg(terms, r));
+      break;
+
     case ARITH_EQ_ATOM:
       l = map_arith_eq_to_literal(ctx, arith_eq_arg(terms, r));
       break;
@@ -2169,6 +3086,10 @@ static literal_t internalize_to_literal(context_t *ctx, term_t t) {
 
     case ARITH_BINEQ_ATOM:
       l = map_arith_bineq_to_literal(ctx, arith_bineq_atom_desc(terms, r));
+      break;
+
+    case ARITH_DIVIDES_ATOM:
+      l = map_arith_divides_to_literal(ctx, arith_divides_atom_desc(terms, r));
       break;
 
     case APP_TERM:
@@ -2867,7 +3788,7 @@ static void assert_toplevel_distinct(context_t *ctx, composite_term_t *distinct,
     assert_bv_distinct(ctx, n, a, tt);
 
   } else {
-    longjmp(ctx->env, UF_NOT_SUPPORTED);
+    longjmp(ctx->env, uf_error_code(ctx, distinct->arg[0]));
   }
 
   free_istack_array(&ctx->istack, a);
@@ -3073,8 +3994,6 @@ static void assert_toplevel_arith_geq(context_t *ctx, term_t t, bool tt) {
 }
 
 
-
-
 /*
  * Top-level binary equality: (eq t u)
  * - both t and u are arithmetic terms
@@ -3085,6 +4004,84 @@ static void assert_toplevel_arith_bineq(context_t *ctx, composite_term_t *eq, bo
   assert(eq->arity == 2);
   assert_arith_bineq(ctx, eq->arg[0], eq->arg[1], tt);
 }
+
+
+
+/*
+ * Top-level (is_int t)
+ * - t is an arithmetic term
+ * - if tt is true, assert (t <= (floor t))
+ * - if tt is false, asssert (t > (floor t))
+ *
+ * NOTE: instead of asserting (t <= (floor t)) we could create a fresh
+ * integer variable z and assert (t = z).
+ */
+static void assert_toplevel_arith_is_int(context_t *ctx, term_t t, bool tt) {
+  polynomial_t *p;
+  thvar_t map[2];
+  thvar_t x, y;
+
+  x = internalize_to_arith(ctx, t);
+  if (ctx->arith.arith_var_is_int(ctx->arith_solver, x)) {
+    if (!tt) {
+      longjmp(ctx->env, TRIVIALLY_UNSAT);
+    }
+  } else {
+    // x is not an integer variable
+    y = get_floor(ctx, x); // y := (floor x)
+    p = context_get_aux_poly(ctx, 3);
+    context_store_diff_poly(p, map, y, x); // (p, map) stores (y - x)
+    // assert either (p >= 0) --> (x <= floor(x))
+    // or (p < 0) --> (x > (floor x)
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, tt);
+  }
+}
+
+
+/*
+ * Top-level (divides k t)
+ * - if tt is true, assert (t <= k * (div t k))
+ * - if tt is false, assert (t > k * (div t k))
+ *
+ * We assume (k != 0) since (divides 0 t) is rewritten to (t == 0) by
+ * the term manager.
+ *
+ * NOTE: instead of asserting (t <= k * (div t k)) we could create a fresh
+ * integer variable z and assert (t = k * z).
+ */
+static void assert_toplevel_arith_divides(context_t *ctx, composite_term_t *divides, bool tt) {
+  rational_t k;
+  polynomial_t *p;
+  thvar_t map[2];
+  thvar_t x, y;
+  term_t d;
+  
+  assert(divides->arity == 2);
+
+  d = divides->arg[0];
+  if (term_kind(ctx->terms, d) == ARITH_CONSTANT) {
+    // copy the divider
+    q_init(&k);
+    q_set(&k, rational_term_desc(ctx->terms, d));
+    assert(q_is_nonzero(&k));
+
+    x = internalize_to_arith(ctx, divides->arg[1]);
+    y = get_div(ctx, x, &k);  // y := (div x k);
+    p = context_get_aux_poly(ctx, 3);
+    context_store_divides_constraint(p, map, x, y, &k); // p is (- x + k * y)
+
+    // if tt, assert (p >= 0) <=> x <= k * y
+    // if not tt, assert (p < 0) <=> x > k * y
+    ctx->arith.assert_poly_ge_axiom(ctx->arith_solver, p, map, tt);
+
+    q_clear(&k);
+  } else {
+    // not a constant divider: not supported
+    longjmp(ctx->env, FORMULA_NOT_LINEAR);
+  }
+}
+
+
 
 
 
@@ -3418,6 +4415,10 @@ static void assert_toplevel_formula(context_t *ctx, term_t t) {
   case EQ_TERM:
     assert_toplevel_eq(ctx, eq_term_desc(terms, t), tt);
     break;
+    
+  case ARITH_IS_INT_ATOM:
+    assert_toplevel_arith_is_int(ctx, arith_is_int_arg(terms, t), tt);
+    break;
 
   case ARITH_EQ_ATOM:
     assert_toplevel_arith_eq(ctx, arith_eq_arg(terms, t), tt);
@@ -3429,6 +4430,10 @@ static void assert_toplevel_formula(context_t *ctx, term_t t) {
 
   case ARITH_BINEQ_ATOM:
     assert_toplevel_arith_bineq(ctx, arith_bineq_atom_desc(terms, t), tt);
+    break;
+ 
+  case ARITH_DIVIDES_ATOM:
+    assert_toplevel_arith_divides(ctx, arith_divides_atom_desc(terms, t), tt);
     break;
 
   case APP_TERM:
@@ -3544,6 +4549,10 @@ static void assert_term(context_t *ctx, term_t t, bool tt) {
       assert_toplevel_eq(ctx, eq_term_desc(terms, t), tt);
       break;
 
+    case ARITH_IS_INT_ATOM:
+      assert_toplevel_arith_is_int(ctx, arith_is_int_arg(terms, t), tt);
+      break;
+
     case ARITH_EQ_ATOM:
       assert_toplevel_arith_eq(ctx, arith_eq_arg(terms, t), tt);
       break;
@@ -3554,6 +4563,10 @@ static void assert_term(context_t *ctx, term_t t, bool tt) {
 
     case ARITH_BINEQ_ATOM:
       assert_toplevel_arith_bineq(ctx, arith_bineq_atom_desc(terms, t), tt);
+      break;
+
+    case ARITH_DIVIDES_ATOM:
+      assert_toplevel_arith_divides(ctx, arith_divides_atom_desc(terms, t), tt);
       break;
 
     case APP_TERM:
@@ -3635,6 +4648,8 @@ static const uint32_t arch2theories[NUM_ARCH] = {
 
   IDL_MASK,                    //  CTX_ARCH_AUTO_IDL
   RDL_MASK,                    //  CTX_ARCH_AUTO_RDL
+
+  UF_MASK|ARITH_MASK|FUN_MASK  //  CTX_ARCH_MCSAT
 };
 
 
@@ -3651,6 +4666,7 @@ static const uint32_t arch2theories[NUM_ARCH] = {
 #define RFW    0x8
 #define BVSLVR 0x10
 #define FSLVR  0x20
+#define MCSAT  0x40
 
 static const uint8_t arch_components[NUM_ARCH] = {
   0,                        //  CTX_ARCH_NOSOLVERS
@@ -3670,6 +4686,8 @@ static const uint8_t arch_components[NUM_ARCH] = {
 
   0,                        //  CTX_ARCH_AUTO_IDL
   0,                        //  CTX_ARCH_AUTO_RDL
+
+  MCSAT                     //  CTX_ARCH_MCSAT
 };
 
 
@@ -3697,54 +4715,11 @@ static const uint32_t mode2options[NUM_MODES] = {
 
 
 
-/******************
- *  EMPTY SOLVER  *
- *****************/
+
 
 /*
- * We need an empty theory solver for initializing
- * the core if the architecture is NOSOLVERS.
+ * SIMPLEX OPTIONS
  */
-static void donothing(void *solver) {
-}
-
-static void null_backtrack(void *solver, uint32_t backlevel) {
-}
-
-static bool null_propagate(void *solver) {
-  return true;
-}
-
-static fcheck_code_t null_final_check(void *solver) {
-  return FCHECK_SAT;
-}
-
-static th_ctrl_interface_t null_ctrl = {
-  donothing,        // start_internalization
-  donothing,        // start_search
-  null_propagate,   // propagate
-  null_final_check, // final check
-  donothing,        // increase_decision_level
-  null_backtrack,   // backtrack
-  donothing,        // push
-  donothing,        // pop
-  donothing,        // reset
-  donothing,        // clear
-};
-
-
-// for the smt interface, nothing should be called since there are no atoms
-static th_smt_interface_t null_smt = {
-  NULL, NULL, NULL, NULL, NULL,
-};
-
-
-
-
-
-/*********************
- *  SIMPLEX OPTIONS  *
- ********************/
 
 /*
  * Which version of the arithmetic solver is present
@@ -3818,6 +4793,52 @@ void disable_splx_eqprop(context_t *ctx) {
 
 
 
+
+/******************
+ *  EMPTY SOLVER  *
+ *****************/
+
+/*
+ * We need an empty theory solver for initializing
+ * the core if the architecture is NOSOLVERS.
+ */
+static void donothing(void *solver) {
+}
+
+static void null_backtrack(void *solver, uint32_t backlevel) {
+}
+
+static bool null_propagate(void *solver) {
+  return true;
+}
+
+static fcheck_code_t null_final_check(void *solver) {
+  return FCHECK_SAT;
+}
+
+static th_ctrl_interface_t null_ctrl = {
+  donothing,        // start_internalization
+  donothing,        // start_search
+  null_propagate,   // propagate
+  null_final_check, // final check
+  donothing,        // increase_decision_level
+  null_backtrack,   // backtrack
+  donothing,        // push
+  donothing,        // pop
+  donothing,        // reset
+  donothing,        // clear
+};
+
+
+// for the smt interface, nothing should be called since there are no atoms
+static th_smt_interface_t null_smt = {
+  NULL, NULL, NULL, NULL, NULL,
+};
+
+
+
+
+
 /****************************
  *  SOLVER INITIALIZATION   *
  ***************************/
@@ -3835,6 +4856,16 @@ static void create_egraph(context_t *ctx) {
   init_egraph(egraph, ctx->types);
   ctx->egraph = egraph;
 }
+
+
+/*
+ * Create and initialize the mcsat solver
+ */
+static void create_mcsat(context_t *ctx) {
+  assert(ctx->mcsat == NULL);
+  ctx->mcsat = mcsat_new(ctx);
+}
+
 
 
 /*
@@ -4124,6 +5155,11 @@ static void init_solvers(context_t *ctx) {
     create_egraph(ctx);
   }
 
+  // Create mcsat
+  if (solvers & MCSAT) {
+    create_mcsat(ctx);
+  }
+
   // Arithmetic solver
   if (solvers & SPLX) {
     create_simplex_solver(ctx, false);
@@ -4163,6 +5199,12 @@ static void init_solvers(context_t *ctx) {
      * or create_auto_rdl_solver.
      */
     assert(ctx->arith_solver == NULL && ctx->bv_solver == NULL && ctx->fun_solver == NULL);
+    init_smt_core(core, CTX_DEFAULT_CORE_SIZE, NULL, &null_ctrl, &null_smt, cmode);
+  } else if (solvers == MCSAT) {
+    /*
+     * MCsat solver only, we create the core, but never use it.
+     */
+    assert(ctx->egraph == NULL && ctx->arith_solver == NULL && ctx->bv_solver == NULL && ctx->fun_solver == NULL);
     init_smt_core(core, CTX_DEFAULT_CORE_SIZE, NULL, &null_ctrl, &null_smt, cmode);
   }
 
@@ -4214,7 +5256,7 @@ static inline bool valid_mode(context_mode_t mode) {
 }
 
 static inline bool valid_arch(context_arch_t arch) {
-  return CTX_ARCH_NOSOLVERS <= arch && arch <= CTX_ARCH_AUTO_RDL;
+  return CTX_ARCH_NOSOLVERS <= arch && arch <= CTX_ARCH_MCSAT;
 }
 #endif
 
@@ -4251,6 +5293,7 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
    */
   ctx->core = (smt_core_t *) safe_malloc(sizeof(smt_core_t));
   ctx->egraph = NULL;
+  ctx->mcsat = NULL;
   ctx->arith_solver = NULL;
   ctx->bv_solver = NULL;
   ctx->fun_solver = NULL;
@@ -4288,6 +5331,7 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
   init_ivector(&ctx->aux_vector, CTX_DEFAULT_VECTOR_SIZE);
   init_int_queue(&ctx->queue, 0);
   init_istack(&ctx->istack);
+  init_sharing_map(&ctx->sharing, &ctx->intern);
   init_objstore(&ctx->cstore, sizeof(conditional_t), 32);
 
   ctx->subst = NULL;
@@ -4295,6 +5339,8 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
   ctx->cache = NULL;
   ctx->small_cache = NULL;
   ctx->eq_cache = NULL;
+  ctx->divmod_table = NULL;
+  ctx->explorer = NULL;
 
   ctx->dl_profile = NULL;
   ctx->arith_buffer = NULL;
@@ -4306,6 +5352,9 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
   init_bvconstant(&ctx->bv_buffer);
 
   ctx->trace = NULL;
+
+  // mcsat options default
+  init_mcsat_options(&ctx->mcsat_options);
 
   /*
    * Allocate and initialize the solvers and core
@@ -4327,6 +5376,12 @@ void delete_context(context_t *ctx) {
     }
     safe_free(ctx->core);
     ctx->core = NULL;
+  }
+
+  if (ctx->mcsat != NULL) {
+    mcsat_destruct(ctx->mcsat);
+    safe_free(ctx->mcsat);
+    ctx->mcsat = NULL;
   }
 
   if (ctx->egraph != NULL) {
@@ -4365,6 +5420,7 @@ void delete_context(context_t *ctx) {
   delete_ivector(&ctx->aux_vector);
   delete_int_queue(&ctx->queue);
   delete_istack(&ctx->istack);
+  delete_sharing_map(&ctx->sharing);
   delete_objstore(&ctx->cstore);
 
   context_free_subst(ctx);
@@ -4372,6 +5428,8 @@ void delete_context(context_t *ctx) {
   context_free_cache(ctx);
   context_free_small_cache(ctx);
   context_free_eq_cache(ctx);
+  context_free_divmod_table(ctx);
+  context_free_explorer(ctx);
 
   context_free_dl_profile(ctx);
   context_free_arith_buffer(ctx);
@@ -4392,6 +5450,10 @@ void reset_context(context_t *ctx) {
 
   reset_smt_core(ctx->core); // this propagates reset to all solvers
 
+  if (ctx->mcsat != NULL) {
+    mcsat_reset(ctx->mcsat);
+  }
+
   reset_gate_manager(&ctx->gate_manager);
 
   reset_intern_tbl(&ctx->intern);
@@ -4409,12 +5471,15 @@ void reset_context(context_t *ctx) {
   ivector_reset(&ctx->aux_vector);
   int_queue_reset(&ctx->queue);
   reset_istack(&ctx->istack);
+  reset_sharing_map(&ctx->sharing);
   reset_objstore(&ctx->cstore);
 
   context_free_subst(ctx);
   context_free_marks(ctx);
   context_reset_small_cache(ctx);
   context_reset_eq_cache(ctx);
+  context_reset_divmod_table(ctx);
+  context_reset_explorer(ctx);
 
   context_free_arith_buffer(ctx);
   context_reset_poly_buffer(ctx);
@@ -4432,6 +5497,9 @@ void context_set_trace(context_t *ctx, tracer_t *trace) {
   assert(ctx->trace == NULL);
   ctx->trace = trace;
   smt_core_set_trace(ctx->core, trace);
+  if (ctx->mcsat != NULL) {
+    mcsat_set_tracer(ctx->mcsat, trace);
+  }
 }
 
 
@@ -4441,9 +5509,13 @@ void context_set_trace(context_t *ctx, tracer_t *trace) {
 void context_push(context_t *ctx) {
   assert(context_supports_pushpop(ctx));
   smt_push(ctx->core);  // propagates to all solvers
+  if (ctx->mcsat != NULL) {
+    mcsat_push(ctx->mcsat);
+  }
   gate_manager_push(&ctx->gate_manager);
   intern_tbl_push(&ctx->intern);
   context_eq_cache_push(ctx);
+  context_divmod_table_push(ctx);
 
   ctx->base_level ++;
 }
@@ -4451,9 +5523,13 @@ void context_push(context_t *ctx) {
 void context_pop(context_t *ctx) {
   assert(context_supports_pushpop(ctx) && ctx->base_level > 0);
   smt_pop(ctx->core);   // propagates to all solvers
+  if (ctx->mcsat != NULL) {
+    mcsat_pop(ctx->mcsat);
+  }
   gate_manager_pop(&ctx->gate_manager);
   intern_tbl_pop(&ctx->intern);
   context_eq_cache_pop(ctx);
+  context_divmod_table_pop(ctx);
 
   ctx->base_level --;
 }
@@ -4465,6 +5541,21 @@ void context_pop(context_t *ctx) {
 /****************************
  *   ASSERTIONS AND CHECK   *
  ***************************/
+
+/*
+ * Build the sharing data
+ * - processes all the assertions in vectors top_eqs, top_atoms, top_formulas
+ * - this function should be called after building the substitutions
+ */
+static void context_build_sharing_data(context_t *ctx) {
+  sharing_map_t *map;
+
+  map = &ctx->sharing;
+  reset_sharing_map(map);
+  sharing_map_add_terms(map, ctx->top_eqs.data, ctx->top_eqs.size);
+  sharing_map_add_terms(map, ctx->top_atoms.data, ctx->top_atoms.size);
+  sharing_map_add_terms(map, ctx->top_formulas.data, ctx->top_formulas.size);
+}
 
 /*
  * Flatten and internalize assertions a[0 ... n-1]
@@ -4489,6 +5580,13 @@ static int32_t context_process_assertions(context_t *ctx, uint32_t n, const term
 
   code = setjmp(ctx->env);
   if (code == 0) {
+
+    // If using MCSAT, just check and done
+    if (ctx->mcsat != NULL) {
+      code = mcsat_assert_formulas(ctx->mcsat, n, a);
+      goto done;
+    }
+
     // flatten
     for (i=0; i<n; i++) {
       flatten_assertion(ctx, a[i]);
@@ -4502,9 +5600,13 @@ static int32_t context_process_assertions(context_t *ctx, uint32_t n, const term
      *   substitutions.
      */
 
-    // optional processing
     switch (ctx->arch) {
     case CTX_ARCH_EG:
+      /*
+       * UF problem: we must process subst_eqs last since the
+       * preprocessing may add new equalities in aux_eqs that may end
+       * up in subst_eqs after the call to process_aux_eqs.
+       */
       if (context_breaksym_enabled(ctx)) {
 	break_uf_symmetries(ctx);
       }
@@ -4514,19 +5616,39 @@ static int32_t context_process_assertions(context_t *ctx, uint32_t n, const term
       if (ctx->aux_eqs.size > 0) {
 	process_aux_eqs(ctx);
       }
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       break;
 
     case CTX_ARCH_AUTO_IDL:
+      /*
+       * For difference logic, we must process the subst_eqs first
+       * (otherwise analyze_diff_logic may give wrong results).
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       analyze_diff_logic(ctx, true);
       create_auto_idl_solver(ctx);
       break;
 
     case CTX_ARCH_AUTO_RDL:
+      /*
+       * Difference logic, we must process the subst_eqs first
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       analyze_diff_logic(ctx, false);
       create_auto_rdl_solver(ctx);
       break;
 
     case CTX_ARCH_SPLX:
+      /*
+       * Simplex, like EG, may add aux_atoms so we must process
+       * subst_eqs last here.
+       */
       // more optional processing
       if (context_cond_def_preprocessing_enabled(ctx)) {
 	process_conditional_definitions(ctx);
@@ -4537,18 +5659,25 @@ static int32_t context_process_assertions(context_t *ctx, uint32_t n, const term
 	  process_aux_atoms(ctx);
 	}
       }
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       break;
 
     default:
+      /*
+       * Process the candidate variable substitutions if any
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       break;
     }
 
     /*
-     * Process the candidate variable substitutions if any
+     * Sharing
      */
-    if (ctx->subst_eqs.size > 0) {
-      context_process_candidate_subst(ctx);
-    }
+    context_build_sharing_data(ctx);
 
     /*
      * Notify the core + solver(s)
@@ -4766,6 +5895,7 @@ int32_t context_process_formulas(context_t *ctx, uint32_t n, term_t *f) {
   ivector_reset(&ctx->top_interns);
   ivector_reset(&ctx->subst_eqs);
   ivector_reset(&ctx->aux_eqs);
+  ivector_reset(&ctx->aux_atoms);
 
   code = setjmp(ctx->env);
   if (code == 0) {
@@ -4782,9 +5912,13 @@ int32_t context_process_formulas(context_t *ctx, uint32_t n, term_t *f) {
      *   substitutions.
      */
 
-    // optional processing
     switch (ctx->arch) {
     case CTX_ARCH_EG:
+      /*
+       * UF problem: we must process subst_eqs last since the
+       * preprocessing may add new equalities in aux_eqs that may end
+       * up in subst_eqs after the call to process_aux_eqs.
+       */
       if (context_breaksym_enabled(ctx)) {
 	break_uf_symmetries(ctx);
       }
@@ -4794,34 +5928,68 @@ int32_t context_process_formulas(context_t *ctx, uint32_t n, term_t *f) {
       if (ctx->aux_eqs.size > 0) {
 	process_aux_eqs(ctx);
       }
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       break;
 
     case CTX_ARCH_AUTO_IDL:
+      /*
+       * For difference logic, we must process the subst_eqs first
+       * (otherwise analyze_diff_logic may give wrong results).
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       analyze_diff_logic(ctx, true);
       create_auto_idl_solver(ctx);
       break;
 
     case CTX_ARCH_AUTO_RDL:
+      /*
+       * Difference logic, we must process the subst_eqs first
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       analyze_diff_logic(ctx, false);
       create_auto_rdl_solver(ctx);
       break;
 
+    case CTX_ARCH_SPLX:
+      /*
+       * Simplex, like EG, may add aux_atoms so we must process
+       * subst_eqs last here.
+       */
+      // more optional processing
+      if (context_cond_def_preprocessing_enabled(ctx)) {
+	process_conditional_definitions(ctx);
+	if (ctx->aux_eqs.size > 0) {
+	  process_aux_eqs(ctx);
+	}
+	if (ctx->aux_atoms.size > 0) {
+	  process_aux_atoms(ctx);
+	}
+      }
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
+      break;
+      
     default:
+      /*
+       * Process the candidate variable substitutions if any
+       */
+      if (ctx->subst_eqs.size > 0) {
+	context_process_candidate_subst(ctx);
+      }
       break;
     }
 
     /*
-     * Process the candidate variable substitutions if any
+     * Sharing
      */
-    if (ctx->subst_eqs.size > 0) {
-      context_process_candidate_subst(ctx);
-    }
-
-    // more optional processing
-    if (context_cond_def_preprocessing_enabled(ctx)) {
-      process_conditional_definitions(ctx);
-    }
-
+    context_build_sharing_data(ctx);
 
     code = CTX_NO_ERROR;
 
@@ -4893,7 +6061,7 @@ void context_clear(context_t *ctx) {
  * - it's possible to have ctx->core.base_level = ctx->base_level + 1
  * - this happens because start_search in smt_core does an internal smt_push
  *   to allow the core to be restored to a clean state if search is interrupted.
- * - if search is not interrupted and the search return UNSAT, then we're
+ * - if search is not interrupted and the search returns UNSAT, then we're
  *   in a state with core base level = context base level + 1.
  */
 void context_clear_unsat(context_t *ctx) {
@@ -4961,7 +6129,7 @@ int32_t assert_blocking_clause(context_t *ctx) {
 
 
 /********************************
- *  GARABGE COLLECTION SUPPORT  *
+ *  GARBAGE COLLECTION SUPPORT  *
  *******************************/
 
 /*

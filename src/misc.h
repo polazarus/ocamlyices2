@@ -25,6 +25,7 @@ void _oy_check_init();
 int _oy_callback_print(value v_cb, int (*printfn)(FILE *, void *), void *arg);
 
 CAMLprim value ocamlyices_info (value unit);
+CAMLprim value ocamlyices_print_supported (value unit);
 CAMLprim value ocamlyices_reset (value unit);
 
 
@@ -54,8 +55,8 @@ static inline NORETURN void _oy_allocation_error() {
   caml_failwith("Illegal operation on freed model");
 }
 
-static inline NORETURN void _oy_unsupported() {
-  caml_failwith("Unsupported operation");
+static inline NORETURN void _oy_unsupported_print() {
+  caml_failwith("Unsupported 'print' function for this build of libyices.a");
 }
 
 static inline NORETURN void _oy_invalid_array_sizes() {

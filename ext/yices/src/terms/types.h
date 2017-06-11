@@ -53,12 +53,12 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/tagged_pointers.h"
-#include "utils/int_hash_tables.h"
 #include "utils/int_hash_map.h"
 #include "utils/int_hash_map2.h"
-#include "utils/tuple_hash_map.h"
+#include "utils/int_hash_tables.h"
 #include "utils/symbol_tables.h"
+#include "utils/tagged_pointers.h"
+#include "utils/tuple_hash_map.h"
 
 #include "yices_types.h"
 
@@ -70,7 +70,7 @@
  * - declared types can be either scalar or uninterpreted
  * - constructed types: tuple types and function types
  *
- * New kinds to support polynorphism
+ * New kinds to support polymorphism
  * - type variables
  * - instance of an abstract type constructor (e.g., if we have
  *   a constructor list[T] then we can create list[int],
@@ -93,6 +93,7 @@ typedef enum {
   INSTANCE_TYPE,
 } type_kind_t;
 
+#define NUM_TYPE_KINDS (INSTANCE_TYPE+1)
 
 /*
  * Ids of the predefined types
@@ -366,7 +367,7 @@ typedef struct type_table_s {
  * fixed types.
  *
  * This means finding  a type substitution for X, Y, and Z
- * that satisfies a set of type contraints of the form
+ * that satisfies a set of type constraints of the form
  *    sigma_1 subtype of tau_1[X, Y, Z]
  *     ...
  *    sigma_2 subtype of tau_n[X, Y, Z]
@@ -627,7 +628,7 @@ extern int32_t add_type_constructor(type_table_t *table, char *name, uint32_t n)
 
 /*
  * Get a macro id of the given name
- * - return -1 if there's no macro or constuctor with this name
+ * - return -1 if there's no macro or constructor with this name
  */
 extern int32_t get_type_macro_by_name(type_table_t *table, const char *name);
 

@@ -13,9 +13,10 @@
 #include <inttypes.h>
 #include <assert.h>
 
-#include "terms/bv64_constants.h"
-#include "io/type_printer.h"
 #include "io/term_printer.h"
+#include "io/type_printer.h"
+#include "terms/bv64_constants.h"
+#include "terms/bv_slices.h"
 
 
 /*
@@ -443,7 +444,7 @@ void print_term_name(FILE *f, term_table_t *tbl, term_t t) {
 /*
  * Table to convert term_kind to string
  */
-static const char * const tag2string[] = {
+static const char * const tag2string[NUM_TERM_KINDS] = {
   "unused",
   "reserved",
   "constant",
@@ -454,6 +455,11 @@ static const char * const tag2string[] = {
   "uninterpreted",
   "arith-eq",
   "arith-ge",
+  "is-int",
+  "floor",
+  "ceil",
+  "abs",
+  "arith-root-atom",
   "ite",
   "s-ite",
   "app", // function application
@@ -466,7 +472,11 @@ static const char * const tag2string[] = {
   "or",
   "xor",
   "arith-bineq",
-  "bv-array",
+  "/",
+  "div",
+  "mod",
+  "divides",
+  "bool-to-bv",
   "bvdiv",
   "bvrem",
   "bvsdiv",
@@ -489,7 +499,7 @@ static const char * const tag2string[] = {
 
 
 /*
- * Recusively print term t: if level <= 0, don't expand term that have a name
+ * Recursively print term t: if level <= 0, don't expand term that have a name
  */
 static void print_term_recur(FILE *f, term_table_t *tbl, term_t t, int32_t level);
 
@@ -523,13 +533,52 @@ static void print_app_term(FILE *f, term_table_t *tbl, composite_term_t *d, int3
   fputc(')', f);
 }
 
-// select
+// select: printed as (select <tuple> <idx>) or (bit <bv> <idx>)
+// for tuple projection, idx must be incremented to be consistent with the parser
 static void print_select_term(FILE *f, term_table_t *tbl, term_kind_t tag, select_term_t *d, int32_t level) {
+  uint32_t idx;
+
   assert(SELECT_TERM <= tag && tag <= BIT_TERM);
-  fprintf(f, "(%s %"PRIu32" ", tag2string[tag], d->idx);
+
+  idx = d->idx;
+  if (tag == SELECT_TERM) {
+    idx ++;
+  }
+  fprintf(f, "(%s ", tag2string[tag]);
   print_term_recur(f, tbl, d->arg, level);
-  fputc(')', f);
+  fprintf(f, " %"PRIu32")", idx);
 }
+
+// root atom
+static void print_root_atom_term(FILE *f, term_table_t *tbl, root_atom_t *r, int32_t level) {
+  fprintf(f, "(%s ", tag2string[ARITH_ROOT_ATOM]);
+  switch (r->k) {
+  case ROOT_ATOM_LT:
+    fprintf(f, "<");
+    break;
+  case ROOT_ATOM_LEQ:
+    fprintf(f, "<=");
+    break;
+  case ROOT_ATOM_EQ:
+    fprintf(f, "=");
+    break;
+  case ROOT_ATOM_NEQ:
+    fprintf(f, "!=");
+    break;
+  case ROOT_ATOM_GEQ:
+    fprintf(f, ">=");
+    break;
+  case ROOT_ATOM_GT:
+    fprintf(f, ">");
+    break;
+  }
+  fprintf(f, " %"PRIu32" ", r->k);
+  print_term_recur(f, tbl, r->x, level);
+  fprintf(f, " ");
+  print_term_recur(f, tbl, r->p, level);
+  fprintf(f, ")");
+}
+
 
 // polynomial
 static void print_mono_recur(FILE *f, term_table_t *tbl, rational_t *coeff, int32_t x, bool first, int32_t level) {
@@ -761,6 +810,30 @@ static void print_term_idx_recur(FILE *f, term_table_t *tbl, int32_t i, int32_t 
     }
     break;
 
+  case ARITH_ROOT_ATOM:
+    if (name != NULL && level <= 0) {
+      fputs(name, f);
+    } else {
+      print_root_atom_term(f, tbl, tbl->desc[i].ptr, level - 1);
+    }
+    break;
+
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
+    if (name != NULL && level <= 0) {
+      fputs(name, f);
+    } else {
+      fputc('(', f);
+      fputs(tag2string[tbl->kind[i]], f);
+      fputc(' ', f);
+      print_term_recur(f, tbl, tbl->desc[i].integer, level - 1);
+      fputc(')', f);
+    }
+    break;
+
+    
   case APP_TERM:
     if (name != NULL && level <= 0) {
       fputs(name, f);
@@ -780,6 +853,10 @@ static void print_term_idx_recur(FILE *f, term_table_t *tbl, int32_t i, int32_t 
   case OR_TERM:
   case XOR_TERM:
   case ARITH_BINEQ_ATOM:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_ARRAY:
   case BV_DIV:
   case BV_REM:
@@ -1069,10 +1146,47 @@ static void print_app(FILE *f, term_table_t *tbl, composite_term_t *d) {
 
 // select
 static void print_select(FILE *f, term_table_t *tbl, term_kind_t tag, select_term_t *d) {
+  uint32_t idx;
+
   assert(SELECT_TERM <= tag && tag <= BIT_TERM);
-  fprintf(f, "(%s %"PRIu32" ", tag2string[tag], d->idx);
+  idx = d->idx;
+  if (tag == SELECT_TERM) {
+    idx ++;
+  }
+  fprintf(f, "(%s ", tag2string[tag]);
   print_id_or_constant(f, tbl, d->arg);
-  fputc(')', f);
+  fprintf(f, " %"PRIu32")", idx);
+}
+
+
+// root atom: printed as (arith-root-atom r k x p )
+static void print_root_atom(FILE *f, term_table_t *tbl, root_atom_t *r) {
+  fprintf(f, "(%s ", tag2string[ARITH_ROOT_ATOM]);
+  switch (r->k) {
+  case ROOT_ATOM_LT:
+    fprintf(f, "<");
+    break;
+  case ROOT_ATOM_LEQ:
+    fprintf(f, "<=");
+    break;
+  case ROOT_ATOM_EQ:
+    fprintf(f, "=");
+    break;
+  case ROOT_ATOM_NEQ:
+    fprintf(f, "!=");
+    break;
+  case ROOT_ATOM_GEQ:
+    fprintf(f, ">=");
+    break;
+  case ROOT_ATOM_GT:
+    fprintf(f, ">");
+    break;
+  }
+  fprintf(f, " %"PRIu32" ", r->k);
+  print_id_or_constant(f, tbl, r->x);
+  fprintf(f, " ");
+  print_id_or_constant(f, tbl, r->p);
+  fprintf(f, ")");
 }
 
 // power product
@@ -1320,6 +1434,17 @@ void print_term_table(FILE *f, term_table_t *tbl) {
         fputs(" 0)", f);
         break;
 
+      case ARITH_IS_INT_ATOM:
+      case ARITH_FLOOR:
+      case ARITH_CEIL:
+      case ARITH_ABS:
+	fputc('(', f);
+	fputs(tag2string[tbl->kind[i]], f);
+	fputc(' ', f);
+	print_id_or_constant(f, tbl, tbl->desc[i].integer);
+	fputc(')', f);
+	break;
+
       case APP_TERM:
         print_app(f, tbl, tbl->desc[i].ptr);
         break;
@@ -1335,6 +1460,10 @@ void print_term_table(FILE *f, term_table_t *tbl) {
       case OR_TERM:
       case XOR_TERM:
       case ARITH_BINEQ_ATOM:
+      case ARITH_RDIV:
+      case ARITH_IDIV:
+      case ARITH_MOD:
+      case ARITH_DIVIDES_ATOM:
       case BV_ARRAY:
       case BV_DIV:
       case BV_REM:
@@ -1428,6 +1557,21 @@ static void print_term_idx_desc(FILE *f, term_table_t *tbl, int32_t i) {
     fputs(" 0)", f);
     break;
 
+  case ARITH_ROOT_ATOM:
+    print_root_atom(f, tbl, tbl->desc[i].ptr);
+    break;
+
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
+    fputc('(', f);
+    fputs(tag2string[tbl->kind[i]], f);
+    fputc(' ', f);
+    print_id_or_constant(f, tbl, tbl->desc[i].integer);
+    fputc(')', f);
+    break;
+
   case APP_TERM:
     print_app(f, tbl, tbl->desc[i].ptr);
     break;
@@ -1443,6 +1587,10 @@ static void print_term_idx_desc(FILE *f, term_table_t *tbl, int32_t i) {
   case OR_TERM:
   case XOR_TERM:
   case ARITH_BINEQ_ATOM:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_ARRAY:
   case BV_DIV:
   case BV_REM:
@@ -1552,6 +1700,11 @@ static const pp_open_type_t term_kind2block[NUM_TERM_KINDS] = {
 
   PP_OPEN_EQ,        //  ARITH_EQ_ATOM
   PP_OPEN_GE,        //  ARITH_GE_ATOM
+  PP_OPEN_IS_INT,    //  ARITH_IS_INT_ATOM
+  PP_OPEN_FLOOR,     //  ARITH_FLOOR
+  PP_OPEN_CEIL,      //  ARITH_CEIL
+  PP_OPEN_ABS,       //  ARITH_ABS
+  PP_OPEN_ROOT_ATOM, //  ARITH_ROOT_ATOM
 
   PP_OPEN_ITE,       //  ITE_TERM
   PP_OPEN_ITE,       //  ITE_SPECIAL
@@ -1565,6 +1718,10 @@ static const pp_open_type_t term_kind2block[NUM_TERM_KINDS] = {
   PP_OPEN_OR,        //  OR_TERM
   PP_OPEN_XOR,       //  XOR_TERM
   PP_OPEN_EQ,        //  ARITH_BINEQ_ATOM
+  PP_OPEN_DIV,       //  ARITH_RDIV
+  PP_OPEN_IDIV,      //  ARITH_IDIV
+  PP_OPEN_IMOD,      //  ARITH_MOD
+  PP_OPEN_DIVIDES,   //  ARITH_DIVIDES_ATOM
   PP_OPEN_BV_ARRAY,  //  BV_ARRAY
   PP_OPEN_BV_DIV,    //  BV_DIV
   PP_OPEN_BV_REM,    //  BV_REM
@@ -1697,6 +1854,28 @@ static void pp_lambda_term(yices_pp_t *printer, term_table_t *tbl, composite_ter
 
 
 /*
+ * Update:
+ * - to be consistent with Yices syntax, we print [update f [i1 ... in] new_value]
+ */
+static void pp_update_term(yices_pp_t *printer, term_table_t *tbl, composite_term_t *d, uint32_t level) {
+  uint32_t i, n;
+
+  n = d->arity;
+
+  assert(n >= 3);
+  pp_open_block(printer, PP_OPEN_UPDATE);
+  pp_term_recur(printer, tbl, d->arg[0], level, true); // f
+  pp_open_block(printer, PP_OPEN_PAR);
+  for (i=1; i<n-1; i++) {
+    pp_term_recur(printer, tbl, d->arg[i], level, true); // i_1 to i_{n-1} 
+  }
+  pp_close_block(printer, true);
+  pp_term_recur(printer, tbl, d->arg[n-1], level, true); // new_value
+  pp_close_block(printer, true);
+}
+
+
+/*
  * Binary atom: depending on the polarity, we use different 'op'
  * - example: (eq t1 t2) is printed as (= t1 t2) in positive context
  *                                  or (/= t1 t2) in a negative context
@@ -1804,15 +1983,54 @@ static void pp_or_term(yices_pp_t *printer, term_table_t *tbl, composite_term_t 
 // select
 static void pp_select_term(yices_pp_t *printer, term_table_t *tbl, term_kind_t tag, select_term_t *d, int32_t level) {
   pp_open_type_t op;
+  uint32_t idx;
 
   assert(SELECT_TERM <= tag && tag <= BIT_TERM);
   op = term_kind2block[tag];
   assert(op != 0);
+  idx = d->idx;
+  if (tag == SELECT_TERM) {
+    idx ++;
+  }
   pp_open_block(printer, op);
-  pp_uint32(printer, d->idx);
   pp_term_recur(printer, tbl, d->arg, level, true);
+  pp_uint32(printer, idx);
   pp_close_block(printer, true);
 }
+
+
+// root atoms
+static void pp_root_atom(yices_pp_t *printer, term_table_t *tbl, root_atom_t *r, int32_t level) {
+  pp_open_block(printer, PP_OPEN_ROOT_ATOM);
+
+  switch (r->r) {
+  case ROOT_ATOM_LT:
+    pp_string(printer, "<");
+    break;
+  case ROOT_ATOM_LEQ:
+    pp_string(printer, "<=");
+    break;
+  case ROOT_ATOM_EQ:
+    pp_string(printer, "=");
+    break;
+  case ROOT_ATOM_NEQ:
+    pp_string(printer, "!=");
+    break;
+  case ROOT_ATOM_GEQ:
+    pp_string(printer, ">=");
+    break;
+  case ROOT_ATOM_GT:
+    pp_string(printer, ">");
+    break;
+  }
+
+  pp_uint32(printer, r->k);
+  pp_term_recur(printer, tbl, r->x, level, true);
+  pp_term_recur(printer, tbl, r->p, level, true);
+  pp_close_block(printer, true);
+}
+
+
 
 // exponent (^ x d) or (bv-pow x d)
 static void pp_exponent(yices_pp_t *printer, term_table_t *tbl, term_t x, uint32_t d, int32_t level) {
@@ -1994,6 +2212,125 @@ static void pp_bvconst64_term(yices_pp_t *printer, bvconst64_term_t *d) {
 }
 
 
+
+/*
+ * One slice
+ */
+static void pp_bv_slice(yices_pp_t *printer, term_table_t *tbl, bvslice_t *d, int32_t level) {
+  term_t u;
+  uint32_t i, j;
+
+  switch (d->tag) {
+  case BVSLICE_REPEAT:
+    u = d->desc.r.bit;
+    i = d->desc.r.count;
+    assert(i > 0);
+    if (u == false_term) {
+      pp_bv_zero(printer, i);
+    } else if (u == true_term) {
+      pp_bv_minus_one(printer, i);
+    } else {
+      pp_open_block(printer, PP_OPEN_BV_ARRAY);
+      do {
+	pp_term_recur(printer, tbl, u, level, true);
+	i --;
+      } while (i>0);
+      pp_close_block(printer, true);
+    }
+    break;
+
+  case BVSLICE_EXTRACT:
+    u = d->desc.e.vector;
+    i = d->desc.e.low;
+    j = d->desc.e.high;
+    assert(i <= j);
+    if (i == 0 && j == term_bitsize(tbl, u) - 1) {
+      pp_term_recur(printer, tbl, u, level, true);
+    } else {
+      pp_open_block(printer, PP_OPEN_BV_EXTRACT);
+      pp_uint32(printer, i);
+      pp_uint32(printer, j);
+      pp_term_recur(printer, tbl, u, level, true);
+      pp_close_block(printer, true);
+    }
+    break;
+
+  case BVSLICE_CONST64:
+    pp_bv64(printer, d->desc.c64.value, d->desc.c64.nbits);
+    break;
+
+  case BVSLICE_CONST:
+    pp_bv(printer, d->desc.c.value, d->desc.c.nbits);
+    break;
+  }
+}
+
+
+/*
+ * Concatenation of slices
+ * - d[0 ... n-1] = array of n slice descriptors
+ */
+static void pp_bv_slices(yices_pp_t *printer, term_table_t *tbl, bvslice_t *d, uint32_t n, int32_t level) {
+  uint32_t i, k;
+
+  if (n == 2 && is_zero_extend(d, n, &k)) {
+    pp_open_block(printer, PP_OPEN_BV_ZERO_EXTEND);
+    pp_bv_slice(printer, tbl, d, level);
+    pp_uint32(printer, k);
+    pp_close_block(printer, true);
+    return;
+  }
+  
+  if (n == 2 && is_sign_extend(tbl, d, n, &k)) {
+    pp_open_block(printer, PP_OPEN_BV_SIGN_EXTEND);
+    pp_bv_slice(printer, tbl, d, level);
+    pp_uint32(printer, k);
+    pp_close_block(printer, true);
+    return;
+  }
+
+  if (n == 1) {
+    pp_bv_slice(printer, tbl, d, level);
+  } else {
+    pp_open_block(printer, PP_OPEN_BV_CONCAT);
+    for (i=0; i<n; i++) {
+      pp_bv_slice(printer, tbl, d + i, level);
+    }
+    pp_close_block(printer, true);
+  }
+}
+
+
+/*
+ * Array of booleans:
+ * - try to recognize zero/sign extend/extract/concat
+ * - if that fails, prints (bool-to-bv .... )
+ */
+static void pp_bit_array(yices_pp_t *printer, term_table_t *tbl, term_t *a, uint32_t n,  int32_t level) {
+  bvslicer_t slicer;
+  uint32_t i;
+
+  // decompose into slices then print the concatenation of slices
+  init_bvslicer(&slicer);
+  if (slice_bitarray(&slicer, tbl, a, n)) {
+    pp_bv_slices(printer, tbl, slicer.data, slicer.nelems, level);
+  } else {    
+    pp_open_block(printer, PP_OPEN_BV_ARRAY);
+    for (i=0; i<n; i++) {
+      pp_term_recur(printer, tbl, a[i], level, true);
+    }
+    pp_close_block(printer, true);
+  }
+  delete_bvslicer(&slicer);
+}
+
+static void pp_bvarray_term(yices_pp_t *printer, term_table_t *tbl, composite_term_t *d, int32_t level) {
+  pp_bit_array(printer, tbl, d->arg, d->arity, level);
+}
+
+
+
+
 /*
  * Name for i or (not i)
  */
@@ -2066,6 +2403,24 @@ static void pp_term_idx(yices_pp_t *printer, term_table_t *tbl, int32_t i, int32
     pp_close_block(printer, true);
     break;
 
+  case ARITH_ROOT_ATOM:
+    if (!polarity) pp_open_block(printer, PP_OPEN_NOT);
+    pp_root_atom(printer, tbl, tbl->desc[i].ptr, level - 1);
+    if (!polarity) pp_close_block(printer, true);
+    break;
+
+  case ARITH_IS_INT_ATOM:
+  case ARITH_FLOOR:
+  case ARITH_CEIL:
+  case ARITH_ABS:
+    op = term_kind2block[tbl->kind[i]];
+    if (!polarity) pp_open_block(printer, PP_OPEN_NOT);
+    pp_open_block(printer, op);
+    pp_term_recur(printer, tbl, tbl->desc[i].integer, level - 1, true);
+    pp_close_block(printer, true);
+    if (!polarity) pp_close_block(printer, true);
+    break;
+
   case FORALL_TERM:
     pp_forall_term(printer, tbl, tbl->desc[i].ptr, level - 1, polarity);
     break;
@@ -2097,14 +2452,21 @@ static void pp_term_idx(yices_pp_t *printer, term_table_t *tbl, int32_t i, int32
     pp_binary_atom(printer, tbl, op, tbl->desc[i].ptr, level - 1);
     break;
 
+  case UPDATE_TERM:
+    assert(polarity);
+    pp_update_term(printer, tbl, tbl->desc[i].ptr, level - 1);
+    break;
+
   case APP_TERM:
   case ITE_TERM:
   case ITE_SPECIAL:
-  case UPDATE_TERM:
   case TUPLE_TERM:
   case DISTINCT_TERM:
   case XOR_TERM:
-  case BV_ARRAY:
+  case ARITH_RDIV:
+  case ARITH_IDIV:
+  case ARITH_MOD:
+  case ARITH_DIVIDES_ATOM:
   case BV_DIV:
   case BV_REM:
   case BV_SDIV:
@@ -2117,6 +2479,11 @@ static void pp_term_idx(yices_pp_t *printer, term_table_t *tbl, int32_t i, int32
     if (! polarity) pp_open_block(printer, PP_OPEN_NOT);
     pp_composite_term(printer, tbl, tbl->kind[i], tbl->desc[i].ptr, level - 1);
     if (! polarity) pp_close_block(printer, true);
+    break;
+
+  case BV_ARRAY:
+    assert(polarity);
+    pp_bvarray_term(printer, tbl, tbl->desc[i].ptr, level - 1);
     break;
 
   case SELECT_TERM:

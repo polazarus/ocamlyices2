@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-#include "utils/bitvectors.h"
 #include "model/small_bvsets.h"
+#include "utils/bitvectors.h"
 
 #ifdef MINGW
 
@@ -83,7 +83,7 @@ static small_bvset_t set;
 /*
  * Main test
  */
-int main() {
+int main(void) {
   uint32_t x;
 
   init_test_set(&set, 4, 10);

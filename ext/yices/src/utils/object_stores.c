@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "utils/memalloc.h"
 #include "utils/object_stores.h"
@@ -18,19 +19,25 @@
 #ifndef NDEBUG
 
 /*
- * For debugging: check alignment
+ * For debugging: check alignment.
+ * We want pointers aligned to multiples of 8.
  */
-static bool size_is_multiple_of_eight(size_t x) {
-  return (x & ((size_t) 7)) == 0;
-}
-
 static bool ptr_is_aligned(void *p) {
-  return size_is_multiple_of_eight((size_t) p);
+  uintptr_t x;
+
+  x = (uintptr_t) p;
+  return (x & (uintptr_t) 7) == 0;
 }
 
 // p <= q here
 static bool offset_is_aligned(void *p, void *q) {
-  return size_is_multiple_of_eight(((size_t) q) - ((size_t) p));
+  uintptr_t x, y;
+
+  x = (uintptr_t) p;
+  y = (uintptr_t) q;
+  assert(x <= y);
+
+  return ((y - x) & (uintptr_t) 7) == 0;
 }
 
 #endif

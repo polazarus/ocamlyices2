@@ -17,6 +17,15 @@
 
 
 /*
+ * Wrapper for q_clear to avoid compilation warnings
+ * (some versions of GCC complain about inlining q_clear)
+ */
+static void clear_rational(rational_t *q) {
+  q_clear(q);
+}
+
+
+/*
  * Initialize eval for the given model
  */
 void init_evaluator(evaluator_t *eval, model_t *model) {
@@ -97,6 +106,38 @@ static void eval_cache_map(evaluator_t *eval, term_t t, value_t v) {
  */
 static value_t eval_term(evaluator_t *eval, term_t t);
 
+/*
+ * Attempt to get a rational value for v
+ * - fails with a longjmp if v is an algebraic number
+ */
+static rational_t *eval_get_rational(evaluator_t *eval, value_t v) {
+  if (object_is_algebraic(eval->vtbl, v)) {
+    longjmp(eval->env, MDL_EVAL_FAILED);
+  }
+  return vtbl_rational(eval->vtbl, v);
+}
+
+/*
+ * Check whether v is zero: returns false if v is algebraic
+ */
+static bool eval_is_zero(evaluator_t *eval, value_t v) {
+  return object_is_rational(eval->vtbl, v) && q_is_zero(vtbl_rational(eval->vtbl, v));
+}
+
+/*
+ * Attempt to get a non-zero rational value for v
+ * - fails if v is an algebraic number or if it is zero
+ */
+static rational_t *eval_get_nz_rational(evaluator_t *eval, value_t v) {
+  rational_t *q;
+
+  q = eval_get_rational(eval, v);
+  if (q_is_zero(q)) {
+    longjmp(eval->env, MDL_EVAL_FAILED);
+  }
+  return q;
+}
+
 
 /*
  * Evaluate terms t[0 ... n-1] and store the result in a[0 .. n-1]
@@ -133,7 +174,7 @@ static value_t eval_arith_eq(evaluator_t *eval, term_t t) {
   value_t v;
 
   v = eval_term(eval, t);
-  return vtbl_mk_bool(eval->vtbl, q_is_zero(vtbl_rational(eval->vtbl, v)));
+  return vtbl_mk_bool(eval->vtbl, q_is_zero(eval_get_rational(eval, v)));
 }
 
 
@@ -144,7 +185,85 @@ static value_t eval_arith_ge(evaluator_t *eval, term_t t) {
   value_t v;
 
   v = eval_term(eval, t);
-  return vtbl_mk_bool(eval->vtbl, q_is_nonneg(vtbl_rational(eval->vtbl, v)));
+  return vtbl_mk_bool(eval->vtbl, q_is_nonneg(eval_get_rational(eval, v)));
+}
+
+/*
+ * Arithmetic atom: (is_int t)
+ */
+static value_t eval_arith_is_int(evaluator_t *eval, term_t t) {
+  value_t v;
+
+  v = eval_term(eval, t);
+  return vtbl_mk_bool(eval->vtbl, q_is_integer(eval_get_rational(eval, v)));
+}
+
+
+/*
+ * Arithmetic term: (floor t)
+ */
+static value_t eval_arith_floor(evaluator_t *eval, term_t t) {
+  rational_t q;
+  value_t v;
+
+  v = eval_term(eval, t);
+  assert(object_is_rational(eval->vtbl, v));
+  
+  q_init(&q);
+  q_set(&q, eval_get_rational(eval, v)); // q := value of t
+  q_floor(&q);
+  q_normalize(&q);
+
+  v = vtbl_mk_rational(eval->vtbl, &q);
+
+  clear_rational(&q);
+
+  return v;
+}
+
+
+/*
+ * Arithmetic term: (ceil t)
+ */
+static value_t eval_arith_ceil(evaluator_t *eval, term_t t) {
+  rational_t q;
+  value_t v;
+
+  v = eval_term(eval, t);
+  assert(object_is_rational(eval->vtbl, v));
+  
+  q_init(&q);
+  q_set(&q, eval_get_rational(eval, v)); // q := value of t
+  q_ceil(&q);
+  q_normalize(&q);
+
+  v = vtbl_mk_rational(eval->vtbl, &q);
+
+  clear_rational(&q);
+
+  return v;
+}
+
+
+/*
+ * Arithmetic term: (abs t)
+ */
+static value_t eval_arith_abs(evaluator_t *eval, term_t t) {
+  rational_t q;
+  value_t v;
+
+  v = eval_term(eval, t);
+  assert(object_is_rational(eval->vtbl, v));
+  
+  q_init(&q);
+  q_set_abs(&q, eval_get_rational(eval, v)); // q := value of t
+  q_normalize(&q);
+
+  v = vtbl_mk_rational(eval->vtbl, &q);
+
+  clear_rational(&q);
+
+  return v;
 }
 
 
@@ -166,6 +285,110 @@ static value_t eval_arith_bineq(evaluator_t *eval, composite_term_t *eq) {
 
 
 /*
+ * Arithmetic term: (/ v1 v2) (division)
+ */
+static value_t eval_arith_rdiv(evaluator_t *eval, composite_term_t *d) {
+  rational_t q;
+  value_t v1, v2, o;
+  
+  assert(d->arity == 2);
+
+  v1 = eval_term(eval, d->arg[0]);
+  v2 = eval_term(eval, d->arg[1]);
+
+  if (eval_is_zero(eval, v2)) {
+    o = vtbl_eval_rdiv_by_zero(eval->vtbl, v1);
+  } else {
+    q_init(&q);  
+    q_set(&q, eval_get_rational(eval, v1));
+    q_div(&q, eval_get_nz_rational(eval, v2));
+    q_normalize(&q);
+    
+    o = vtbl_mk_rational(eval->vtbl, &q);
+
+    clear_rational(&q);
+  }
+
+
+  return o;
+}
+
+
+/*
+ * Arithmetic term: (div v1 v2) (integer division)
+ */
+static value_t eval_arith_idiv(evaluator_t *eval, composite_term_t *d) {
+  rational_t q;
+  value_t v1, v2, o;
+  
+  assert(d->arity == 2);
+
+  v1 = eval_term(eval, d->arg[0]);
+  v2 = eval_term(eval, d->arg[1]);
+  
+  if (eval_is_zero(eval, v2)) {
+    o = vtbl_eval_idiv_by_zero(eval->vtbl, v1);
+  } else {
+    q_init(&q);
+    q_smt2_div(&q, eval_get_rational(eval, v1), eval_get_nz_rational(eval, v2));
+    q_normalize(&q);
+
+    o = vtbl_mk_rational(eval->vtbl, &q);
+
+    clear_rational(&q);
+  }
+
+  return o;
+}
+
+
+/*
+ * Arithmetic term: (mod v1 v2)
+ */
+static value_t eval_arith_mod(evaluator_t *eval, composite_term_t *d) {
+  rational_t q;
+  value_t v1, v2, o;
+  
+  assert(d->arity == 2);
+
+  v1 = eval_term(eval, d->arg[0]);
+  v2 = eval_term(eval, d->arg[1]);
+
+  if (eval_is_zero(eval, v2)) {
+    o = vtbl_eval_mod_by_zero(eval->vtbl, v1);
+  } else {
+    q_init(&q);
+    q_smt2_mod(&q, eval_get_rational(eval, v1), eval_get_nz_rational(eval, v2)); 
+    q_normalize(&q);
+
+    o = vtbl_mk_rational(eval->vtbl, &q);
+
+    clear_rational(&q);
+  }
+
+  return o;
+}
+
+
+/*
+ * Arithmetic term: (divides v1 v2)
+ */
+static value_t eval_arith_divides(evaluator_t *eval, composite_term_t *d) {
+  value_t v1, v2;
+  bool divides;
+  
+  assert(d->arity == 2);
+
+  // it's OK for v1 to be zero here.
+  v1 = eval_term(eval, d->arg[0]);
+  v2 = eval_term(eval, d->arg[1]);
+  divides = q_smt2_divides(eval_get_rational(eval, v1), eval_get_rational(eval, v2));
+
+  return vtbl_mk_bool(eval->vtbl, divides);
+}
+
+
+/*
  * Power product: arithmetic
  */
 static value_t eval_arith_pprod(evaluator_t *eval, pprod_t *p) {
@@ -182,12 +405,12 @@ static value_t eval_arith_pprod(evaluator_t *eval, pprod_t *p) {
     t = p->prod[i].var;
     o = eval_term(eval, t);
     // prod[i] is v ^ k so q := q * (o ^ k)
-    q_mulexp(&prod, vtbl_rational(eval->vtbl, o), p->prod[i].exp);
+    q_mulexp(&prod, eval_get_rational(eval, o), p->prod[i].exp);
   }
 
   o = vtbl_mk_rational(eval->vtbl, &prod);
 
-  q_clear(&prod);
+  clear_rational(&prod);
 
   return o;
 }
@@ -211,14 +434,14 @@ static value_t eval_arith_poly(evaluator_t *eval, polynomial_t *p) {
       q_add(&sum, &p->mono[i].coeff);
     } else {
       v = eval_term(eval, t);
-      q_addmul(&sum, &p->mono[i].coeff, vtbl_rational(eval->vtbl, v)); // sum := sum + coeff * aux
+      q_addmul(&sum, &p->mono[i].coeff, eval_get_rational(eval, v)); // sum := sum + coeff * aux
     }
   }
 
   // convert sum to an object
   v = vtbl_mk_rational(eval->vtbl, &sum);
 
-  q_clear(&sum);
+  clear_rational(&sum);
 
   return v;
 }
@@ -1008,6 +1231,22 @@ static value_t eval_term(evaluator_t *eval, term_t t) {
         v = eval_arith_ge(eval, arith_ge_arg(terms, t));
         break;
 
+      case ARITH_IS_INT_ATOM:
+	v = eval_arith_is_int(eval, arith_is_int_arg(terms, t));
+	break;
+
+      case ARITH_FLOOR:
+	v = eval_arith_floor(eval, arith_floor_arg(terms, t));
+	break;
+
+      case ARITH_CEIL:
+	v = eval_arith_ceil(eval, arith_ceil_arg(terms, t));
+	break;
+
+      case ARITH_ABS:
+	v = eval_arith_abs(eval, arith_abs_arg(terms, t));
+	break;
+
       case ITE_TERM:
       case ITE_SPECIAL:
         v = eval_ite(eval, ite_term_desc(terms, t));
@@ -1055,6 +1294,22 @@ static value_t eval_term(evaluator_t *eval, term_t t) {
       case ARITH_BINEQ_ATOM:
         v = eval_arith_bineq(eval, arith_bineq_atom_desc(terms, t));
         break;
+
+      case ARITH_RDIV:
+	v = eval_arith_rdiv(eval, arith_rdiv_term_desc(terms, t));
+	break;
+
+      case ARITH_IDIV:
+	v = eval_arith_idiv(eval, arith_idiv_term_desc(terms, t));
+	break;
+
+      case ARITH_MOD:
+	v = eval_arith_mod(eval, arith_mod_term_desc(terms, t));
+	break;
+
+      case ARITH_DIVIDES_ATOM:
+	v = eval_arith_divides(eval, arith_divides_atom_desc(terms, t));
+	break;
 
       case BV_ARRAY:
         v = eval_bv_array(eval, bvarray_term_desc(terms, t));

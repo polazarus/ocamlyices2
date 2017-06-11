@@ -31,7 +31,7 @@ static inline long int random(void) {
  * Create a random pointer
  */
 static void *random_pointer(void) {
-  return (void *) ((size_t) random());
+  return (void *) ((uintptr_t) random());
 }
 
 
@@ -141,7 +141,7 @@ static void *a[100];
 
 
 
-int main() {
+int main(void) {
   uint32_t n;
 
   for (n=0; n <= 100; n += 20) {

@@ -1,37 +1,21 @@
 SHELL=/bin/bash
-GPERF=$(shell which gperf)
 
-ifeq ($(GPERF),)
-GPERF = $(abspath bin/gperf)
-endif
+all: lib/libyices.a
 
-export GPERF
+CONFIGURE_ARGS = --prefix=$(realpath .) \
+	--host=$(HOST) --disable-shared --enable-static \
+	$(if $(filter yes,$(FORCE_SHARED_GMP)),--with-shared-gmp) \
+	$(if $(STATIC_GMP),--with-static-gmp=$(STATIC_GMP))
 
-all: yices
+yices/make.include:
+	cd yices && ./configure $(CONFIGURE_ARGS)
 
-yices: libyices.a yices.h
-
-yices/configs: $(GPERF)
-	cd yices; ./configure --prefix=$(realpath .)
-libyices.a: $(GPERF) yices/configs
-	$(MAKE) -C yices lib; cp yices/build/*/lib/libyices.a ./
-
-yices.h:
-	cp yices/src/include/* ./
-
-gperf: $(GPERF)
-
-gperf.tar.gz:
-	wget -O gperf.tar.gz http://ftp.gnu.org/pub/gnu/gperf/gperf-3.0.4.tar.gz
-
-gperf/README: gperf.tar.gz
-	mkdir -p gperf; tar -xzf gperf.tar.gz -C gperf --strip-components 1; touch $@
-
-$(GPERF): gperf/README
-	cd gperf; ./configure --prefix=$(realpath .); $(MAKE); $(MAKE) install
+lib/libyices.a: yices/make.include
+	make lib -C yices -j$$(nproc 2>/dev/null || echo 4)
+	make install -C yices
 
 clean:
-	$(RM) -r gperf/ gperf.tar.gz lib/ share/ bin/ yices*.h libyices.a
-	$(MAKE) -C yices clean
+	rm -rf lib/ share/ bin/ include/
+	make -C yices distclean
 
-.PHONY: gperf yices
+.PHONY: yices

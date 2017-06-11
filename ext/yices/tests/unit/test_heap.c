@@ -10,9 +10,9 @@
 #include <float.h>
 #include <inttypes.h>
 
+#include "solvers/cdcl/smt_core.h"
 #include "utils/assert_utils.h"
 #include "utils/memalloc.h"
-#include "solvers/cdcl/smt_core.h"
 
 #ifdef MINGW
 
@@ -357,7 +357,7 @@ static void print_heap(var_heap_t *heap, char *msg) {
   printf("\n");
 }
 
-int main() {
+int main(void) {
   bvar_t x;
   uint32_t i;
 

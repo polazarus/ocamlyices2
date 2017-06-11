@@ -16,7 +16,6 @@
  * gmp rationals (mpq_t).
  */
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -27,9 +26,9 @@
 #include <errno.h>
 #include <gmp.h>
 
-#include "utils/memalloc.h"
 #include "terms/rationals.h"
 #include "utils/gcd.h"
+#include "utils/memalloc.h"
 
 
 
@@ -109,7 +108,7 @@ static void resize_bank(uint32_t n) {
 /*
  * Free the bank
  */
-static void clear_bank() {
+static void clear_bank(void) {
   uint32_t i, n;
 
   n = bank_capacity;
@@ -131,7 +130,7 @@ static inline int32_t free_list_next(int32_t i) {
 /*
  * Allocate an mpq number: return the index
  */
-static int32_t alloc_mpq() {
+static int32_t alloc_mpq(void) {
   int32_t n;
 
   n = bank_free;
@@ -189,7 +188,7 @@ static uint32_t string_buffer_length;
 
 #define INITIAL_BANK_CAPACITY 1024
 
-void init_rationals() {
+void init_rationals(void) {
   init_mpq_aux();
   init_bank(INITIAL_BANK_CAPACITY);
   string_buffer = NULL;
@@ -198,7 +197,7 @@ void init_rationals() {
   mpq_init2(q0, 64);
 }
 
-void cleanup_rationals() {
+void cleanup_rationals(void) {
   cleanup_mpq_aux();
   clear_bank();
   safe_free(string_buffer);
@@ -206,7 +205,7 @@ void cleanup_rationals() {
   mpq_clear(q0);
 }
 
-static void division_by_zero() {
+static void division_by_zero(void) {
   fprintf(stderr, "\nRationals: division by zero\n");
   abort();
 }
@@ -548,6 +547,7 @@ static inline void q_prepare(rational_t *r) {
 void q_set_mpz(rational_t *r, const mpz_t z) {
   q_prepare(r);
   mpq_set_z(bank_q[r->num], z);
+  q_normalize(r);
 }
 
 
@@ -557,6 +557,7 @@ void q_set_mpz(rational_t *r, const mpz_t z) {
 void q_set_mpq(rational_t *r, const mpq_t q) {
   q_prepare(r);
   mpq_set(bank_q[r->num], q);
+  q_normalize(r);
 }
 
 
@@ -1466,6 +1467,25 @@ bool q_divides(const rational_t *r1, const rational_t *r2) {
 }
 
 
+/***********************************
+ *  SMT2 version of (divides x y)  *
+ **********************************/
+
+/*
+ * (divides r1 r2) is (exist (n::int) r2 = n * r1)
+ *
+ * This is the same as q_divides(r1, r2) except that the
+ * definition allows r1 to be zero. In this case,
+ *  (divides 0 r2) is (r2 == 0)
+ */
+bool q_smt2_divides(const rational_t *r1, const rational_t *r2) {
+  if (q_is_zero(r1)) {
+    return q_is_zero(r2);
+  } else {
+    return q_divides(r1, r2);
+  }
+}
+
 
 
 
@@ -1511,6 +1531,115 @@ void q_generalized_lcm(rational_t *r1, rational_t *r2) {
 }
 
 
+/*
+ * This computes the GCD of r1 and r2 for arbitrary non-zero rationals:
+ * - if r1 is (a1/b1) and r2 is (a2/b2) then the result is
+ *    gcd(a1, a2)/lcm(b1, b2).
+ * - the result is stored in r1
+ */
+void q_generalized_gcd(rational_t *r1, rational_t *r2) {
+  rational_t a1, b1;
+  rational_t a2, b2;
+
+  if (q_is_integer(r1) && q_is_integer(r2)) {
+    q_lcm(r1, r2);
+  } else {
+    q_init(&a1);
+    q_get_num(&a1, r1);
+    q_init(&b1);
+    q_get_den(&b1, r1);
+
+    q_init(&a2);
+    q_get_num(&a2, r2);
+    q_init(&b2);
+    q_get_den(&b2, r2);
+
+    q_gcd(&a1, &a2); // a1 := gcd(a1, a2)
+    q_lcm(&b1, &b2); // b1 := lcm(b1, b2)
+
+    // copy the result in r1
+    q_set(r1, &a1);
+    q_div(r1, &b1);
+
+    q_clear(&a1);
+    q_clear(&b1);
+    q_clear(&a2);
+    q_clear(&b2);
+  }
+}
+
+
+/**********************
+ *  SMT2 DIV AND MOD  *
+ *********************/
+
+/*
+ * SMT-LIB 2.0 definitions for div and mod:
+ * - if y > 0 then div(x, y) is floor(x/y)
+ * - if y < 0 then div(x, y) is ceil(x/y)
+ * - 0 <= mod(x, y) < y
+ * - x = y * div(x, y) + mod(x, y)
+ * These operations are defined for any x and non-zero y.
+ * The terms x and y are not required to be integers.
+ *
+ * - q_smt2_div(q, x, y) stores (div x y) in q
+ * - q_smt2_mod(q, x, y) stores (mod x y) in q
+ *
+ * For both functions, y must not be zero.
+ */
+void q_smt2_div(rational_t *q, const rational_t *x, const rational_t *y) {
+  assert(q_is_nonzero(y));
+
+  q_set(q, x);
+  q_div(q, y); // q := x/y
+  if (q_is_pos(y)) {
+    q_floor(q);  // round down
+  } else {
+    q_ceil(q);  // round up
+  }
+}
+
+/*
+ * For debugging: check that 0 <= r < abs(y)
+ */
+#ifndef NDEBUG
+static bool plausible_mod(const rational_t *r, const rational_t *y) {
+  rational_t aux;
+  bool ok;
+
+  assert(q_is_nonzero(y));
+  
+  q_init(&aux);
+  if (q_is_pos(y)) {
+    q_set(&aux, y);
+  } else {
+    q_set_neg(&aux, y);
+  }
+  q_normalize(&aux);
+
+  ok = q_is_nonneg(r) && q_lt(r, &aux);
+
+  q_clear(&aux);
+
+  return ok;
+}
+#endif
+
+
+void q_smt2_mod(rational_t *q, const rational_t *x, const rational_t *y) {
+  assert(q_is_nonzero(y));
+
+  q_smt2_div(q, x, y); // q := (div x y)
+  q_mul(q, y);         // q := y * (div x y)
+  q_sub(q, x);         // q := - x + y * (div x y)
+  q_neg(q);            // q := x - y * (div x y) = (mod x y)
+
+  assert(plausible_mod(q, y));
+}
+
+
+
+
 
 /*****************
  *  COMPARISONS  *
@@ -1522,7 +1651,7 @@ void q_generalized_lcm(rational_t *r1, rational_t *r2) {
  * - returns 0 if r1 = r2
  * - returns a positive number if r1 > r2
  */
-int q_cmp(rational_t *r1, rational_t *r2) {
+int q_cmp(const rational_t *r1, const rational_t *r2) {
   int64_t num;
 
   if (r1->den == 1 && r2->den == 1) {
@@ -1549,7 +1678,7 @@ int q_cmp(rational_t *r1, rational_t *r2) {
 /*
  * Compare r1 and num/den
  */
-int q_cmp_int32(rational_t *r1, int32_t num, uint32_t den) {
+int q_cmp_int32(const rational_t *r1, int32_t num, uint32_t den) {
   int64_t nn;
 
   if (r1->den == 0) {
@@ -1560,7 +1689,7 @@ int q_cmp_int32(rational_t *r1, int32_t num, uint32_t den) {
   }
 }
 
-int q_cmp_int64(rational_t *r1, int64_t num, uint64_t den) {
+int q_cmp_int64(const rational_t *r1, int64_t num, uint64_t den) {
   mpq_set_int64(q0, num, den);
   mpq_canonicalize(q0);
   if (r1->den == 0) {
@@ -1575,7 +1704,7 @@ int q_cmp_int64(rational_t *r1, int64_t num, uint64_t den) {
 /*
  * Check whether r1 and r2 are opposite
  */
-bool q_opposite(rational_t *r1, rational_t *r2) {
+bool q_opposite(const rational_t *r1, const rational_t *r2) {
   rational_t aux;
   bool result;
 
@@ -1694,6 +1823,25 @@ bool q_fits_int64(rational_t *r) {
 
 
 
+/*
+ * Size estimate
+ * - r must be an integer
+ * - this returns approximately the number of bits to represent r
+ */
+uint32_t q_size(rational_t *r) {
+  size_t n;
+
+  n = 32;
+  if (r->den == 0) {
+    n = mpz_size(mpq_numref(bank_q[r->num])) * mp_bits_per_limb;
+    if (n > (size_t) UINT32_MAX) {
+      n = UINT32_MAX;
+    }
+  }
+  return (uint32_t) n;
+}
+
+
 
 /*
  * Convert r to a GMP integer
@@ -1743,7 +1891,7 @@ double q_get_double(rational_t *r) {
 /*
  * Print r
  */
-void q_print(FILE *f, rational_t *r) {
+void q_print(FILE *f, const rational_t *r) {
   if (r->den == 0) {
     mpq_out_str(f, 10, bank_q[r->num]);
   } else if (r->den != 1) {
@@ -1756,7 +1904,7 @@ void q_print(FILE *f, rational_t *r) {
 /*
  * Print r's absolute value
  */
-void q_print_abs(FILE *f, rational_t *r) {
+void q_print_abs(FILE *f, const rational_t *r) {
   mpq_ptr q;
   int32_t abs_num;
 
@@ -1800,7 +1948,7 @@ void q_print_abs(FILE *f, rational_t *r) {
  *  so  ((uint32_t) r->num) + HASH_MODULUS = (2^32 + r->num) + HASH_MODULUS
  * gives the correct result.
  */
-uint32_t q_hash_numerator(rational_t *r) {
+uint32_t q_hash_numerator(const rational_t *r) {
   if (r->den == 0) {
     return (uint32_t) mpz_fdiv_ui(mpq_numref(bank_q[r->num]), HASH_MODULUS);
   } else if (r->num >= 0) {
@@ -1810,14 +1958,14 @@ uint32_t q_hash_numerator(rational_t *r) {
   }
 }
 
-uint32_t q_hash_denominator(rational_t *r) {
+uint32_t q_hash_denominator(const rational_t *r) {
   if (r->den == 0) {
     return (uint32_t) mpz_fdiv_ui(mpq_denref(bank_q[r->num]), HASH_MODULUS);
   }
   return r->den;
 }
 
-void q_hash_decompose(rational_t *r, uint32_t *h_num, uint32_t *h_den) {
+void q_hash_decompose(const rational_t *r, uint32_t *h_num, uint32_t *h_den) {
   if (r->den == 0) {
     *h_num = (uint32_t) mpz_fdiv_ui(mpq_numref(bank_q[r->num]), HASH_MODULUS);
     *h_den = (uint32_t) mpz_fdiv_ui(mpq_denref(bank_q[r->num]), HASH_MODULUS);

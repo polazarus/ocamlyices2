@@ -143,7 +143,7 @@ end
 
 exception YicesError of Error.code * Error.report
 
-let () =
+let register_exn () =
   let report = let open Error in {
     name = "NO_ERROR";
     line = 0;
@@ -157,10 +157,15 @@ let () =
   let exc = YicesError (Error.NO_ERROR, report) in
   Callback.register_exception "ocamlyices2.exception" exc
 
+let () = register_exn ()
+
 external info : unit -> string*string*string*string
   = "ocamlyices_info"
 let version, build_arch, build_mode, build_date =
   info ()
+
+external print_supported : unit -> bool
+  = "ocamlyices_print_supported"
 
 module Experimental = struct
   (** Reset Yices *)

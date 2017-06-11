@@ -13,8 +13,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "utils/memalloc.h"
 #include "utils/int_hash_map.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -260,7 +260,7 @@ int_hmap_pair_t *int_hmap_get(int_hmap_t *hmap, int32_t k) {
 
 
 /*
- * Add record [k -> v ] to hmao
+ * Add record [k -> v ] to hmap
  * - there must not be a record with the same key
  */
 void int_hmap_add(int_hmap_t *hmap, int32_t k, int32_t v) {

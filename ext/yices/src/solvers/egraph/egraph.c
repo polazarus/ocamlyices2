@@ -12,27 +12,27 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
-#include <stdio.h>
 #include <inttypes.h>
 
-#include "utils/bit_tricks.h"
-#include "utils/memalloc.h"
+#include "io/tracer.h"
+#include "solvers/egraph/composites.h"
+#include "solvers/egraph/egraph.h"
+#include "solvers/egraph/egraph_explanations.h"
+#include "solvers/egraph/egraph_utils.h"
 #include "solvers/egraph/theory_explanations.h"
-#include "utils/ptr_partitions.h"
+#include "utils/bit_tricks.h"
 #include "utils/hash_functions.h"
 #include "utils/index_vectors.h"
-#include "io/tracer.h"
-
-#include "solvers/egraph/composites.h"
-#include "solvers/egraph/egraph_utils.h"
-#include "solvers/egraph/egraph_explanations.h"
-#include "solvers/egraph/egraph.h"
+#include "utils/memalloc.h"
+#include "utils/ptr_partitions.h"
 
 
 #define TRACE 0
 #define TRACE_FCHECK 0
 
 #if TRACE || TRACE_FCHECK
+
+#include <stdio.h>
 
 #include "solvers/cdcl/smt_core_printer.h"
 #include "solvers/egraph/egraph_printer.h"
@@ -248,7 +248,7 @@ static void extend_eterm_table(eterm_table_t *tbl) {
 /*
  * Allocate a new term with the following initialization:
  * - body = cmp
- * - egde = null_edge
+ * - edge = null_edge
  * - thvar = null_var
  * - label = null_label
  * - successor = itself
@@ -359,7 +359,7 @@ static ltag_desc_t *new_ltag_desc(uint32_t n, type_t *dom) {
   if (n > MAX_LTAG_DESC_ARITY) {
     /*
      * This should never happen since n <= YICES_MAX_ARITY < MAX_LTAG_DESC_ARITY.
-     * But we mwy change this one day.
+     * But we may change this one day.
      */
     out_of_memory();
   }
@@ -2223,9 +2223,11 @@ static void egraph_activate_composite(egraph_t *egraph, composite_t *d) {
    * If decision_level == base_level and base_level > 0, we'll also
    * have to reanalyze d on the next call to egraph_pop.  This will
    * force d to be removed from the parent vector and congruence table.
+   *
+   * We also have to do this if we're in reconcile_mode (since we may have to
+   * backtrack and undo the provisional equalities added by model reconciliation).
    */
-  //  if (egraph->decision_level > egraph->base_level) {
-  if (egraph->decision_level > 0) {
+  if (egraph->decision_level > 0 || egraph->reconcile_mode) {
     undo_stack_push_ptr(&egraph->undo, d, tag);
   }
 }
@@ -2282,6 +2284,26 @@ static void egraph_activate_term(egraph_t *egraph, eterm_t t, etype_t tau, thvar
   if (composite_body(d) && composite_kind(d) != COMPOSITE_DISTINCT) {
     egraph_activate_composite(egraph, d);
   }
+}
+
+
+/*
+ * Reactivate the terms in reanalyze_vector
+ * - this must be called after backtracking and before processing any equality
+ */
+static void egraph_reactivate_dynamic_terms(egraph_t *egraph) {
+  pvector_t *v;
+  composite_t *p;
+  uint32_t i, n;
+
+  v = &egraph->reanalyze_vector;
+  n = v->size;
+  for (i=0; i<n; i++) {
+    p = v->data[i];
+    assert(composite_body(p));
+    egraph_activate_composite(egraph, p);
+  }
+  pvector_reset(v);
 }
 
 
@@ -2523,13 +2545,12 @@ static literal_t egraph_term2literal(egraph_t *egraph, eterm_t t) {
 }
 
 
-
-
 literal_t egraph_make_pred(egraph_t *egraph, occ_t f, uint32_t n, occ_t *a) {
   eterm_t t;
   t = egraph_apply_term(egraph, f, n, a);
   return egraph_term2literal(egraph, t);
 }
+
 
 literal_t egraph_make_eq(egraph_t *egraph, occ_t t1, occ_t t2) {
   occ_t aux;
@@ -2538,7 +2559,18 @@ literal_t egraph_make_eq(egraph_t *egraph, occ_t t1, occ_t t2) {
   // simplify
   if (t1 == t2) return true_literal;
 
-  if (egraph->base_level == egraph->decision_level) {
+  /*
+   * Careful: if we're in the reconcile_mode at the base level
+   * we can't check for equality/disequality here using egraph_equal_occ or
+   * egraph_check_diseq. That's because there may be tentative equalities
+   * in the egraph at this point (so egraph_equal_occ and egraph_check_diseq
+   * may give incorrect results).
+   *
+   * The test for reconcile_mode was missing. Bug reported by Martin Gabris.
+   */
+  //  if (egraph->base_level == egraph->decision_level) {
+  if (egraph->base_level == egraph->decision_level 
+      && (! egraph->reconcile_mode || egraph->stack.top == egraph->reconcile_neqs)) {
     if (egraph_equal_occ(egraph, t1, t2)) {
       return true_literal;
     } else if (egraph_check_diseq(egraph, t1, t2)) {
@@ -3113,7 +3145,7 @@ static void egraph_add_type_constraints(egraph_t *egraph, eterm_t t, type_t tau)
   case TUPLE_TYPE:
     sk = pos_occ(egraph_skolem_term(egraph, tau));
     if (egraph->presearch) {
-      // before start search: assert the axiom direclty
+      // before start search: assert the axiom directly
       assert(egraph->decision_level == egraph->base_level);
       k = egraph_stack_push_eq(&egraph->stack, pos_occ(t), sk);
       egraph->stack.etag[k] = EXPL_AXIOM;
@@ -3749,6 +3781,24 @@ static void undo_thvar_equality(egraph_t *egraph, class_t c1, thvar_t v1, class_
 }
 
 
+/*
+ * Hack: to ensure that undo_thvar_equality works when a conflict is detected
+ * by check_atom_propagation, we merge the lists of atoms for Boolean variables v1 and v2.
+ */
+static void fixup_atom_lists(egraph_t *egraph, bvar_t v1, bvar_t v2) {
+  atom_t *atm1, *atm2;
+  smt_core_t *core;
+
+  core = egraph->core;
+
+  assert(core != NULL && bvar_has_atom(core, v1) && bvar_has_atom(core, v2));
+
+  atm1 = get_bvar_atom(core, v1);
+  atm2 = get_bvar_atom(core, v2);
+
+  merge_atom_lists(atm1, atm2);
+}
+
 
 
 /*********************
@@ -4296,6 +4346,18 @@ static bool process_equality(egraph_t *egraph, occ_t t1, occ_t t2, int32_t i) {
       t = egraph_next(egraph, t);
       if (! check_atom_propagation(egraph, t)) {
         // conflict
+
+	/*
+	 * HACK/BUG FIX: this fixes a bug reported by Dorus Peelen.
+	 *
+	 * Before returning false, we must merge the atoms of v1 and v2
+	 * otherwise the backtracking will fail; it will call undo_thvar_equality,
+	 * and that function requires the lists of atoms of v1 and v2 to be merged.
+	 */
+	v1 = egraph->classes.thvar[c1];
+	v2 = egraph->classes.thvar[c2];
+        assert(v1 != null_thvar && v2 != null_thvar);
+	fixup_atom_lists(egraph, v1, v2);
         return false;
       }
     } while (t != t2);
@@ -4304,7 +4366,7 @@ static bool process_equality(egraph_t *egraph, occ_t t1, occ_t t2, int32_t i) {
   /*
    * Deal with theory variables of c1 and c2:
    * - if c2 has a theory var v2 but not c1, set v2 as theory var of c1
-   * - if both have a theory variable, proagate equality (v1 == v2) to theory solvers
+   * - if both have a theory variable, propagate equality (v1 == v2) to theory solvers
    * - check the explanation for i before propagating to the theory solver
    *   if the equality i was propagated from Simplex or BV solver, there's no point
    *   sending v1 == v2 to this solver (and doing so pauses a circularity problem).
@@ -4322,9 +4384,9 @@ static bool process_equality(egraph_t *egraph, occ_t t1, occ_t t2, int32_t i) {
     if (v2 != null_thvar) {
       v1 = egraph->classes.thvar[c1];
       if (v1 != null_thvar) {
-        propagate_thvar_equality(egraph, c1, v1, c2, v2, i);
+	propagate_thvar_equality(egraph, c1, v1, c2, v2, i);
       } else {
-        egraph->classes.thvar[c1] = v2;
+	egraph->classes.thvar[c1] = v2;
       }
     }
   }
@@ -4454,6 +4516,7 @@ void egraph_push(egraph_t *egraph) {
 
   assert(egraph->decision_level == egraph->base_level);
   assert(egraph->terms.nterms == egraph->classes.nclasses);
+  assert(egraph->reanalyze_vector.size == 0);
 
   // save number of terms == number of classes, and propagation pointer
   egraph_trail_save(&egraph->trail_stack, egraph->terms.nterms, egraph->stack.prop_ptr);
@@ -4843,6 +4906,9 @@ void egraph_backtrack(egraph_t *egraph, uint32_t back_level) {
   uint32_t i;
 
   egraph_local_backtrack(egraph, back_level);
+  if (back_level == egraph->base_level && egraph->reanalyze_vector.size > 0) {
+    egraph_reactivate_dynamic_terms(egraph);
+  }
 
   // forward to the satellite solvers
   for (i=0; i<NUM_SATELLITES; i++) {
@@ -4942,6 +5008,34 @@ static void restore_classes(egraph_t *egraph, uint32_t n) {
 }
 
 
+#ifndef NDEBUG
+/*
+ * For debugging: check that all composites in the reanalyze_vector
+ * are terms to be deleted.
+ */
+static bool reanalyze_to_delete(egraph_t *egraph) {
+  pvector_t *v;
+  composite_t *p;
+  uint32_t i, n, k;
+
+  // k = index of the first term to delete. All terms with id < k must
+  // be preserved.
+  k = egraph_trail_top(&egraph->trail_stack)->nterms;
+
+  v = &egraph->reanalyze_vector;
+  n = v->size;
+  for (i=0; i<n; i++) {
+    p = v->data[i];
+    if (p->id < k) {
+      return false;
+    }
+  }
+
+  return true;
+}
+#endif
+
+
 /*
  * Return to the previous base_level
  */
@@ -4956,6 +5050,7 @@ void egraph_pop(egraph_t *egraph) {
 #endif
 
   assert(egraph->base_level > 0 && egraph->base_level == egraph->decision_level);
+  assert(egraph->reanalyze_vector.size == 0);
 
   // decrease base_level then backtrack
   egraph->ack_left = null_occurrence;
@@ -4963,12 +5058,13 @@ void egraph_pop(egraph_t *egraph) {
   egraph->base_level --;
   egraph_local_backtrack(egraph, egraph->base_level);
 
+  // local_backtrack may have moved terms to the reanalyze_vector
+  // these should all be dead term so we can empty the reanalyze_vector.
+  assert(reanalyze_to_delete(egraph));
+  pvector_reset(&egraph->reanalyze_vector);
+
   // clear the high-order flag
   egraph->is_high_order = false;
-
-  // all dynamic terms will be deleted
-  // so we must empty reanalyze vector
-  pvector_reset(&egraph->reanalyze_vector);
 
   // remove all terms and classes of id >= trail->nterms
   trail = egraph_trail_top(&egraph->trail_stack);
@@ -5004,26 +5100,6 @@ void egraph_pop(egraph_t *egraph) {
 /*****************
  *  PROPAGATION  *
  ****************/
-
-/*
- * Reactivate the terms in reanalyze_vector
- * - this must be called after backtracking and before processing any equality
- */
-static void egraph_reactivate_dynamic_terms(egraph_t *egraph) {
-  pvector_t *v;
-  composite_t *p;
-  uint32_t i, n;
-
-  v = &egraph->reanalyze_vector;
-  n = v->size;
-  for (i=0; i<n; i++) {
-    p = v->data[i];
-    assert(composite_body(p));
-    egraph_activate_composite(egraph, p);
-  }
-  pvector_reset(v);
-}
-
 
 /*
  * Propagation via equality propagation queue.
@@ -5100,7 +5176,7 @@ bool egraph_propagate(egraph_t *egraph) {
     }
 
 
-    // To detect equalities propagated from the theroy solvers (i.e., the simplex
+    // To detect equalities propagated from the theory solvers (i.e., the simplex
     // solver for now).
     k = egraph->stack.top;
 
@@ -5674,7 +5750,7 @@ static void egraph_undo_reconcile_attempt(egraph_t *egraph, uint32_t k) {
 /*
  * Collect an interface equality (t1 == t2) when reconciliation fails
  * - source = edge that started the reconciliation
- * - i = conflict egde
+ * - i = conflict edge
  */
 static void collect_interface_pair(egraph_t *egraph, int32_t source, int32_t i) {
   equeue_elem_t *e;
@@ -5968,7 +6044,10 @@ static fcheck_code_t experimental_final_check(egraph_t *egraph) {
   uint32_t i, max_eqs;
 
 #if TRACE_FCHECK
-  printf("---> EGRAPH: final check (experimental)\n");
+  printf("---> EGRAPH: final check (experimental)\n\n");
+  print_egraph_terms(stdout, egraph);
+  printf("\n\n");
+  print_egraph_root_classes_details(stdout, egraph);
   fflush(stdout);
 #endif
 
@@ -6028,6 +6107,13 @@ static fcheck_code_t experimental_final_check(egraph_t *egraph) {
 
 
   } else if (egraph->ctrl[ETYPE_FUNCTION] != NULL) {
+#if TRACE_FCHECK
+    printf("---> EGRAPH: final check: after reconcile\n\n");
+    print_egraph_terms(stdout, egraph);
+    printf("\n\n");
+    print_egraph_root_classes_details(stdout, egraph);
+    fflush(stdout);
+#endif
     /*
      * bv/arith models are consistent with the egraph:
      * deal with the array solver
@@ -6071,6 +6157,7 @@ static fcheck_code_t experimental_final_check(egraph_t *egraph) {
 fcheck_code_t egraph_final_check(egraph_t *egraph) {
   egraph->stats.final_checks ++;
 
+  //  if (egraph->base_level == egraph->decision_level || egraph_option_disabled(egraph, EGRAPH_OPTIMISTIC_FCHECK)) {
   if (egraph_option_disabled(egraph, EGRAPH_OPTIMISTIC_FCHECK)) {
     return baseline_final_check(egraph);
   } else {

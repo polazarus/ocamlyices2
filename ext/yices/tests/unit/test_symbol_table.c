@@ -12,8 +12,8 @@
 // #include <math.h>
 #include <inttypes.h>
 
-#include "utils/symbol_tables.h"
 #include "utils/cputime.h"
+#include "utils/symbol_tables.h"
 
 static char buffer[1000];
 static char **words;
@@ -76,7 +76,7 @@ static void words_from_file(const char *filename) {
   exit(1);
 }
 
-static void clear_words() {
+static void clear_words(void) {
   uint32_t j;
 
   for (j=0; j<n_words; j++) free(words[j]);

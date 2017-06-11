@@ -42,7 +42,8 @@ static void random_terms(uint32_t n, term_t *a) {
   }
 }
 
-static int bool_rank(x) {
+static uint32_t bool_rank(term_t x) {
+  assert(x >= 0);
   return x;
 }
 
@@ -265,7 +266,7 @@ static void decreasing_test(uint32_t n) {
 
 
 
-int main() {
+int main(void) {
   int n;
 
   random_test(0);

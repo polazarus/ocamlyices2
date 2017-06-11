@@ -1,8 +1,10 @@
-Ocamlyices2: Yices 2 SMT solver binding for OCaml, version 0.1.0
-================================================================
+Ocamlyices2: Yices 2 SMT solver binding for OCaml
+=================================================
 Mickaël Delahaye, 2014
 
-[![Build Status](https://travis-ci.org/polazarus/ocamlyices2.svg?branch=master)](https://travis-ci.org/polazarus/ocamlyices2)
+|      Linux, Mac      |         Windows         |
+| :------------------: | :---------------------: |
+| [![trv-img]][travis] | [![apvy-img]][appveyor] |
 
 BEWARE: highly unstable API, see the to-do list.
 
@@ -39,29 +41,52 @@ Requirements
 Build and install
 -----------------
 
-    $ ./configure
-    $ make
+Build the Ocamlyices2 library (for ocamlopt and ocamlc):
 
-Build the Ocamlyices2 library (for ocamlopt and ocamlc).
+    ./configure
+    make
 
-    $ sudo make install
+Install the library on the system using Findlib:
 
-Install the library on the system using Findlib.
+    make install
+
+By default, a static version of libgmp will be used. To force the use of the
+shared gmp library for zarith and libyices, you can use:
+
+    ./configure --with-shared-gmp
+
+You can also force the use of your own static version of libgmp with
+
+    ./configure --with-static-gmp=libgmp.a
+
+For cross-compiling the library for native windows (using the mingw compiler)
+from cygwin, use the `--host=` argument:
+
+    ./configure --host=i686-w64-mingw32
+
+Binaries
+--------
+Yices2 may be somewhat painful to build. To ease the process, you can simply
+pick the binaries. These are linked to static gmp libraries to avoid any
+shared library problem. For example, for windows, you would do:
+
+    curl -L https://github.com/maelvalais/ocamlyices2/releases/download/v0.0.2/ocamlyices2-v0.0.2-i686-w64-mingw32.tar.gz | tar xz
+    ocamlfind install yices2 ocamlyices2-*/*
 
 Usage
 -----
 
 With Ocamlfind:
 
-    ocamlfind ocamlc/ocamlopt -package ocamlyices2 …
+    ocamlfind ocamlc/ocamlopt -package yices2 …
 
 When linking (i.e, actually making an executable), add the `-linkpkg` flag.
 
 Without, well… it depends of your actual setup of OCaml. To compile your
 program, add the directory of Ocamlyices2 and of Zarith in the
 search path with the flag `-I` of `ocamlc`/`ocamlopt` (run
-`ocamlfind query ocamlyices2` to find out). And when linking, add the library
-`ocamlyices2.cma`/`.cmxa` to the command.
+`ocamlfind query yices2` to find out). And when linking, add the library
+`yices2.cma`/`.cmxa` to the command.
 
 
 License
@@ -90,3 +115,7 @@ THIS SOFTWARE.
 [6]: http://opam.ocaml.org
 [7]: https://forge.ocamlcore.org/projects/zarith
 [8]: http://micdel.fr
+[travis]: https://travis-ci.org/maelvalais/ocamlyices2
+[trv-img]: https://travis-ci.org/maelvalais/ocamlyices2.svg?branch=master
+[appveyor]: https://ci.appveyor.com/project/maelvalais/ocamlyices2/branch/master
+[apvy-img]: https://ci.appveyor.com/api/projects/status/94xwq5jn37q6hcn6/branch/master?svg=true

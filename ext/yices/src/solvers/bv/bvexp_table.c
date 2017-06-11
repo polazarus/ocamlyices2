@@ -9,10 +9,10 @@
  * Table to store bitvector variable definition in expanded form.
  */
 
-#include "utils/memalloc.h"
-#include "utils/int_powers.h"
-#include "terms/bv64_constants.h"
 #include "solvers/bv/bvexp_table.h"
+#include "terms/bv64_constants.h"
+#include "utils/int_powers.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -168,7 +168,7 @@ void reset_bvexp_table(bvexp_table_t *table) {
 
   /*
    * The two aux buffers must be deleted first since their content may become
-   * invalid pointers afer the reset_objstore calls. Just calling
+   * invalid pointers after the reset_objstore calls. Just calling
    * bvarith..._prepare is not enough as it keeps the end_marker in
    * table->aux/table->aux64.
    */

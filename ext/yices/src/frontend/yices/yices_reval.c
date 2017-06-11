@@ -1,5 +1,5 @@
 /*
- * The Yices SMT Solver. Copyright 2014 SRI International.
+ * The Yices SMT Solver. Copyright 2015 SRI International.
  *
  * This program may only be used subject to the noncommercial end user
  * license agreement which is downloadable along with this program.
@@ -24,52 +24,66 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#include "yices_exit_codes.h"
 
+#if defined(MINGW)
+/*
+ * We call isatty(STDIN_FILENO) to check whether stdin is a terminal.
+ *
+ * On Windows/MINGW, isatty is called _isatty. The macro STDIN_FILENO
+ * appears to be defined in mingw/include/stdio.h. Not clear whether
+ * it exists in Windows?  There is a function isatty declared in io.h,
+ * but it is deprecated.
+ *
+ * NOTE: the windows function _isatty doesn't have the same behavior
+ * as isatty on Unix. It returns a non-zero value if the file
+ * descriptor is associated with a character device (which is true of
+ * terminals but of other files too).
+ */
+#include <io.h>
+#ifndef STDIN_FILENO
+#define STDIN_FILENO (_fileno(stdin))
+#endif
+#define isatty _isatty
+
+#else
+// Should work on all Unix variants
+#include <unistd.h>
+#endif
+
+
+#include "api/context_config.h"
+#include "api/smt_logic_codes.h"
+#include "api/yices_extensions.h"
+#include "api/yices_globals.h"
+#include "context/context.h"
+#include "context/dump_context.h"
+#include "exists_forall/ef_client.h"
+#include "frontend/common.h"
+#include "frontend/yices/arith_solver_codes.h"
+#include "frontend/yices/yices_help.h"
 #include "frontend/yices/yices_lexer.h"
 #include "frontend/yices/yices_parser.h"
-
-#include "parser_utils/term_stack2.h"
-#include "terms/tstack_internals.h"
+#include "frontend/yices/yices_reval.h"
 #include "frontend/yices/yices_tstack_ops.h"
-
+#include "io/concrete_value_printer.h"
+#include "model/model_eval.h"
+#include "model/models.h"
+#include "model/projection.h"
+#include "parser_utils/term_stack2.h"
+#include "parser_utils/tstack_internals.h"
+#include "solvers/bv/bvsolver.h"
+#include "solvers/bv/dimacs_printer.h"
+#include "solvers/funs/fun_solver.h"
+#include "solvers/simplex/simplex.h"
+#include "terms/rationals.h"
+#include "utils/command_line.h"
 #include "utils/cputime.h"
 #include "utils/memsize.h"
-#include "utils/command_line.h"
-#include "utils/timeout.h"
-#include "terms/rationals.h"
-
 #include "utils/string_utils.h"
-#include "api/smt_logic_codes.h"
-#include "frontend/yices/arith_solver_codes.h"
-#include "api/context_config.h"
-
-
-// FOR DUMP
-#include "context/dump_context.h"
-
-// FOR STATISTICS
-#include "solvers/simplex/simplex.h"
-#include "solvers/funs/fun_solver.h"
-#include "solvers/bv/bvsolver.h"
-
-// FOR EXPORT TO DIMACS
-#include "solvers/bv/dimacs_printer.h"
-// FOR EF-SOLVER
-#include "solvers/exists_forall/ef_analyze.h"
-#include "solvers/exists_forall/ef_problem.h"
-#include "solvers/exists_forall/efsolver.h"
-#include "context/context.h"
-#include "model/models.h"
-#include "model/model_eval.h"
-#include "model/model_printer.h"
-#include "model/concrete_value_printer.h"
+#include "utils/timeout.h"
 
 #include "yices.h"
-#include "api/yices_globals.h"
-#include "api/yices_extensions.h"
-#include "frontend/yices/yices_help.h"
-#include "frontend/yices/yices_reval.h"
+#include "yices_exit_codes.h"
 
 
 
@@ -81,13 +95,18 @@
 /*
  * PARSING/TERM CONSTRUCTION
  * - input_filename: name of the input file.
- *   If input_filename is NULL, we run in interactive mode and get input from stdin.
+ *   If input_filename is NULL, we get input from stdin.
+ *   If stdin is a terminal, we also set the interactive flag to true
  * - lexer, parser, term_stack: to process the input commands
  * - include_depth = number of nested (include ...) commands being processed
+ * - tracer: initialized to (stderr, 2) in verbose mode (otherwise NULL)
  *
  * GLOBAL FLAGS:
- * - interactive: true if no input file is given on the command line
- * - verbose: boolean flag for now (could use a verbosity level??)
+ * - interactive: true if the input is stdin and stdin is a terminal
+ *   (well on Windows we can't tell for sure).
+ *   If this flag is true, we print a prompt before reading input,
+ *   and we don't exit on error.
+ * - verbosity: verbosity level
  * - done: set to true when exit is called, or if there's an error and
  *   interactive is false (i.e., we exit on the first error unless we're
  *   in the interactive mode).
@@ -96,7 +115,6 @@
  * - timeout: timeout value in second (applies to check)
  *   timeout value = 0 means no timeout
  * - timeout_initialized: true once init_timeout is called
- * - tracer: initialized to (stderr, 2) in verbose mode (otherwise not used)
  *
  * COMMAND-LINE OPTIONS:
  * - logic_name: logic to use (option --logic=xxx)
@@ -121,11 +139,11 @@ static uint32_t include_depth;
 
 static bool interactive;
 static bool done;
-static bool verbose;
+static int32_t verbosity;
+static tracer_t *tracer;
 
 static uint32_t timeout;
 static bool timeout_initialized;
-static tracer_t tracer;
 
 static char *logic_name;
 static char *arith_name;
@@ -137,8 +155,6 @@ static context_arch_t arch;
 static context_mode_t mode;
 static bool iflag;
 static bool qflag;
-static bool efmode;
-static bool efdone;
 
 /*
  * Context, model, and solver parameters
@@ -147,17 +163,8 @@ static context_t *context;
 static model_t *model;
 static param_t parameters;
 
-/*
- * Support for exists/forall
- * - efprob = problem built from the dealyed assertions
- * - efsolver = solver
- * - efcode = result of the conversion to exists/forall
- *   (as returned by ef_analyze). This code is meaningful
- *   only if efprob != NULL.
- */
-static ef_prob_t *efprob;
-static ef_solver_t *efsolver;
-static ef_code_t efcode;
+/* flag to indicate we are in exists forall mode. */
+static bool efmode;
 
 
 /*
@@ -177,292 +184,17 @@ static double ready_time, check_process_time;
 
 
 /*
- * More parameters for preprocessing and simplifications
+ * Parameters for preprocessing and simplifications
  * - these parameters are stored in the context but
- *   we want to keep a copy when esolver is true (since then
+ *   we want to keep a copy when exists forall solver is used (since then
  *   context is NULL).
  */
-typedef struct ctx_param_s {
-  bool var_elim;
-  bool arith_elim;
-  bool bvarith_elim;
-  bool flatten_or;
-  bool eq_abstraction;
-  bool keep_ite;
-  bool splx_eager_lemmas;
-  bool splx_periodic_icheck;
-} ctx_param_t;
-
 static ctx_param_t ctx_parameters;
 
-
 /*
- * Parameters for the EF solver
- * - flatten_iff, flatten_ite: control flattening of iff and if-then-else in
- *   ef_analyze
- * - gen_mode = generalization method
- * - max_samples = number of samples (max) used in start (0 means no presampling)
- * - max_iters = bound on the outher iteration in efsolver
+ * The exists forall client globals
  */
-typedef struct ef_param_s {
-  bool flatten_iff;
-  bool flatten_ite;
-  ef_gen_option_t gen_mode;
-  uint32_t max_samples;
-  uint32_t max_iters;
-} ef_param_t;
-
-static ef_param_t ef_parameters;
-
-
-/*******************
- *  GLOBAL TABLES  *
- ******************/
-
-/*
- * Table to convert  smt_status to a string
- */
-static const char* const status2string[] = {
-  "idle",
-  "searching",
-  "unknown",
-  "sat",
-  "unsat",
-  "interrupted",
-};
-
-
-/*
- * Same thing for ef-solver status
- */
-static const char* const ef_status2string[] = {
-  "idle",
-  "searching",
-  "unknown",
-  "sat",
-  "unsat",
-  "interrupted",
-  "subst error",
-  "tval error",
-  "check error",
-  "assert error",
-  "error",
-};
-
-
-/*
- * Search parameters and internalization options can be set individually
- * using the command (set-param <name> <value>).
- *
- * We use an integer code to identify the parameters + a table of
- * parameter names in lexicographic order. Each parameter
- * is described in context.h.
- *
- * New: added the EF solver parameters.
- */
-typedef enum yices_param {
-  // internalization options
-  PARAM_VAR_ELIM,
-  PARAM_ARITH_ELIM,
-  PARAM_BVARITH_ELIM,
-  PARAM_FLATTEN,
-  PARAM_LEARN_EQ,
-  PARAM_KEEP_ITE,
-  // restart parameters
-  PARAM_FAST_RESTARTS,
-  PARAM_C_THRESHOLD,
-  PARAM_C_FACTOR,
-  PARAM_D_THRESHOLD,
-  PARAM_D_FACTOR,
-  // clause deletion heuristic
-  PARAM_R_THRESHOLD,
-  PARAM_R_FRACTION,
-  PARAM_R_FACTOR,
-  // branching heuristic
-  PARAM_VAR_DECAY,
-  PARAM_RANDOMNESS,
-  PARAM_RANDOM_SEED,
-  PARAM_BRANCHING,
-  // learned clauses
-  PARAM_CLAUSE_DECAY,
-  PARAM_CACHE_TCLAUSES,
-  PARAM_TCLAUSE_SIZE,
-  // egraph parameters
-  PARAM_DYN_ACK,
-  PARAM_DYN_BOOL_ACK,
-  PARAM_OPTIMISTIC_FCHECK,
-  PARAM_MAX_ACK,
-  PARAM_MAX_BOOL_ACK,
-  PARAM_AUX_EQ_QUOTA,
-  PARAM_AUX_EQ_RATIO,
-  PARAM_DYN_ACK_THRESHOLD,
-  PARAM_DYN_BOOL_ACK_THRESHOLD,
-  PARAM_MAX_INTERFACE_EQS,
-  // simplex parameters
-  PARAM_EAGER_LEMMAS,
-  PARAM_SIMPLEX_PROP,
-  PARAM_SIMPLEX_ADJUST,
-  PARAM_PROP_THRESHOLD,
-  PARAM_BLAND_THRESHOLD,
-  PARAM_ICHECK,
-  PARAM_ICHECK_PERIOD,
-  // array solver parameters
-  PARAM_MAX_UPDATE_CONFLICTS,
-  PARAM_MAX_EXTENSIONALITY,
-  // EF solver
-  PARAM_EF_FLATTEN_IFF,
-  PARAM_EF_FLATTEN_ITE,
-  PARAM_EF_GEN_MODE,
-  PARAM_EF_MAX_SAMPLES,
-  PARAM_EF_MAX_ITERS,
-  // error
-  PARAM_UNKNOWN
-} yices_param_t;
-
-
-#define NUM_PARAMETERS PARAM_UNKNOWN
-
-static const char * const param_names[NUM_PARAMETERS] = {
-  "arith-elim",
-  "aux-eq-quota",
-  "aux-eq-ratio",
-  "bland-threshold",
-  "branching",
-  "bvarith-elim",
-  "c-factor",
-  "c-threshold",
-  "cache-tclauses",
-  "clause-decay",
-  "d-factor",
-  "d-threshold",
-  "dyn-ack",
-  "dyn-ack-threshold",
-  "dyn-bool-ack",
-  "dyn-bool-ack-threshold",
-  "eager-lemmas",
-  "ef-flatten-iff",
-  "ef-flatten-ite",
-  "ef-gen-mode",
-  "ef-max-iters",
-  "ef-max-samples",
-  "fast-restarts",
-  "flatten",
-  "icheck",
-  "icheck-period",
-  "keep-ite",
-  "learn-eq",
-  "max-ack",
-  "max-bool-ack",
-  "max-extensionality",
-  "max-interface-eqs",
-  "max-update-conflicts",
-  "optimistic-fcheck",
-  "prop-threshold",
-  "r-factor",
-  "r-fraction",
-  "r-threshold",
-  "random-seed",
-  "randomness",
-  "simplex-adjust",
-  "simplex-prop",
-  "tclause-size",
-  "var-decay",
-  "var-elim",
-};
-
-// corresponding parameter codes in order
-static const yices_param_t param_code[NUM_PARAMETERS] = {
-  PARAM_ARITH_ELIM,
-  PARAM_AUX_EQ_QUOTA,
-  PARAM_AUX_EQ_RATIO,
-  PARAM_BLAND_THRESHOLD,
-  PARAM_BRANCHING,
-  PARAM_BVARITH_ELIM,
-  PARAM_C_FACTOR,
-  PARAM_C_THRESHOLD,
-  PARAM_CACHE_TCLAUSES,
-  PARAM_CLAUSE_DECAY,
-  PARAM_D_FACTOR,
-  PARAM_D_THRESHOLD,
-  PARAM_DYN_ACK,
-  PARAM_DYN_ACK_THRESHOLD,
-  PARAM_DYN_BOOL_ACK,
-  PARAM_DYN_BOOL_ACK_THRESHOLD,
-  PARAM_EAGER_LEMMAS,
-  PARAM_EF_FLATTEN_IFF,
-  PARAM_EF_FLATTEN_ITE,
-  PARAM_EF_GEN_MODE,
-  PARAM_EF_MAX_ITERS,
-  PARAM_EF_MAX_SAMPLES,
-  PARAM_FAST_RESTARTS,
-  PARAM_FLATTEN,
-  PARAM_ICHECK,
-  PARAM_ICHECK_PERIOD,
-  PARAM_KEEP_ITE,
-  PARAM_LEARN_EQ,
-  PARAM_MAX_ACK,
-  PARAM_MAX_BOOL_ACK,
-  PARAM_MAX_EXTENSIONALITY,
-  PARAM_MAX_INTERFACE_EQS,
-  PARAM_MAX_UPDATE_CONFLICTS,
-  PARAM_OPTIMISTIC_FCHECK,
-  PARAM_PROP_THRESHOLD,
-  PARAM_R_FACTOR,
-  PARAM_R_FRACTION,
-  PARAM_R_THRESHOLD,
-  PARAM_RANDOM_SEED,
-  PARAM_RANDOMNESS,
-  PARAM_SIMPLEX_ADJUST,
-  PARAM_SIMPLEX_PROP,
-  PARAM_TCLAUSE_SIZE,
-  PARAM_VAR_DECAY,
-  PARAM_VAR_ELIM,
-};
-
-
-
-/*
- * Names of each branching mode (in lexicographic order)
- */
-#define NUM_BRANCHING_MODES 6
-
-static const char * const branching_modes[NUM_BRANCHING_MODES] = {
-  "default",
-  "negative",
-  "positive",
-  "th-neg",
-  "th-pos",
-  "theory",
-};
-
-static const branch_t branching_code[NUM_BRANCHING_MODES] = {
-  BRANCHING_DEFAULT,
-  BRANCHING_NEGATIVE,
-  BRANCHING_POSITIVE,
-  BRANCHING_TH_NEG,
-  BRANCHING_TH_POS,
-  BRANCHING_THEORY,
-};
-
-
-
-/*
- * Names of the generalitzation modes for the EF solver
- */
-#define NUM_EF_GEN_MODES 2
-
-static const char * const ef_gen_modes[NUM_EF_GEN_MODES] = {
-  "none",
-  "substitution",
-};
-
-static const ef_gen_option_t ef_gen_code[NUM_EF_GEN_MODES] = {
-  EF_NOGEN_OPTION,
-  EF_GEN_BY_SUBST_OPTION,
-};
-
-
-
+static ef_client_t ef_client_globals;
 
 
 /**************************
@@ -475,10 +207,10 @@ enum {
   mode_option,
   version_flag,
   help_flag,
-  verbose_flag,
+  verbosity_option,
 };
 
-#define NUM_OPTIONS (verbose_flag+1)
+#define NUM_OPTIONS (verbosity_option+1)
 
 static option_desc_t options[NUM_OPTIONS] = {
   { "logic", '\0', MANDATORY_STRING, logic_option },
@@ -486,7 +218,7 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "mode", '\0', MANDATORY_STRING, mode_option },
   { "version", 'V', FLAG_OPTION, version_flag },
   { "help", 'h', FLAG_OPTION, help_flag },
-  { "verbose", 'v', FLAG_OPTION, verbose_flag },
+  { "verbosity", 'v', MANDATORY_INT, verbosity_option },
 };
 
 
@@ -515,7 +247,8 @@ static void print_help(char *progname) {
   printf("Options:\n"
          "  --version, -V             Display version and exit\n"
          "  --help, -h                Display this information\n"
-         "  --verbose, -v             Run in verbose mode\n"
+	 "  --verbosity=<level>       Set verbosity level (default = 0)\n"
+	 "           -v <level>\n"
          "  --logic=<name>            Configure for the given logic\n"
          "                             <name> must be an SMT-LIB logic code (e.g., QF_UFLIA)\n"
          "                                    or 'NONE' for propositional logic\n"
@@ -603,13 +336,15 @@ static void process_command_line(int argc, char *argv[]) {
   cmdline_elem_t elem;
   int32_t arch_code;
   int32_t mode_code;
+  int32_t v;
 
   // set all options to their default value
   input_filename = NULL;
   logic_name = NULL;
   arith_name = NULL;
   mode_name = NULL;
-  verbose = false;
+  verbosity = 0;
+  tracer = NULL;
   logic_code = SMT_UNKNOWN;
   arith_code = ARITH_SIMPLEX;
   mode_code = -1; // means not set
@@ -684,8 +419,13 @@ static void process_command_line(int argc, char *argv[]) {
         print_help(parser.command_name);
         goto quick_exit;
 
-      case verbose_flag:
-        verbose = true;
+      case verbosity_option:
+	v = elem.i_value;
+	if (v < 0) {
+	  fprintf(stderr, "%s: the verbosity level must be non-negative\n", parser.command_name);
+	  goto bad_usage;
+	}
+        verbosity = v;
         break;
 
       default:
@@ -741,7 +481,6 @@ static void process_command_line(int argc, char *argv[]) {
     qflag = false;
     break;
 
-
   default:
     assert(logic_name != NULL && 0 <= logic_code && logic_code < NUM_SMT_LOGICS);
     arch_code = arch_for_logic(logic_code);
@@ -752,6 +491,16 @@ static void process_command_line(int argc, char *argv[]) {
     arch = (context_arch_t) arch_code;
     iflag = iflag_for_logic(logic_code);
     qflag = qflag_for_logic(logic_code);
+
+#if !HAVE_MCSAT
+    // fail here: MCSAT not built
+    if (arch == CTX_ARCH_MCSAT) {
+      fprintf(stderr, "%s: logic %s is not supported; %s was not compiled with mcsat support\n",
+	      parser.command_name, logic_name, parser.command_name);
+      exit(YICES_EXIT_ERROR);
+    }
+#endif
+
     break;
   }
 
@@ -759,7 +508,10 @@ static void process_command_line(int argc, char *argv[]) {
    * Set the mode
    */
   if (mode_code < 0) {
-    if ((logic_code == QF_IDL || logic_code == QF_RDL) && arch != CTX_ARCH_SPLX) {
+    if (arch == CTX_ARCH_MCSAT) {
+      // PROVISIONAL: MCSAT DOES NOT SUPPORT PUSH-POP YET
+      mode = CTX_MODE_ONECHECK;
+    } else if ((logic_code == QF_IDL || logic_code == QF_RDL) && arch != CTX_ARCH_SPLX) {
       // Floyd-Warshall or 'Auto' --> mode must be one-shot
       mode = CTX_MODE_ONECHECK;
     } else if (input_filename != NULL) {
@@ -782,6 +534,11 @@ static void process_command_line(int argc, char *argv[]) {
         fprintf(stderr, "%s: the Floyd-Warshall solvers support only mode='one-shot'\n", parser.command_name);
         goto bad_usage;
       }
+    }
+    if (arch == CTX_ARCH_MCSAT && mode_code != CTX_MODE_ONECHECK) {
+      // PROVISIONAL: MCSAT DOESN'T HAVE PUSH-POP YET
+      fprintf(stderr, "%s: the nonlinear solver supports only mode='one-shot'\n", parser.command_name);
+      goto bad_usage;
     }
   }
 
@@ -815,7 +572,7 @@ static void sigint_handler(int signum) {
 #endif
 
   assert(context != NULL);
-  if (verbose) {
+  if (verbosity > 0) {
     fprintf(stderr, "\nInterrupted by signal %d\n", signum);
     fflush(stderr);
   }
@@ -837,7 +594,7 @@ static void sigint_handler(int signum) {
  * Other interrupts: exit with code INTERRUPTED
  */
 static void default_handler(int signum) {
-  if (verbose) {
+  if (verbosity > 0) {
     fprintf(stderr, "\nInterrupted by signal %d\n", signum);
     fflush(stderr);
   }
@@ -951,62 +708,10 @@ static void report_negative_timeout(int32_t val) {
 
 
 /*
- * BUG in Yices: Print an error message then exit
- */
-static void report_bug(const char *format, ...) {
-  va_list p;
-
-  fprintf(stderr, "\n*************************************************************\n");
-  fprintf(stderr, "FATAL ERROR: ");
-  va_start(p, format);
-  vfprintf(stderr, format, p);
-  va_end(p);
-  fprintf(stderr, "\n\nPlease report this bug to yices-bugs@csl.sri.com.\n");
-  fprintf(stderr, "To help us diagnose this problem, please include the\n"
-                  "following information in your bug report:\n\n");
-  fprintf(stderr, "  Yices version: %s\n", yices_version);
-  fprintf(stderr, "  Build date: %s\n", yices_build_date);
-  fprintf(stderr, "  Platform: %s (%s)\n", yices_build_arch, yices_build_mode);
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Thank you for your help.\n");
-  fprintf(stderr, "*************************************************************\n\n");
-  fflush(stderr);
-
-  exit(YICES_EXIT_INTERNAL_ERROR);
-}
-
-
-/*
- * Conversion of internalization code to an error message
- */
-static const char * const code2error[NUM_INTERNALIZATION_ERRORS] = {
-  "no error",
-  "internal error",
-  "type error",
-  "formula contains free variables",
-  "logic not supported",
-  "context does not support uninterpreted functions",
-  "context does not support arithmetic",
-  "context does not support bitvectors",
-  "context does not support function equalities",
-  "context does not support quantifiers",
-  "context does not support lambdas",
-  "not an IDL formula",
-  "not an RDL formula",
-  "non-linear arithmetic not supported",
-  "too many variables for the arithmetic solver",
-  "too many atoms for the arithmetic solver",
-  "arithmetic solver exception",
-  "bitvector solver exception",
-};
-
-
-
-/*
  * Report that the previous command was executed (if verbose)
  */
 static void print_ok(void) {
-  if (verbose && interactive && include_depth == 0) {
+  if (verbosity > 0 && interactive && include_depth == 0) {
     fprintf(stderr, "ok\n");
     fflush(stderr);
   }
@@ -1021,27 +726,13 @@ static void print_internalization_code(int32_t code) {
   if (code == TRIVIALLY_UNSAT) {
     fprintf(stderr, "unsat\n");
     fflush(stderr);
-  } else if (verbose && code == CTX_NO_ERROR) {
+  } else if (verbosity > 0 && code == CTX_NO_ERROR) {
     print_ok();
   } else if (code < 0) {
     code = - code;
     report_error(code2error[code]);
   }
 }
-
-
-
-/*
- * Conversion of EF preprocessing codes to string
- */
-static const char * const efcode2error[NUM_EF_CODES] = {
-  "no error",
-  "assertions contain uninterpreted functions",
-  "invalid quantifier nesting (not an exists/forall problem)",
-  "non-atomic universal variables",
-  "non-atomic existential variables",
-  "internal error",
-};
 
 
 /*
@@ -1080,12 +771,12 @@ static void report_eval_error(int32_t code) {
     break;
 
   case MDL_EVAL_INTERNAL_ERROR:
-    report_bug("Internal error in 'eval'");
+    freport_bug(stderr, "Internal error in 'eval'");
     break;
 
   case MDL_EVAL_FREEVAR_IN_TERM:
   default:
-    report_bug("Unexpected error code %"PRId32" in 'eval'", code);
+    freport_bug(stderr,"Unexpected error code %"PRId32" in 'eval'", code);
     break;
   }
 }
@@ -1113,11 +804,10 @@ static void report_show_implicant_error(error_code_t code) {
   case EVAL_CONVERSION_FAILED:
   case EVAL_NO_IMPLICANT:
   default:
-    report_bug("Unexpected error code %"PRId32" in 'show-implicant'", code);
+    freport_bug(stderr,"Unexpected error code %"PRId32" in 'show-implicant'", code);
     break;
   }
 }
-
 
 /***************************
  *  MODEL ALLOCATION/FREE  *
@@ -1151,41 +841,6 @@ static void free_model(model_t *model) {
  ***************************/
 
 /*
- * Copy the context's parameters into ctx_params
- */
-static void save_ctx_params(void) {
-  assert(context != NULL);
-  ctx_parameters.var_elim = context_var_elim_enabled(context);
-  ctx_parameters.arith_elim = context_arith_elim_enabled(context);
-  ctx_parameters.bvarith_elim = context_bvarith_elim_enabled(context);
-  ctx_parameters.flatten_or = context_flatten_or_enabled(context);
-  ctx_parameters.eq_abstraction = context_eq_abstraction_enabled(context);
-  ctx_parameters.keep_ite = context_keep_ite_enabled(context);
-  ctx_parameters.splx_eager_lemmas = splx_eager_lemmas_enabled(context);
-  ctx_parameters.splx_periodic_icheck = splx_periodic_icheck_enabled(context);
-}
-
-
-/*
- * If there's no context: use some defaults for both ctx_parameters and parameters
- * - arch + logic are derived from the command-line options
- */
-static void default_ctx_params(smt_logic_t logic, context_arch_t arch) {
-  ctx_parameters.var_elim = true;
-  ctx_parameters.arith_elim = true;
-  ctx_parameters.bvarith_elim = true;
-  ctx_parameters.flatten_or = true;
-  ctx_parameters.eq_abstraction = true;
-  ctx_parameters.keep_ite = false;
-  ctx_parameters.splx_eager_lemmas = false;
-  ctx_parameters.splx_periodic_icheck = false;
-
-  //  init_params_to_defaults(&parameters);
-  yices_set_default_params(&parameters, logic_code, arch);
-}
-
-
-/*
  * Allocate and initialize the global context and model.
  * Initialize the parameter table with default values.
  * Set the signal handlers.
@@ -1199,11 +854,9 @@ static void init_ctx(smt_logic_t logic, context_arch_t arch, context_mode_t mode
   model = NULL;
   context = yices_create_context(logic, arch, mode, iflag, qflag);
   yices_default_params_for_context(context, &parameters);
-  save_ctx_params();
-  if (verbose) {
-    init_trace(&tracer);
-    set_trace_vlevel(&tracer, 4);
-    context_set_trace(context, &tracer);
+  save_ctx_params(&ctx_parameters, context);
+  if (tracer != NULL) {
+    context_set_trace(context, tracer);
   }
 
   init_handlers();
@@ -1225,276 +878,9 @@ static void delete_ctx(void) {
 }
 
 
-/*
- * Initialize the ef_parameters to default values
- */
-static void init_ef_params(void) {
-  ef_parameters.flatten_iff = false;
-  ef_parameters.flatten_ite = false;
-  ef_parameters.gen_mode = EF_GEN_BY_SUBST_OPTION;
-  ef_parameters.max_samples = 5;
-  ef_parameters.max_iters = 100;
-}
-
-
-
-
 /***************************************
  *  UTILITIES TO DEAL WITH PARAMETERS  *
  **************************************/
-
-/*
- * Tables for converting parameter id to parameter name
- * and branching code to branching name. One more table
- * for converting from EF generalization codes to strings.
- */
-static const char *param2string[NUM_PARAMETERS];
-static const char *branching2string[NUM_BRANCHING_MODES];
-static const char *efgen2string[NUM_EF_GEN_MODES];
-
-/*
- * Argument to the setparam command encodes an immediate value
- * - the tag is given by the enumeration below
- * - PARAM_VAL_ERROR means an unexpected value was pushed
- * - the value is either a pointer to rational or a symbol
- */
-typedef enum param_val_enum {
-  PARAM_VAL_FALSE,
-  PARAM_VAL_TRUE,
-  PARAM_VAL_RATIONAL,
-  PARAM_VAL_SYMBOL,
-  PARAM_VAL_ERROR,
-} param_val_enum_t;
-
-typedef struct param_val_s {
-  param_val_enum_t tag;
-  union {
-    rational_t *rational;
-    char *symbol;
-  } val;
-} param_val_t;
-
-
-
-
-/*
- * Initialize the table [parameter id --> string]
- * and [branching mode --> string]
- * and [ef gen code --> string]
- */
-static void init_parameter_name_table(void) {
-  uint32_t i, j;
-  const char *name;
-
-  for (i=0; i<NUM_PARAMETERS; i++) {
-    name = param_names[i];
-    j = param_code[i];
-    param2string[j] = name;
-  }
-
-  for (i=0; i<NUM_BRANCHING_MODES; i++) {
-    name = branching_modes[i];
-    j = branching_code[i];
-    branching2string[j] = name;
-  }
-
-  for (i=0; i<NUM_EF_GEN_MODES; i++) {
-    name = ef_gen_modes[i];
-    j = ef_gen_code[i];
-    efgen2string[j] = name;
-  }
-}
-
-
-/*
- * Search for a parameter of the given name
- * - use binary search in the param_names table
- * - return PARAM_UNKNOWN if there's no parameter with that name
- */
-static yices_param_t find_param(const char *name) {
-  int32_t i;
-
-  i = binary_search_string(name, param_names, NUM_PARAMETERS);
-  if (i >= 0) {
-    assert(i < NUM_PARAMETERS);
-    return param_code[i];
-  } else {
-    return PARAM_UNKNOWN;
-  }
-}
-
-
-/*
- * Convert a parameter value to boolean, int32, float, etc.
- * - name = parameter name, used for error reporting.
- * - return true if the conversion works
- * - return false otherwise (and print an error message)
- */
-static bool param_val_to_bool(const char *name, const param_val_t *v, bool *value) {
-  bool code;
-
-  code = true;
-  if (v->tag == PARAM_VAL_FALSE) {
-    *value = false;
-  } else if (v->tag == PARAM_VAL_TRUE) {
-    *value = true;
-  } else {
-    report_invalid_param_value(name, "boolean required");
-    code = false;
-  }
-  return code;
-}
-
-static bool param_val_to_int32(const char *name, const param_val_t *v, int32_t *value) {
-  rational_t *q;
-
-  if (v->tag == PARAM_VAL_RATIONAL) {
-    q = v->val.rational;
-    if (q_is_smallint(q)) {
-      *value = q_get_smallint(q);
-      return true;
-    } else if (q_is_integer(q)) {
-      report_invalid_param_value(name, "integer overflow");
-      return false;
-    }
-    // if q is a rational: same error as not a number
-  }
-
-  report_invalid_param_value(name, "integer required");
-
-  return false;
-}
-
-static bool param_val_to_pos32(const char *name, const param_val_t *v, int32_t *value) {
-  if (param_val_to_int32(name, v, value)) {
-    if (*value > 0) return true;
-    report_invalid_param_value(name, "must be positive");
-  }
-  return false;
-}
-
-static bool param_val_to_pos16(const char *name, const param_val_t *v, int32_t *value) {
-  if (param_val_to_int32(name, v, value)) {
-    if (1 <= *value && *value <= UINT16_MAX) {
-      return true;
-    }
-    report_invalid_param_value(name, "must be between 1 and 2^16");
-  }
-  return false;
-}
-
-static bool param_val_to_nonneg32(const char *name, const param_val_t *v, int32_t *value) {
-  if (param_val_to_int32(name, v, value)) {
-    if (*value >= 0) return true;
-    report_invalid_param_value(name, "cannot be negative");
-  }
-  return false;
-}
-
-static bool param_val_to_float(const char *name, const param_val_t *v, double *value) {
-  mpq_t aux;
-
-  if (v->tag == PARAM_VAL_RATIONAL) {
-    mpq_init(aux);
-    q_get_mpq(v->val.rational, aux);
-    /*
-     * NOTE: the GMP documentation says that conversion to double
-     * may raise a hardware trap (overflow, underflow, etc.) on
-     * some systems. We ignore this here.
-     */
-    *value = mpq_get_d(aux);
-    mpq_clear(aux);
-    return true;
-  } else {
-    report_invalid_param_value(name, "number required");
-    return false;
-  }
-}
-
-static bool param_val_to_posfloat(const char *name, const param_val_t *v, double *value) {
-  if (param_val_to_float(name, v, value)) {
-    if (*value > 0.0) return true;
-    report_invalid_param_value(name, "must be positive");
-  }
-  return false;
-}
-
-// ratio: number between 0 and 1 (inclusive)
-static bool param_val_to_ratio(const char *name, const param_val_t *v, double *value) {
-  if (param_val_to_float(name, v, value)) {
-    if (0 <= *value && *value <= 1.0) return true;
-    report_invalid_param_value(name, "must be between 0 and 1");
-  }
-  return false;
-}
-
-// factor: must be at least 1
-static bool param_val_to_factor(const char *name, const param_val_t *v, double *value) {
-  if (param_val_to_float(name, v, value)) {
-    if (1.0 <= *value) return true;
-    report_invalid_param_value(name, "must be at least 1");
-  }
-  return false;
-}
-
-
-
-
-/*
- * Special case: branching mode
- * - allowed modes are 'default' 'positive' 'negative' 'theory' 'th-neg' 'th-pos'
- */
-static bool param_val_to_branching(const char *name, const param_val_t *v, branch_t *value) {
-  int32_t i;
-
-  if (v->tag == PARAM_VAL_SYMBOL) {
-    i = binary_search_string(v->val.symbol, branching_modes, NUM_BRANCHING_MODES);
-    if (i >= 0) {
-      assert(i < NUM_BRANCHING_MODES);
-      *value = branching_code[i];
-      return true;
-    }
-  }
-
-  report_error("invalid branching mode");
-  fputs("valid modes are", stderr);
-  for (i=0; i<NUM_BRANCHING_MODES; i++) {
-    fprintf(stderr, " '%s'", branching_modes[i]);
-  }
-  fputc('\n', stderr);
-
-  return false;
-}
-
-
-
-/*
- * EF generalization mode
- * - allowed modes are "none" or "substitution"
- * - we use a general implementation so that we can add more modes later
- */
-static bool param_val_to_genmode(const char *name, const param_val_t *v, ef_gen_option_t *value) {
-  int32_t i;
-
-  if (v->tag == PARAM_VAL_SYMBOL) {
-    i = binary_search_string(v->val.symbol, ef_gen_modes, NUM_EF_GEN_MODES);
-    if (i >= 0) {
-      assert(i < NUM_EF_GEN_MODES);
-      *value = ef_gen_code[i];
-      return true;
-    }
-  }
-
-  report_error("invalid generalization mode");
-  fputs("possible modes are", stderr);
-  for (i=0; i<NUM_EF_GEN_MODES; i++) {
-    fprintf(stderr, " '%s'", ef_gen_modes[i]);
-  }
-  fputc('\n', stderr);
-
-  return false;
-}
-
 
 /*
  * Print a parameter name and its value
@@ -1550,28 +936,28 @@ static void show_string_param(const char *name, const char *value, uint32_t n) {
 static void show_param(yices_param_t p, uint32_t n) {
   switch (p) {
   case PARAM_VAR_ELIM:
-    show_bool_param(param2string[p], context_var_elim_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.var_elim, n);
     break;
 
   case PARAM_ARITH_ELIM:
-    show_bool_param(param2string[p], context_arith_elim_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.arith_elim, n);
     break;
 
   case PARAM_BVARITH_ELIM:
-    show_bool_param(param2string[p], context_bvarith_elim_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.bvarith_elim, n);
     break;
 
   case PARAM_FLATTEN:
     // this activates both flatten or and flatten diseq.
-    show_bool_param(param2string[p], context_flatten_or_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.flatten_or, n);
     break;
 
   case PARAM_LEARN_EQ:
-    show_bool_param(param2string[p], context_eq_abstraction_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.eq_abstraction, n);
     break;
 
   case PARAM_KEEP_ITE:
-    show_bool_param(param2string[p], context_keep_ite_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.keep_ite, n);
     break;
 
   case PARAM_FAST_RESTARTS:
@@ -1675,7 +1061,7 @@ static void show_param(yices_param_t p, uint32_t n) {
     break;
 
   case PARAM_EAGER_LEMMAS:
-    show_bool_param(param2string[p], splx_eager_lemmas_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.splx_eager_lemmas, n);
     break;
 
   case PARAM_SIMPLEX_PROP:
@@ -1695,7 +1081,7 @@ static void show_param(yices_param_t p, uint32_t n) {
     break;
 
   case PARAM_ICHECK:
-    show_bool_param(param2string[p], splx_periodic_icheck_enabled(context), n);
+    show_bool_param(param2string[p], ctx_parameters.splx_periodic_icheck, n);
     break;
 
   case PARAM_ICHECK_PERIOD:
@@ -1711,28 +1097,28 @@ static void show_param(yices_param_t p, uint32_t n) {
     break;
 
   case PARAM_EF_FLATTEN_IFF:
-    show_bool_param(param2string[p], ef_parameters.flatten_iff, n);
+    show_bool_param(param2string[p], ef_client_globals.ef_parameters.flatten_iff, n);
     break;
 
   case PARAM_EF_FLATTEN_ITE:
-    show_bool_param(param2string[p], ef_parameters.flatten_ite, n);
+    show_bool_param(param2string[p], ef_client_globals.ef_parameters.flatten_ite, n);
     break;
 
   case PARAM_EF_GEN_MODE:
-    show_string_param(param2string[p], efgen2string[ef_parameters.gen_mode], n);
+    show_string_param(param2string[p], efgen2string[ef_client_globals.ef_parameters.gen_mode], n);
     break;
 
   case PARAM_EF_MAX_SAMPLES:
-    show_pos32_param(param2string[p], ef_parameters.max_samples, n);
+    show_pos32_param(param2string[p], ef_client_globals.ef_parameters.max_samples, n);
     break;
 
   case PARAM_EF_MAX_ITERS:
-    show_pos32_param(param2string[p], ef_parameters.max_iters, n);
+    show_pos32_param(param2string[p], ef_client_globals.ef_parameters.max_iters, n);
     break;
 
   case PARAM_UNKNOWN:
   default:
-    report_bug("invalid parameter id in 'show_param'");
+    freport_bug(stderr,"invalid parameter id in 'show_param'");
     break;
   }
 }
@@ -1753,7 +1139,7 @@ static void yices_exit_cmd(void) {
     parser_pop_lexer(&parser);
     include_depth --;
   } else {
-    if (verbose) {
+    if (verbosity > 0) {
       fputs("exiting\n", stderr);
       fflush(stderr);
     }
@@ -1792,10 +1178,13 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
   double x;
   branch_t b;
   ef_gen_option_t g;
+  char* reason;
 
+  reason = NULL;
+  
   switch (find_param(param)) {
   case PARAM_VAR_ELIM:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.var_elim = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1809,7 +1198,7 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_ARITH_ELIM:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.arith_elim = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1823,7 +1212,7 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_BVARITH_ELIM:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.bvarith_elim = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1837,7 +1226,7 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_FLATTEN:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.flatten_or = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1851,7 +1240,7 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_LEARN_EQ:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.eq_abstraction = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1865,7 +1254,7 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_KEEP_ITE:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.keep_ite = tt;
       if (context != NULL) {
 	if (tt) {
@@ -1879,182 +1268,182 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_FAST_RESTARTS:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.fast_restart = tt;
       print_ok();
     }
     break;
 
   case PARAM_C_THRESHOLD:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.c_threshold = n;
       print_ok();
     }
     break;
 
   case PARAM_C_FACTOR:
-    if (param_val_to_factor(param, val, &x)) {
+    if (param_val_to_factor(param, val, &x, &reason)) {
       parameters.c_factor = x;
       print_ok();
     }
     break;
 
   case PARAM_D_THRESHOLD:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.d_threshold = n;
       print_ok();
     }
     break;
 
   case PARAM_D_FACTOR:
-    if (param_val_to_factor(param, val, &x)) {
+    if (param_val_to_factor(param, val, &x, &reason)) {
       parameters.d_factor = x;
       print_ok();
     }
     break;
 
   case PARAM_R_THRESHOLD:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.r_threshold = n;
       print_ok();
     }
     break;
 
   case PARAM_R_FRACTION:
-    if (param_val_to_ratio(param, val, &x)) {
+    if (param_val_to_ratio(param, val, &x, &reason)) {
       parameters.r_fraction = x;
       print_ok();
     }
     break;
 
   case PARAM_R_FACTOR:
-    if (param_val_to_factor(param, val, &x)) {
+    if (param_val_to_factor(param, val, &x, &reason)) {
       parameters.r_factor = x;
       print_ok();
     }
     break;
 
   case PARAM_VAR_DECAY:
-    if (param_val_to_ratio(param, val, &x)) {
+    if (param_val_to_ratio(param, val, &x, &reason)) {
       parameters.var_decay = x;
       print_ok();
     }
     break;
 
   case PARAM_RANDOMNESS:
-    if (param_val_to_ratio(param, val, &x)) {
+    if (param_val_to_ratio(param, val, &x, &reason)) {
       parameters.randomness = x;
       print_ok();
     }
     break;
 
   case PARAM_RANDOM_SEED:
-    if (param_val_to_int32(param, val, &n)) {
+    if (param_val_to_int32(param, val, &n, &reason)) {
       parameters.random_seed = (uint32_t) n;
       print_ok();
     }
     break;
 
   case PARAM_BRANCHING:
-    if (param_val_to_branching(param, val, &b)) {
+    if (param_val_to_branching(param, val, &b, &reason)) {
       parameters.branching = b;
       print_ok();
     }
     break;
 
   case PARAM_CLAUSE_DECAY:
-    if (param_val_to_ratio(param, val, &x)) {
+    if (param_val_to_ratio(param, val, &x, &reason)) {
       parameters.clause_decay = x;
       print_ok();
     }
     break;
 
   case PARAM_CACHE_TCLAUSES:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.cache_tclauses = tt;
       print_ok();
     }
     break;
 
   case PARAM_TCLAUSE_SIZE:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.tclause_size = n;
       print_ok();
     }
     break;
 
   case PARAM_DYN_ACK:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.use_dyn_ack = tt;
       print_ok();
     }
     break;
 
   case PARAM_DYN_BOOL_ACK:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.use_bool_dyn_ack = tt;
       print_ok();
     }
     break;
 
   case PARAM_OPTIMISTIC_FCHECK:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.use_optimistic_fcheck = tt;
       print_ok();
     }
     break;
 
   case PARAM_MAX_ACK:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.max_ackermann = n;
       print_ok();
     }
     break;
 
   case PARAM_MAX_BOOL_ACK:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.max_boolackermann = n;
       print_ok();
     }
     break;
 
   case PARAM_AUX_EQ_QUOTA:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.aux_eq_quota = n;
       print_ok();
     }
     break;
 
   case PARAM_AUX_EQ_RATIO:
-    if (param_val_to_posfloat(param, val, &x)) {
+    if (param_val_to_posfloat(param, val, &x, &reason)) {
       parameters.aux_eq_ratio = x;
       print_ok();
     }
     break;
 
   case PARAM_DYN_ACK_THRESHOLD:
-    if (param_val_to_pos16(param, val, &n)) {
+    if (param_val_to_pos16(param, val, &n, &reason)) {
       parameters.dyn_ack_threshold = (uint16_t) n;
       print_ok();
     }
     break;
 
   case PARAM_DYN_BOOL_ACK_THRESHOLD:
-    if (param_val_to_pos16(param, val, &n)) {
+    if (param_val_to_pos16(param, val, &n, &reason)) {
       parameters.dyn_bool_ack_threshold = (uint16_t) n;
       print_ok();
     }
     break;
 
   case PARAM_MAX_INTERFACE_EQS:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.max_interface_eqs = n;
       print_ok();
     }
     break;
 
   case PARAM_EAGER_LEMMAS:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.splx_eager_lemmas = tt;
       if (context != NULL) {
 	if (tt) {
@@ -2068,35 +1457,35 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_SIMPLEX_PROP:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.use_simplex_prop = tt;
       print_ok();
     }
     break;
 
   case PARAM_SIMPLEX_ADJUST:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       parameters.adjust_simplex_model = tt;
       print_ok();
     }
     break;
 
   case PARAM_PROP_THRESHOLD:
-    if (param_val_to_nonneg32(param, val, &n)) {
+    if (param_val_to_nonneg32(param, val, &n, &reason)) {
       parameters.max_prop_row_size = n;
       print_ok();
     }
     break;
 
   case PARAM_BLAND_THRESHOLD:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.bland_threshold = n;
       print_ok();
     }
     break;
 
   case PARAM_ICHECK:
-    if (param_val_to_bool(param, val, &tt)) {
+    if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.splx_periodic_icheck = tt;
       if (context != NULL) {
 	if (tt) {
@@ -2110,57 +1499,57 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     break;
 
   case PARAM_ICHECK_PERIOD:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.integer_check_period = n;
       print_ok();
     }
     break;
 
   case PARAM_MAX_UPDATE_CONFLICTS:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.max_update_conflicts = n;
       print_ok();
     }
     break;
 
   case PARAM_MAX_EXTENSIONALITY:
-    if (param_val_to_pos32(param, val, &n)) {
+    if (param_val_to_pos32(param, val, &n, &reason)) {
       parameters.max_extensionality = n;
       print_ok();
     }
     break;
 
   case PARAM_EF_FLATTEN_IFF:
-    if (param_val_to_bool(param, val, &tt)) {
-      ef_parameters.flatten_iff = tt;
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ef_client_globals.ef_parameters.flatten_iff = tt;
       print_ok();
     }
     break;
 
   case PARAM_EF_FLATTEN_ITE:
-    if (param_val_to_bool(param, val, &tt)) {
-      ef_parameters.flatten_ite = tt;
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      ef_client_globals.ef_parameters.flatten_ite = tt;
       print_ok();
     }
     break;
 
   case PARAM_EF_GEN_MODE:
-    if (param_val_to_genmode(param, val, &g)) {
-      ef_parameters.gen_mode = g;
-      print_ok();;
+    if (param_val_to_genmode(param, val, &g, &reason)) {
+      ef_client_globals.ef_parameters.gen_mode = g;
+      print_ok();
     }
     break;
 
   case PARAM_EF_MAX_SAMPLES:
-    if (param_val_to_nonneg32(param, val, &n)) {
-      ef_parameters.max_samples = n;
+    if (param_val_to_nonneg32(param, val, &n, &reason)) {
+      ef_client_globals.ef_parameters.max_samples = n;
       print_ok();
     }
     break;
 
   case PARAM_EF_MAX_ITERS:
-    if (param_val_to_pos32(param, val, &n)) {
-      ef_parameters.max_iters = n;
+    if (param_val_to_pos32(param, val, &n, &reason)) {
+      ef_client_globals.ef_parameters.max_iters = n;
       print_ok();
     }
     break;
@@ -2169,6 +1558,9 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
   default:
     report_invalid_param(param);
     break;
+  }
+  if (reason != NULL){
+    report_invalid_param_value(param, reason);
   }
 }
 
@@ -2279,13 +1671,22 @@ static void show_simplex_stats(simplex_stats_t *stat) {
   printf(" reduced tricho. lemmas  : %"PRIu32"\n", stat->num_reduced_tricho);
   if (stat->num_make_intfeasible > 0 || stat->num_dioph_checks > 0) {
     printf("Integer arithmetic\n");
+    printf("Integer arithmetic\n");
     printf(" make integer feasible   : %"PRIu32"\n", stat->num_make_intfeasible);
-    printf(" branch & bound          : %"PRIu32"\n", stat->num_branch_atoms);
-    printf(" gcd conflicts           : %"PRIu32"\n", stat->num_gcd_conflicts);
+    printf(" branch atoms            : %"PRIu32"\n", stat->num_branch_atoms);
+    printf("bound strengthening\n");
+    printf(" conflicts               : %"PRIu32"\n", stat->num_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_bound_recheck_conflicts);
+    printf("integrality tests\n");
+    printf(" conflicts               : %"PRIu32"\n", stat->num_itest_conflicts);
+    printf(" bound conflicts         : %"PRIu32"\n", stat->num_itest_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_itest_recheck_conflicts);
+    printf("diohpantine solver\n");
+    printf(" gcd conflicts           : %"PRIu32"\n", stat->num_dioph_gcd_conflicts);
     printf(" dioph checks            : %"PRIu32"\n", stat->num_dioph_checks);
     printf(" dioph conflicts         : %"PRIu32"\n", stat->num_dioph_conflicts);
-    printf(" bound conflicts         : %"PRIu32"\n", stat->num_bound_conflicts);
-    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_recheck_conflicts);
+    printf(" bound conflicts         : %"PRIu32"\n", stat->num_dioph_bound_conflicts);
+    printf(" recheck conflicts       : %"PRIu32"\n", stat->num_dioph_recheck_conflicts);
   }
 }
 
@@ -2416,19 +1817,9 @@ static void yices_help_cmd(const char *topic) {
  */
 static void yices_reset_cmd(void) {
   if (efmode) {
-    if (efprob != NULL) {
-      delete_ef_prob(efprob);
-      safe_free(efprob);
-      efprob = NULL;
-    }
-    if (efsolver != NULL) {
-      delete_ef_solver(efsolver);
-      safe_free(efsolver);
-      efsolver = NULL;
-    }
+    delete_ef_client(&ef_client_globals);
     ivector_reset(&delayed_assertions);
     model = NULL;
-    efdone = false;
   } else {
     if (model != NULL) {
       free_model(model);
@@ -2477,7 +1868,7 @@ static void yices_push_cmd(void) {
     case STATUS_INTERRUPTED:
     default:
       // should not happen
-      report_bug("unexpected context status in 'push'");
+      freport_bug(stderr,"unexpected context status in 'push'");
       break;
     }
   }
@@ -2521,7 +1912,7 @@ static void yices_pop_cmd(void) {
     case STATUS_SEARCHING:
     case STATUS_INTERRUPTED:
     default:
-      report_bug("unexpected context status in 'pop'");
+      freport_bug(stderr,"unexpected context status in 'pop'");
       break;
     }
   }
@@ -2539,7 +1930,7 @@ static void yices_assert_cmd(term_t f) {
    * If efmode is true, we add f to the delayed assertions vector
    */
   if (efmode) {
-    if (efdone) {
+    if (ef_client_globals.efdone) {
       report_error("more assertions are not allowed after (ef-solve)");
     } else if (yices_term_is_bool(f)) {
       ivector_push(&delayed_assertions, f);
@@ -2594,7 +1985,7 @@ static void yices_assert_cmd(term_t f) {
       case STATUS_INTERRUPTED:
       default:
 	// should not happen
-	report_bug("unexpected context status in 'assert'");
+	freport_bug(stderr,"unexpected context status in 'assert'");
 	break;
       }
     }
@@ -2610,7 +2001,7 @@ static void timeout_handler(void *data) {
   assert(data == context && context != NULL);
   if (context_status(data) == STATUS_SEARCHING) {
     context_stop_search(data);
-    if (verbose) {
+    if (verbosity > 0) {
       fputs("\nTimeout\n", stderr);
       fflush(stderr);
     }
@@ -2716,7 +2107,7 @@ static void yices_check_cmd(void) {
   case STATUS_INTERRUPTED:
   default:
     // this should not happen
-    report_bug("unexpected context status in 'check'");
+    freport_bug(stderr,"unexpected context status in 'check'");
     break;
   }
 }
@@ -2758,7 +2149,7 @@ static bool context_has_model(const char *cmd_name) {
   case STATUS_INTERRUPTED:
   default:
     // this should not happen
-    report_bug("unexpected context status in '%s'", cmd_name);
+    freport_bug(stderr,"unexpected context status in '%s'", cmd_name);
     break;
   }
 
@@ -2770,24 +2161,20 @@ static bool context_has_model(const char *cmd_name) {
  * Build model if needed and display it
  */
 static void yices_showmodel_cmd(void) {
+  model_t *mdl;
+  int32_t code;
+  
   if (efmode) {
-    if (efdone) {
-      assert(efsolver != NULL);
-      if (efsolver->status == EF_STATUS_SAT) {
-	assert(efsolver->exists_model != NULL);
-	if (yices_pp_model(stdout, efsolver->exists_model, 140, UINT32_MAX, 0) < 0) {
-	  report_system_error("stdout");
-	}
-	fflush(stdout);
-      } else {
-	fputs("(ef-solve) did not find a solution. No model\n", stderr);
-	fflush(stderr);
+    code = 0;
+    mdl = ef_get_model(&ef_client_globals, &code);
+    if(mdl != NULL){
+      if (yices_pp_model(stdout, mdl, 140, UINT32_MAX, 0) < 0) {
+	report_system_error("stdout");
       }
     } else {
-      fputs("Can't build a model. Call (ef-solve) first.\n", stderr);
+      fputs(efmodelcode2error[code], stderr);
       fflush(stderr);
     }
-
   } else if (context_has_model("show-model")) {
     // model_print(stdout, model);
     // model_print_full(stdout, model);
@@ -2833,26 +2220,24 @@ static void show_val_in_model(model_t *model, term_t t) {
  * - build the model if needed
  */
 static void yices_eval_cmd(term_t t) {
+  model_t *mdl;
+  int32_t code;
+
+
   if (efmode) {
-    if (efdone) {
-      assert(efsolver != NULL);
-      if (efsolver->status == EF_STATUS_SAT) {
-	assert(efsolver->exists_model != NULL);
-	show_val_in_model(efsolver->exists_model, t);
-      } else {
-	fputs("(ef-solve) did not find a solution. No model\n", stderr);
-	fflush(stderr);
-      }
-
+    code = 0;
+    mdl = ef_get_model(&ef_client_globals, &code);
+    if(mdl != NULL){
+      show_val_in_model(mdl, t);
     } else {
-      fputs("No model. Call (ef-solve) first\n", stderr);
+      fputs(efmodelcode2error[code], stderr);
+      fflush(stderr);
     }
-
   } else if (context_has_model("eval")) {
     show_val_in_model(model, t);
   }
-}
 
+}
 
 
 /*
@@ -2860,38 +2245,18 @@ static void yices_eval_cmd(term_t t) {
  */
 
 /*
- * Build the EF-problem descriptor from the set of delayed assertions
- * - do nothing if efprob exists already
- * - store the internalization code in the global efcode flag
- */
-static void build_ef_problem(void) {
-  ef_analyzer_t analyzer;
-  ivector_t *v;
-
-  assert(efmode);
-
-  if (efprob == NULL) {
-    v = &delayed_assertions;
-
-    efprob = (ef_prob_t *) safe_malloc(sizeof(ef_prob_t));
-    init_ef_analyzer(&analyzer, __yices_globals.manager);
-    init_ef_prob(efprob, __yices_globals.manager);
-    efcode = ef_analyze(&analyzer, efprob, v->size, v->data, ef_parameters.flatten_ite, ef_parameters.flatten_iff);
-    delete_ef_analyzer(&analyzer);
-  }
-}
-
-
-/*
  * Print the efsolver status
  */
 static void print_ef_status(void) {
   ef_status_t stat;
   int32_t error;
+  ef_solver_t *efsolver;
 
-  assert(efsolver != NULL && efdone);
+  efsolver = ef_client_globals.efsolver;
 
-  if (verbose) {
+  assert(efsolver != NULL && ef_client_globals.efdone);
+
+  if (verbosity > 0) {
     printf("ef-solve: %"PRIu32" iterations\n", efsolver->iters);
   }
 
@@ -2905,7 +2270,7 @@ static void print_ef_status(void) {
   case EF_STATUS_INTERRUPTED:
     fputs(ef_status2string[stat], stdout);
     fputc('\n', stdout);
-    if (verbose) {
+    if (verbosity > 0) {
       if (stat == EF_STATUS_SAT) {
         print_ef_solution(stdout, efsolver);
         fputc('\n', stdout);
@@ -2916,10 +2281,10 @@ static void print_ef_status(void) {
 
   case EF_STATUS_SUBST_ERROR:
     if (error == -1) {
-      report_error("EF solver failed: degree overflow in substitution");
+      report_error("ef-solve failed: degree overflow in substitution");
     } else {
       assert(error == -2);
-      report_bug("EF solver: substitution failed");
+      freport_bug(stderr, "ef-solve failed: internal error");
     }
     break;
 
@@ -2928,44 +2293,45 @@ static void print_ef_status(void) {
     print_internalization_code(error);
     break;
 
+  case EF_STATUS_PROJECTION_ERROR:
+    if (error == PROJ_ERROR_NON_LINEAR) {
+      report_error("ef-solve failed: non-linear arithmetic is not supported");
+    } else {
+      freport_bug(stderr, "ef-solve failed: projection error");
+    }
+    break;
+
+
+  case EF_STATUS_MDL_ERROR:
+  case EF_STATUS_IMPLICANT_ERROR:
   case EF_STATUS_TVAL_ERROR:
   case EF_STATUS_CHECK_ERROR:
   case EF_STATUS_ERROR:
   case EF_STATUS_IDLE:
   case EF_STATUS_SEARCHING:
-    fprintf(stderr, "ef-status: %s\n", ef_status2string[stat]);
-    report_bug("EF solver: unexpected status");
+    freport_bug(stderr, "ef-solve failed: unexpected status: %s\n", ef_status2string[stat]);
     break;
 
   }
 }
-
 
 /*
  * New command: ef-solve
  */
 static void yices_efsolve_cmd(void) {
   if (efmode) {
-    build_ef_problem();
-    if (efcode != EF_NO_ERROR) {
+    ef_solve(&ef_client_globals, &delayed_assertions, &parameters, logic_code, arch, tracer);
+    if (ef_client_globals.efcode != EF_NO_ERROR) {
       // error in preprocessing
-      print_ef_analyze_code(efcode);
+      print_ef_analyze_code(ef_client_globals.efcode);
     } else {
-      if (! efdone) {
-	assert(efsolver == NULL);
-	efsolver = (ef_solver_t *) safe_malloc(sizeof(ef_solver_t));
-	init_ef_solver(efsolver, efprob, logic_code, arch);
-	ef_solver_check(efsolver, &parameters, ef_parameters.gen_mode,
-			ef_parameters.max_samples, ef_parameters.max_iters);
-	efdone = true;
-      }
       print_ef_status();
-    }
-
-  } else {
+    } 
+  }  else {
     report_error("(ef-solve) not supported. Use option --mode=ef");
   }
 }
+
 
 
 
@@ -3024,7 +2390,7 @@ static void bitblast_then_export(context_t *ctx, const char *s) {
     break;
 
   default:
-    report_bug("unexpected context status after pre-check");
+    freport_bug(stderr,"unexpected context status after pre-check");
     break;
   }
 }
@@ -3041,15 +2407,15 @@ static void export_ef_problem(const char *s) {
   ivector_t all_ef;
   int code;
 
-  build_ef_problem();
-  if (efcode != EF_NO_ERROR) {
-    print_ef_analyze_code(efcode);
+  build_ef_problem(&ef_client_globals, &delayed_assertions);
+  if (ef_client_globals.efcode != EF_NO_ERROR) {
+    print_ef_analyze_code(ef_client_globals.efcode);
   } else {
-    assert(efprob != NULL);
+    assert(ef_client_globals.efprob != NULL);
 
     // convert the ef-problem to a conjunction of formulas
     init_ivector(&all_ef, 10);
-    ef_prob_collect_conjuncts(efprob, &all_ef);
+    ef_prob_collect_conjuncts(ef_client_globals.efprob, &all_ef);
 
     // assert these in a temporary context
     aux = yices_create_context(logic_code, arch, CTX_MODE_ONECHECK, false, false);
@@ -3142,7 +2508,7 @@ static void yices_show_implicant_cmd(void) {
 	if (yices_error_code() == OUTPUT_ERROR) {
 	  report_system_error("stdout");
 	} else {
-	  report_bug("invalid term in 'show-implicant'");
+	  freport_bug(stderr, "invalid term in 'show-implicant'");
 	}
       }
       fflush(stdout);
@@ -3633,10 +2999,19 @@ int yices_main(int argc, char *argv[]) {
 
   if (input_filename == NULL) {
     init_yices_stdin_lexer(&lexer);
-    interactive = true;
+    interactive = isatty(STDIN_FILENO);
   } else if (init_yices_file_lexer(&lexer, input_filename) < 0) {
     perror(input_filename);
     exit(YICES_EXIT_FILE_NOT_FOUND);
+  }
+
+  /*
+   * Create the tracer object
+   */
+  if (verbosity > 0) {
+    tracer = (tracer_t *) safe_malloc(sizeof(tracer_t));
+    init_trace(tracer);
+    set_trace_vlevel(tracer, verbosity);
   }
 
   /*
@@ -3646,26 +3021,19 @@ int yices_main(int argc, char *argv[]) {
   yices_init();
   init_yices_tstack(&stack);
   init_parameter_name_table();
-  init_ef_params();
+
+  init_ef_client(&ef_client_globals);
+  
 
   init_parser(&parser, &lexer, &stack);
-  if (verbose) {
+  if (verbosity > 0) {
     print_version(stderr);
   }
-
-  efprob = NULL;
-  efsolver = NULL;
-  efcode = EF_NO_ERROR;
-  efdone = false;
 
   if (efmode) {
     context = NULL;
     model = NULL;
-    default_ctx_params(logic_code, arch);
-    if (verbose) {
-      init_trace(&tracer);
-      set_trace_vlevel(&tracer, 4);
-    }
+    default_ctx_params(&ctx_parameters, &parameters, logic_code, arch, CTX_MODE_MULTICHECKS);
   } else {
     init_ctx(logic_code, arch, mode, iflag, qflag);
   }
@@ -3709,21 +3077,14 @@ int yices_main(int argc, char *argv[]) {
    * Clean up
    */
   if (efmode) {
-    if (efprob != NULL) {
-      delete_ef_prob(efprob);
-      safe_free(efprob);
-    }
-    if (efsolver != NULL) {
-      delete_ef_solver(efsolver);
-      safe_free(efsolver);
-    }
+    delete_ef_client(&ef_client_globals);
   } else {
     delete_ctx();
   }
 
 
   delete_parser(&parser);
-  if (interactive) {
+  if (input_filename == NULL) {
     // keep stdin open
     close_lexer_only(&lexer);
   } else {
@@ -3731,8 +3092,10 @@ int yices_main(int argc, char *argv[]) {
   }
   delete_tstack(&stack);
   delete_ivector(&delayed_assertions);
-  if (verbose) {
-    delete_trace(&tracer);
+  if (tracer != NULL) {
+    delete_trace(tracer);
+    safe_free(tracer);
+    tracer = NULL;
   }
 
   yices_exit();

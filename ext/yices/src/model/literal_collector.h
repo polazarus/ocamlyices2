@@ -43,8 +43,9 @@
  *
  * - ELIM_ARITH_NEQ0: eliminate arithmetic disequalities.
  *   If atom (= t 0) is false in the model, then we normally add its
- *   negation (not (t = 0)) to the set of literals.
- *   is replaced by either (< t 0) or (> t 0), whichever is true in the model.
+ *   negation (not (t = 0)) to the set of literals. If this option is
+ *   set then this disequalities is replaced by either (< t 0) or (> t 0),
+ *   whichever is true in the model.
  *
  * - ELIM_ARITH_NEQ: eliminate binary arithmetic disequalities.
  *   If atom (= t1 t2) is false, then rewrite it to either (< t1 t2) or (> t1 t2)
@@ -63,16 +64,23 @@
  *
  * Mode
  * ----
- * The mode determines how Boolean terms are treated.
+ * The mode determines how Boolean terms are treated. By default, we treat
+ * all Boolean terms as formulas and are reduced to either true_term or
+ * false_term.  In some cases, we attempt to reduce a Boolean term to a
+ * literal other than true_term or false_term.
  *
- * By default, all Boolean terms are treated as formulas and are
- * reduced to true or false. In some cases, it may make more sense to
- * treat a Boolean terms as a term.
+ * The selection is determined by the flag bool_are_terms:
+ * - if this flag is true, then we consider the following terms as atomic:
+ *      Boolean constants
+ *      Boolean variables
+ *      uninterpreted predicates
+ *      tuple projection
+ *      bit-select
+ * - if the flag is false, then only the Boolean constants are atomic.
  *
  * Examples:
- * - if KEEP_BOOL_EQ is active, then we want to treat t as a term in (= x t).
- *   (rather than reducing t to true or false then tread (= x t) as either
- *    (= x true) or (= x false)).
+ * - if KEEP_BOOL_EQ is active, then we want to treat t as a term in (= x t)
+ *   so that we can apply (x := t) as a substitution later on.
  * - if an uninterpreted function is applied to Booleans as in (P t1 t2)
  *   then it's probably more useful to keep t1 and t2 as terms rather than
  *   constructing (P true false) say.
@@ -87,11 +95,11 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "utils/int_stack.h"
-#include "utils/int_hash_sets.h"
-#include "utils/int_hash_map.h"
 #include "model/model_eval.h"
 #include "terms/term_manager.h"
+#include "utils/int_hash_map.h"
+#include "utils/int_hash_sets.h"
+#include "utils/int_stack.h"
 #include "utils/int_vectors.h"
 
 
@@ -100,7 +108,7 @@
  * - any error code defined in model_eval.h can be returned
  *   (i.e., from -2 to -7)
  * - additional code for get_implicant: return -8 if an
- *   input formual is false in the model
+ *   input formula is false in the model
  */
 enum {
   MDL_EVAL_FORMULA_FALSE = -8,
@@ -128,11 +136,17 @@ enum {
 
 
 /*
+ * Mask to enable all options
+ */
+#define LIT_COLLECTOR_ALL_OPTIONS ((uint32_t) 0x1F)
+
+
+/*
  * Collector structure:
  * - terms = the relevant term table
+ * - manager = term manager (must match the term_table and model)
  * - model = the relevant model
  * - evaluator = initialized for the model
- * - manager = for creating the simplified terms (if any)
  * - tcache = simplified form of all visited terms
  * - fcache = simplified form of all visited formulas
  * - lit_set = set of literals
@@ -149,9 +163,9 @@ enum {
  */
 typedef struct lit_collector_s {
   term_table_t *terms;
+  term_manager_t *manager;
   model_t *model;
   evaluator_t eval;
-  term_manager_t manager;
   int_hmap_t tcache;
   int_hmap_t fcache;
   int_hset_t lit_set;
@@ -165,8 +179,9 @@ typedef struct lit_collector_s {
 
 /*
  * Initialization for model mdl + default options
+ * - mngr = term manager 
  */
-extern void init_lit_collector(lit_collector_t *collect, model_t *mdl);
+extern void init_lit_collector(lit_collector_t *collect, model_t *mdl, term_manager_t *mngr);
 
 
 /*
@@ -222,19 +237,19 @@ static inline bool lit_collector_option_enabled(lit_collector_t *collect, uint32
 extern void lit_collector_get_literals(lit_collector_t *collect, ivector_t *v);
 
 
-
 /*
  * Given a model mdl and a set of formulas a[0 ... n-1] satisfied by mdl,
- * compute an implicant for a[0] /\ a[1] /\ ... /\ a[n-2].
+ * compute an implicant for a[0] /\ a[1] /\ ... /\ a[n-1].
  * - all terms in a must be Boolean and all of them must be true in mdl
- * - if there's a error, the function returns a negative code
+ * - if there's an error, the function returns a negative code
  *   and leaves v unchanged
- * - otherwise, the function retuns 0 and add the literals forming the
+ * - otherwise, the function returns 0 and adds the literals forming the
  *   implicant to vector v  (v is not reset).
  *
  * - options = bit mask to enable/disable the optional processing.
  */
-extern int32_t get_implicant(model_t *mdl, uint32_t options, uint32_t n, const term_t *a, ivector_t *v);
+extern int32_t get_implicant(model_t *mdl, term_manager_t *mngr, uint32_t options,
+			     uint32_t n, const term_t *a, ivector_t *v);
 
 
 

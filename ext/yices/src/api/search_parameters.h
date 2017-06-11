@@ -47,6 +47,11 @@ struct param_s {
    * - c_threshold and c_factor are used
    * - d_threshold and d_threshold are ignored
    * - to get periodic restart set c_factor = 1.0
+   *
+   * HACK to select a Luby-style restart:
+   * - set fast_restart to true and c_factor to 0.0
+   * - then c_threshold defines the base period
+   * - d_threshold and d_factor are ignored
    */
   bool     fast_restart;
   uint32_t c_threshold;     // initial value of c_threshold
@@ -77,7 +82,7 @@ struct param_s {
    *   the theory solver or a theory implication
    * - a theory implication is considered for caching if it's involved
    *   in a conflict resolution
-   * - parmeter tclause_size controls the lemma size: only theory lemmas
+   * - parameter tclause_size controls the lemma size: only theory lemmas
    *   of size <= tclause_size are turned into learned clauses
    */
   double   var_decay;       // decay factor for variable activity
@@ -171,7 +176,7 @@ extern void init_params_to_defaults(param_t *parameters);
 /*
  * Get a pointer to an internal record (set to defaults)
  */
-extern param_t *get_default_params(void);
+extern const param_t *get_default_params(void);
 
 
 /*

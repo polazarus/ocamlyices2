@@ -19,11 +19,12 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 
-#include "utils/memalloc.h"
-#include "utils/hash_functions.h"
-#include "terms/bv_constants.h"
 #include "solvers/bv/bvbound_cache.h"
+#include "terms/bv_constants.h"
+#include "utils/hash_functions.h"
+#include "utils/memalloc.h"
 
 
 /*
@@ -77,7 +78,7 @@ void init_bvbound_cache(bvbound_cache_t *cache, uint32_t n) {
  * - we check whether b != 0 and b != 1
  */
 static inline bool live_bvbound(bvbound_t *b) {
-  return ((size_t) b) >> 1 != 0;
+  return ((uintptr_t) b) >> 1 != 0;
 }
 
 

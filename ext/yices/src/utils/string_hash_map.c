@@ -10,11 +10,12 @@
  */
 
 #include <assert.h>
+#include <stddef.h>
 #include <string.h>
 
+#include "utils/hash_functions.h"
 #include "utils/memalloc.h"
 #include "utils/refcount_strings.h"
-#include "utils/hash_functions.h"
 #include "utils/string_hash_map.h"
 
 
@@ -60,14 +61,19 @@ void init_strmap(strmap_t *hmap, uint32_t n) {
   hmap->cleanup_threshold = (uint32_t) (n * STRMAP_CLEANUP_RATIO);
 }
 
+/*
+ * Deleted records are marked by setting key to DELETED_KEY.
+ * Empty records have key = NULL.
+ */
+#define DELETED_KEY ((char *) 1)
 
 /*
  * Check whether key is valid (i.e., not NULL or DELETED_KEY)
  */
-#define MASK_TAG ((size_t) 3)
+#define MASK_TAG ((uintptr_t) 3)
 
 static inline bool valid_key(const char *key) {
-  return (((size_t) key) & ~MASK_TAG) != ((size_t) NULL);
+  return (((uintptr_t) key) & ~MASK_TAG) != ((uintptr_t) NULL);
 }
 
 
@@ -116,7 +122,7 @@ void reset_strmap(strmap_t *hmap) {
  * Make a copy of r in a clean array data
  * - r->hash must be the hash of r->key
  * - mask = size of data - 1
- * - there must be room ub data
+ * - there must be room for data in r
  */
 static void strmap_clean_copy(strmap_rec_t *data, strmap_rec_t *r, uint32_t mask) {
   uint32_t i;

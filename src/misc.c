@@ -5,6 +5,7 @@
 #endif
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <caml/callback.h>
 #include <caml/memory.h> // CAMLparam & co
@@ -31,6 +32,15 @@ CAMLprim value ocamlyices_info(value unit) {
   Store_field(tuple, 2, caml_copy_string(yices_build_mode));
   Store_field(tuple, 3, caml_copy_string(yices_build_date));
   CAMLreturn (tuple);
+}
+
+CAMLprim value ocamlyices_print_supported(value unit) {
+  CAMLparam1 (unit);
+  #if defined(HAVE_FUNOPEN) || defined(HAVE_FOPENCOOKIE)
+  CAMLreturn(Val_bool(1));
+  #else
+  CAMLreturn(Val_bool(0));
+  #endif
 }
 
 void _oy_check_init () {
@@ -104,6 +114,7 @@ void _oy_check_error() {
   if (exc == NULL) {
     caml_failwith("cannot find exception");
   }
+  yices_clear_error();
   caml_raise_with_args(*exc, 2, _oy_error_args);
   CAMLreturn0;
 }
@@ -151,9 +162,10 @@ static inline FILE *fopen_write_callback(void *cookie, ssize_t (*write)(void *,
 #else
 
 #warning "Pretty printing not supported (missing fopencookie/funopen)"
-static inline FILE *fopen_write_callback(UNUSED void *cookie,
-    ssize_t (*UNUSED write)(void *, const char *, size_t)) NORETURN {
-  return _oy_unsupported();
+FILE *fopen_write_callback(UNUSED void *cookie,
+    NORETURN ssize_t (*UNUSED write)(void *, const char *, size_t)) {
+    _oy_unsupported_print();
+    return NULL;
 }
 
 #endif

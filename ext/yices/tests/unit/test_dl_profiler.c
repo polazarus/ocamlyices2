@@ -11,18 +11,17 @@
 #include <inttypes.h>
 
 
-#include "utils/cputime.h"
-#include "utils/memsize.h"
-
-#include "io/term_printer.h"
-#include "io/type_printer.h"
 #include "api/smt_logic_codes.h"
 #include "api/yices_globals.h"
+#include "context/context.h"
+#include "context/context_printer.h"
 #include "frontend/smt1/smt_lexer.h"
 #include "frontend/smt1/smt_parser.h"
 #include "frontend/smt1/smt_term_stack.h"
-#include "context/context.h"
-#include "context/context_printer.h"
+#include "io/term_printer.h"
+#include "io/type_printer.h"
+#include "utils/cputime.h"
+#include "utils/memsize.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
@@ -45,10 +44,14 @@ static const char * const code2error[NUM_INTERNALIZATION_ERRORS] = {
   "formula contains free variables",
   "logic not supported",
   "context does not support UF",
+  "context does not support scalar types",
+  "context does not support tuples",
+  "context does not support uninterpreted types",
   "context does not support arithmetic",
   "context does not support bitvectors",
   "context does not support function equalities",
   "context does not support quantifiers",
+  "context does not support lambdas",
   "not an IDL formula",
   "not an RDL formula",
   "non-linear arithmetic not supported",
