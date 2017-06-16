@@ -334,6 +334,16 @@ AC_ARG_WITH([shared-gmp],[AS_HELP_STRING([--with-shared-gmp],
       [FORCE_SHARED_GMP=yes],
       [FORCE_SHARED_GMP=no])
 
+AC_ARG_WITH([gmp-embedded],[AS_HELP_STRING([--without-gmp-embedded],
+      [(Only when --enable-static) By default, the static library libyices.a
+      created will be partially linked (ld -r) so that the GMP library is not
+      needed afterwards (i.e., only -lyices is needed). If you want to disable
+      the partial linking (and thus -lgmp and -lyices will be needed), you
+      can use this flag.])],
+      [GMP_EMBEDDED=no],
+      [GMP_EMBEDDED=yes])
+AC_SUBST(GMP_EMBEDDED)
+
 #
 # CHECK LIBRARIES
 # ---------------
@@ -854,6 +864,7 @@ For static library          $libyices_a:
   Libgmp.a path:            $STATIC_GMP
   Libgmp.a is pic:          $STATIC_GMP_HAS_PIC (non-PIC is faster for the static library)
   Use shared gmp instead of libgmp.a:  $STATIC_YICES_USES_SHARED_GMP
+  Embed gmp in libyices.a:  $GMP_EMBEDDED
 
 For shared library:
   Enable:                   $enable_shared

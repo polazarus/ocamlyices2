@@ -655,6 +655,7 @@ PIC_GMP
 STATIC_GMP_HAS_PIC
 STATIC_GMP_INCLUDE_DIR
 STATIC_GMP
+GMP_EMBEDDED
 MCSAT_CPPFLAGS
 NO_STACK_PROTECTOR
 STATIC_CPPFLAGS
@@ -770,6 +771,7 @@ with_static_libpoly_include_dir
 with_pic_libpoly
 with_pic_libpoly_include_dir
 with_shared_gmp
+with_gmp_embedded
 with_mode
 with_static_name
 '
@@ -1440,6 +1442,12 @@ Optional Packages:
                           be searched. This option forces the use of the
                           shared version. This applies for both shared and
                           static libraries.
+  --without-gmp-embedded  (Only when --enable-static) By default, the static
+                          library libyices.a created will be partially linked
+                          (ld -r) so that the GMP library is not needed
+                          afterwards (i.e., only -lyices is needed). If you
+                          want to disable the partial linking (and thus -lgmp
+                          and -lyices will be needed), you can use this flag.
   --with-mode=MODE        The mode used during compilation/distribution. It
                           can be one of release, debug, devel, profile, gcov,
                           valgrind, purify, quantify or gperftools. (default:
@@ -12368,6 +12376,16 @@ else
 fi
 
 
+
+# Check whether --with-gmp-embedded was given.
+if test "${with_gmp_embedded+set}" = set; then :
+  withval=$with_gmp_embedded; GMP_EMBEDDED=no
+else
+  GMP_EMBEDDED=yes
+fi
+
+
+
 #
 # CHECK LIBRARIES
 # ---------------
@@ -17760,6 +17778,7 @@ For static library          $libyices_a:
   Libgmp.a path:            $STATIC_GMP
   Libgmp.a is pic:          $STATIC_GMP_HAS_PIC (non-PIC is faster for the static library)
   Use shared gmp instead of libgmp.a:  $STATIC_YICES_USES_SHARED_GMP
+  Embed gmp in libyices.a:  $GMP_EMBEDDED
 
 For shared library:
   Enable:                   $enable_shared
