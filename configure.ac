@@ -31,7 +31,7 @@ AS_IF([$OCAMLFIND ocamlc 1> /dev/null 2>&1], [
   AC_MSG_RESULT(yes)
 ], [
   AC_MSG_RESULT(no)
-  AC_MSG_ERROR("'ocamlfind' not configured correctly (cannot run 'ocamlc')")
+  AC_MSG_ERROR('ocamlfind' not configured correctly (cannot run 'ocamlc'))
 ])
 
 AC_MSG_CHECKING([for ocamlfind ocamlopt])
@@ -118,6 +118,17 @@ else
   CSL_CHECK_STATIC_GMP([$static_libgmp],[])
 fi
 
+AC_ARG_WITH([gmp-embedded],[AS_HELP_STRING([--without-gmp-embedded],
+      [By default, the static library libyices.a
+      created will be partially linked (ld -r) so that the GMP library is not
+      needed afterwards (i.e., only -lyices is needed). If you want to disable
+      the partial linking (and thus -lgmp and -lyices will be needed), you
+      can use this flag. Enable this flag if your system does not like the
+      `ld -r` option.])],
+      [GMP_EMBEDDED=no],
+      [GMP_EMBEDDED=yes])
+AC_SUBST(GMP_EMBEDDED)
+
 if test "x$STATIC_GMP" = x; then
   AC_CHECK_LIB(gmp, __gmpz_init, [],
              [AC_MSG_ERROR(GMP required, see https://gmplib.org)])
@@ -183,4 +194,5 @@ AC_OUTPUT
 AC_MSG_NOTICE([summary:
   Host:                             $host
   Static gmp library:               $STATIC_GMP
-  Use shared gmp instead of static: $FORCE_SHARED_GMP])
+  Use shared gmp instead of static: $FORCE_SHARED_GMP
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED])

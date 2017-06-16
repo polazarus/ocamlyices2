@@ -687,6 +687,7 @@ HAVE_OCAMLOPT
 BIN_ANNOT
 ANNOTFLAG
 SO
+GMP_EMBEDDED
 FORCE_SHARED_GMP
 OCAMLFIND
 EGREP
@@ -750,6 +751,7 @@ ac_user_opts='
 enable_option_checking
 with_static_gmp
 with_shared_gmp
+with_gmp_embedded
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1381,6 +1383,13 @@ Optional Packages:
                           be searched. This option forces the use of the
                           shared version. This applies for both shared and
                           static libraries.
+  --without-gmp-embedded  By default, the static library libyices.a created
+                          will be partially linked (ld -r) so that the GMP
+                          library is not needed afterwards (i.e., only -lyices
+                          is needed). If you want to disable the partial
+                          linking (and thus -lgmp and -lyices will be needed),
+                          you can use this flag. Enable this flag if your
+                          system does not like the `ld -r` option.
 
 Some influential environment variables:
   CC          C compiler command
@@ -3599,7 +3608,7 @@ else
 
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-  as_fn_error $? "\"'ocamlfind' not configured correctly (cannot run 'ocamlc')\"" "$LINENO" 5
+  as_fn_error $? "'ocamlfind' not configured correctly (cannot run 'ocamlc')" "$LINENO" 5
 
 fi
 
@@ -4016,6 +4025,16 @@ $as_echo "$as_me: WARNING: *** No usable libgmp.a library was found, defaults to
 fi
 
 fi
+
+
+# Check whether --with-gmp-embedded was given.
+if test "${with_gmp_embedded+set}" = set; then :
+  withval=$with_gmp_embedded; GMP_EMBEDDED=no
+else
+  GMP_EMBEDDED=yes
+fi
+
+
 
 if test "x$STATIC_GMP" = x; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for __gmpz_init in -lgmp" >&5
@@ -5402,8 +5421,10 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: summary:
   Host:                             $host
   Static gmp library:               $STATIC_GMP
-  Use shared gmp instead of static: $FORCE_SHARED_GMP" >&5
+  Use shared gmp instead of static: $FORCE_SHARED_GMP
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED" >&5
 $as_echo "$as_me: summary:
   Host:                             $host
   Static gmp library:               $STATIC_GMP
-  Use shared gmp instead of static: $FORCE_SHARED_GMP" >&6;}
+  Use shared gmp instead of static: $FORCE_SHARED_GMP
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED" >&6;}
