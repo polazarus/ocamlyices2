@@ -687,6 +687,8 @@ HAVE_OCAMLOPT
 BIN_ANNOT
 ANNOTFLAG
 SO
+HAS_EXTERNAL_LIBYICES
+EXTERNAL_LIBYICES
 GMP_EMBEDDED
 FORCE_SHARED_GMP
 OCAMLFIND
@@ -752,6 +754,8 @@ enable_option_checking
 with_static_gmp
 with_shared_gmp
 with_gmp_embedded
+with_libyices
+with_libyices_include_dir
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1390,6 +1394,13 @@ Optional Packages:
                           linking (and thus -lgmp and -lyices will be needed),
                           you can use this flag. Enable this flag if your
                           system does not like the `ld -r` option.
+  --with-libyices=<path/libyices.a>
+                          By default, the static library libyices.a is built
+                          from the source in ext/yices. If you want to give
+                          your own libyices.a, use this option.
+  --with-libyices-include-dir=<path>
+                          (with --with-libyice) Give path to the libyices
+                          headers.
 
 Some influential environment variables:
   CC          C compiler command
@@ -4036,6 +4047,38 @@ fi
 
 
 
+
+# Check whether --with-libyices was given.
+if test "${with_libyices+set}" = set; then :
+  withval=$with_libyices; if test "x$withval" == x; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: --with-libyices was used but no path was given.
+      Building libyices.a from the source in ext/yices" >&5
+$as_echo "$as_me: WARNING: --with-libyices was used but no path was given.
+      Building libyices.a from the source in ext/yices" >&2;}
+      EXTERNAL_LIBYICES=
+    else
+      EXTERNAL_LIBYICES=$withval
+    fi
+
+fi
+
+
+HAS_EXTERNAL_LIBYICES=$(test x"${EXTERNAL_LIBYICES}" = "x" && echo no || echo yes)
+
+
+
+# Check whether --with-libyices-include-dir was given.
+if test "${with_libyices_include_dir+set}" = set; then :
+  withval=$with_libyices_include_dir; if test "x$withval" == x; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: --with-libyices-include-dir was used but no path was given." >&5
+$as_echo "$as_me: WARNING: --with-libyices-include-dir was used but no path was given." >&2;}
+    else
+      CPPFLAGS+=" -I'$withval'"
+    fi
+
+fi
+
+
 if test "x$STATIC_GMP" = x; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for __gmpz_init in -lgmp" >&5
 $as_echo_n "checking for __gmpz_init in -lgmp... " >&6; }
@@ -5422,9 +5465,17 @@ fi
   Host:                             $host
   Static gmp library:               $STATIC_GMP
   Use shared gmp instead of static: $FORCE_SHARED_GMP
-  Embed gmp inside libyices.a:      $GMP_EMBEDDED" >&5
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED
+  ====
+  Use external libyices instead
+    of building it from source:     $HAS_EXTERNAL_LIBYICES
+  If yes, external libyices.a:      $EXTERNAL_LIBYICES" >&5
 $as_echo "$as_me: summary:
   Host:                             $host
   Static gmp library:               $STATIC_GMP
   Use shared gmp instead of static: $FORCE_SHARED_GMP
-  Embed gmp inside libyices.a:      $GMP_EMBEDDED" >&6;}
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED
+  ====
+  Use external libyices instead
+    of building it from source:     $HAS_EXTERNAL_LIBYICES
+  If yes, external libyices.a:      $EXTERNAL_LIBYICES" >&6;}

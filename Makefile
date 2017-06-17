@@ -1,4 +1,4 @@
-all: ext/lib/libyices.a build
+all: src/libyices.a build
 # Be helpful if not configured
 Makefile.config: configure
 	@echo Please run ./configure first; exit 1
@@ -71,15 +71,19 @@ ifdef HAVE_OUNIT
 endif
 
 ################################################################################
-src/libyices.a: ext/lib/libyices.a
-	cp $^ $@
 
+ifeq ($(EXTERNAL_LIBYICES),)
 MAKE_VARIABLES = \
 	$(if $(STATIC_GMP),STATIC_GMP=$(STATIC_GMP)) \
 	$(if $(FORCE_SHARED_GMP),FORCE_SHARED_GMP=$(FORCE_SHARED_GMP)) \
 	HOST=$(HOST) GMP_EMBEDDED=$(GMP_EMBEDDED)
-ext/lib/libyices.a:
+src/libyices.a:
 	$(MAKE) -C ext $(MAKE_VARIABLES)
+	cp ext/lib/libyices.a $@
+else
+src/libyices.a: $(EXTERNAL_LIBYICES)
+	cp $^ $@
+endif
 
 debug: CFLAGS += -DDEBUG
 debug: build

@@ -129,6 +129,35 @@ AC_ARG_WITH([gmp-embedded],[AS_HELP_STRING([--without-gmp-embedded],
       [GMP_EMBEDDED=yes])
 AC_SUBST(GMP_EMBEDDED)
 
+AC_ARG_WITH([libyices],
+   [AS_HELP_STRING([--with-libyices=<path/libyices.a>],
+   [By default, the static library libyices.a is built from the
+    source in ext/yices. If you want to give your own libyices.a,
+    use this option.])],
+   [if test "x$withval" == x; then
+      AC_MSG_WARN([--with-libyices was used but no path was given.
+      Building libyices.a from the source in ext/yices])
+      EXTERNAL_LIBYICES=
+    else
+      EXTERNAL_LIBYICES=$withval
+    fi
+   ],
+   [])
+AC_SUBST(EXTERNAL_LIBYICES)
+HAS_EXTERNAL_LIBYICES=$(test x"${EXTERNAL_LIBYICES}" = "x" && echo no || echo yes)
+AC_SUBST(HAS_EXTERNAL_LIBYICES)
+
+AC_ARG_WITH([libyices-include-dir],
+   [AS_HELP_STRING([--with-libyices-include-dir=<path>],
+   [(with --with-libyice) Give path to the libyices headers.])],
+   [if test "x$withval" == x; then
+      AC_MSG_WARN([--with-libyices-include-dir was used but no path was given.])
+    else
+      CPPFLAGS+=" -I'$withval'"
+    fi
+   ],
+   [])
+
 if test "x$STATIC_GMP" = x; then
   AC_CHECK_LIB(gmp, __gmpz_init, [],
              [AC_MSG_ERROR(GMP required, see https://gmplib.org)])
@@ -195,4 +224,8 @@ AC_MSG_NOTICE([summary:
   Host:                             $host
   Static gmp library:               $STATIC_GMP
   Use shared gmp instead of static: $FORCE_SHARED_GMP
-  Embed gmp inside libyices.a:      $GMP_EMBEDDED])
+  Embed gmp inside libyices.a:      $GMP_EMBEDDED
+  ====
+  Use external libyices instead
+    of building it from source:     $HAS_EXTERNAL_LIBYICES
+  If yes, external libyices.a:      $EXTERNAL_LIBYICES])
