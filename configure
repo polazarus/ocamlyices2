@@ -1387,13 +1387,12 @@ Optional Packages:
                           be searched. This option forces the use of the
                           shared version. This applies for both shared and
                           static libraries.
-  --without-gmp-embedded  By default, the static library libyices.a created
-                          will be partially linked (ld -r) so that the GMP
-                          library is not needed afterwards (i.e., only -lyices
-                          is needed). If you want to disable the partial
-                          linking (and thus -lgmp and -lyices will be needed),
-                          you can use this flag. Enable this flag if your
-                          system does not like the `ld -r` option.
+  --with-gmp-embedded     By default, the static library libyices.a is created
+                          without gmp embedded (i.e., both -lgmp and -lyices
+                          will be needed for using libyices.a). With this
+                          option, the libyices.a created will be partially
+                          linked (ld -r) so that the GMP library is not needed
+                          afterwards.
   --with-libyices=<path/libyices.a>
                           By default, the static library libyices.a is built
                           from the source in ext/yices. If you want to give
@@ -4040,9 +4039,9 @@ fi
 
 # Check whether --with-gmp-embedded was given.
 if test "${with_gmp_embedded+set}" = set; then :
-  withval=$with_gmp_embedded; GMP_EMBEDDED=no
+  withval=$with_gmp_embedded; GMP_EMBEDDED=yes
 else
-  GMP_EMBEDDED=yes
+  GMP_EMBEDDED=no
 fi
 
 
