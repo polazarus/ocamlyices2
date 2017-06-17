@@ -14044,8 +14044,14 @@ mpn_divexact_1(t,t,s,*t)
   return 0;
 }
 _ACEOF
-if $SHELL libtool --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
-  && $SHELL libtool --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $STATIC_GMP 2>&5 >&5;
+echo "============= Content of conftest.$ac_ext ================" >&5
+cat conftest.$ac_ext >&5
+echo "============= End of conftest.$ac_ext ====================" >&5
+# ./libtool has been configured with --disable/enable-shared, meaning that we
+# should force the variable build_libtool_libs=yes.
+$SED "s/^build_libtool_libs=\(yes\|no\)$/build_libtool_libs=yes/" libtool > libtool_force_shared
+if $SHELL libtool_force_shared --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
+  && $SHELL libtool_force_shared --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $STATIC_GMP 2>&5 >&5;
 then
   STATIC_GMP_HAS_PIC=yes
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
@@ -14057,7 +14063,8 @@ $as_echo "no" >&6; }
 fi
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
-$SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+$SHELL libtool_force_shared --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+rm libtool_force_shared
 
 
     # If STATIC_GMP is PIC, set PIC_GMP to STATIC_GMP as a default value that
@@ -14221,8 +14228,14 @@ mpn_divexact_1(t,t,s,*t)
   return 0;
 }
 _ACEOF
-if $SHELL libtool --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
-  && $SHELL libtool --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $testlib 2>&5 >&5;
+echo "============= Content of conftest.$ac_ext ================" >&5
+cat conftest.$ac_ext >&5
+echo "============= End of conftest.$ac_ext ====================" >&5
+# ./libtool has been configured with --disable/enable-shared, meaning that we
+# should force the variable build_libtool_libs=yes.
+$SED "s/^build_libtool_libs=\(yes\|no\)$/build_libtool_libs=yes/" libtool > libtool_force_shared
+if $SHELL libtool_force_shared --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
+  && $SHELL libtool_force_shared --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $testlib 2>&5 >&5;
 then
   PIC_GMP_HAS_PIC=yes
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
@@ -14234,7 +14247,8 @@ $as_echo "no" >&6; }
 fi
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
-$SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+$SHELL libtool_force_shared --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+rm libtool_force_shared
 
       if test "$PIC_GMP_HAS_PIC" != yes; then
         as_fn_error $? "
