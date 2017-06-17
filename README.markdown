@@ -64,6 +64,24 @@ from cygwin, use the `--host=` argument:
 
     ./configure --host=i686-w64-mingw32
 
+Tested platforms
+----------------
+The `opam install yices2` has been tested on many OCaml versions (from 3.12.1
+to 4.04.0) and on these systems:
+
+* Ubuntu 16.04, 16.10, 12.04
+* Debian Jessie (stable)
+* MacOS 10.12.4
+* Alpine 3.5
+* OpenSUSE 42.2
+* Fedora 24
+* Arch Linux
+
+On some platforms, the only way is to use `./configure && make`. It has
+been tested on:
+
+* Cygwin+mingw32 and mingw32-gmp (see cross-compilation above)
+
 Binaries
 --------
 Yices2 may be somewhat painful to build. To ease the process, you can simply
