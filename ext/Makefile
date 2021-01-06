@@ -4,6 +4,7 @@ all: lib/libyices.a
 
 CONFIGURE_ARGS = --prefix=$(realpath .) \
 	--host=$(HOST) --disable-shared --enable-static \
+	$(if $(filter no,$(GMP_EMBEDDED)),--without-gmp-embedded) \
 	$(if $(filter yes,$(FORCE_SHARED_GMP)),--with-shared-gmp) \
 	$(if $(STATIC_GMP),--with-static-gmp=$(STATIC_GMP))
 

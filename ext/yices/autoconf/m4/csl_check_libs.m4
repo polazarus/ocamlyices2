@@ -300,8 +300,14 @@ mp_size_t s;
 // when trying to link for a shared library (because PIC is not present)
 mpn_divexact_1(t,t,s,*t)
 ]])])
-if $SHELL libtool --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
-  && $SHELL libtool --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $2 2>&5 >&5;
+echo "============= Content of conftest.$ac_ext ================" >&5
+cat conftest.$ac_ext >&5
+echo "============= End of conftest.$ac_ext ====================" >&5
+# ./libtool has been configured with --disable/enable-shared, meaning that we
+# should force the variable build_libtool_libs=yes.
+$SED "s/^build_libtool_libs=\(yes\|no\)$/build_libtool_libs=yes/" libtool > libtool_force_shared
+if $SHELL libtool_force_shared --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
+  && $SHELL libtool_force_shared --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $2 2>&5 >&5;
 then
   $1=yes
   AC_MSG_RESULT(yes)
@@ -311,7 +317,8 @@ else
 fi
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
-$SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+$SHELL libtool_force_shared --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+rm libtool_force_shared
 ])
 
 dnl

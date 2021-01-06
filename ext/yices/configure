@@ -655,6 +655,7 @@ PIC_GMP
 STATIC_GMP_HAS_PIC
 STATIC_GMP_INCLUDE_DIR
 STATIC_GMP
+GMP_EMBEDDED
 MCSAT_CPPFLAGS
 NO_STACK_PROTECTOR
 STATIC_CPPFLAGS
@@ -770,6 +771,7 @@ with_static_libpoly_include_dir
 with_pic_libpoly
 with_pic_libpoly_include_dir
 with_shared_gmp
+with_gmp_embedded
 with_mode
 with_static_name
 '
@@ -1440,6 +1442,12 @@ Optional Packages:
                           be searched. This option forces the use of the
                           shared version. This applies for both shared and
                           static libraries.
+  --without-gmp-embedded  (Only when --enable-static) By default, the static
+                          library libyices.a created will be partially linked
+                          (ld -r) so that the GMP library is not needed
+                          afterwards (i.e., only -lyices is needed). If you
+                          want to disable the partial linking (and thus -lgmp
+                          and -lyices will be needed), you can use this flag.
   --with-mode=MODE        The mode used during compilation/distribution. It
                           can be one of release, debug, devel, profile, gcov,
                           valgrind, purify, quantify or gperftools. (default:
@@ -12368,6 +12376,16 @@ else
 fi
 
 
+
+# Check whether --with-gmp-embedded was given.
+if test "${with_gmp_embedded+set}" = set; then :
+  withval=$with_gmp_embedded; GMP_EMBEDDED=no
+else
+  GMP_EMBEDDED=yes
+fi
+
+
+
 #
 # CHECK LIBRARIES
 # ---------------
@@ -14026,8 +14044,14 @@ mpn_divexact_1(t,t,s,*t)
   return 0;
 }
 _ACEOF
-if $SHELL libtool --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
-  && $SHELL libtool --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $STATIC_GMP 2>&5 >&5;
+echo "============= Content of conftest.$ac_ext ================" >&5
+cat conftest.$ac_ext >&5
+echo "============= End of conftest.$ac_ext ====================" >&5
+# ./libtool has been configured with --disable/enable-shared, meaning that we
+# should force the variable build_libtool_libs=yes.
+$SED "s/^build_libtool_libs=\(yes\|no\)$/build_libtool_libs=yes/" libtool > libtool_force_shared
+if $SHELL libtool_force_shared --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
+  && $SHELL libtool_force_shared --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $STATIC_GMP 2>&5 >&5;
 then
   STATIC_GMP_HAS_PIC=yes
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
@@ -14039,7 +14063,8 @@ $as_echo "no" >&6; }
 fi
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
-$SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+$SHELL libtool_force_shared --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+rm libtool_force_shared
 
 
     # If STATIC_GMP is PIC, set PIC_GMP to STATIC_GMP as a default value that
@@ -14051,7 +14076,7 @@ $SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
 
     # If shared library is enabled and --with-pic-gmp is given, test that
     # it is in fact PIC.
-    if test $enable_shared = yes -a "x$pic_libgmp" != x; then
+    if test "x$pic_libgmp" != x; then
 
 testincludedir=""
 for incldir in $pic_includegmp "$(dirname $pic_libgmp)" "$(dirname $pic_libgmp)/../include"; do
@@ -14203,8 +14228,14 @@ mpn_divexact_1(t,t,s,*t)
   return 0;
 }
 _ACEOF
-if $SHELL libtool --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
-  && $SHELL libtool --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $testlib 2>&5 >&5;
+echo "============= Content of conftest.$ac_ext ================" >&5
+cat conftest.$ac_ext >&5
+echo "============= End of conftest.$ac_ext ====================" >&5
+# ./libtool has been configured with --disable/enable-shared, meaning that we
+# should force the variable build_libtool_libs=yes.
+$SED "s/^build_libtool_libs=\(yes\|no\)$/build_libtool_libs=yes/" libtool > libtool_force_shared
+if $SHELL libtool_force_shared --mode=compile $CC -shared -c conftest.c -o conftest.lo 2>&5 >&5 \
+  && $SHELL libtool_force_shared --mode=link $CC -rpath /usr/lib -o lib.la conftest.lo $testlib 2>&5 >&5;
 then
   PIC_GMP_HAS_PIC=yes
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
@@ -14216,7 +14247,8 @@ $as_echo "no" >&6; }
 fi
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
-$SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+$SHELL libtool_force_shared --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
+rm libtool_force_shared
 
       if test "$PIC_GMP_HAS_PIC" != yes; then
         as_fn_error $? "
@@ -14228,6 +14260,14 @@ $SHELL libtool --mode=clean $RM -f conftest.* lib.la 2>&5 >&5
       fi
       PIC_GMP=$testlib
       PIC_GMP_INCLUDE_DIR=$testincludedir
+      # If the PIC mode is enabled, we want the produced libyices.a to be
+      # built against a PIC version of libgmp.a.
+      if test $pic_mode = yes; then
+        STATIC_GMP=$PIC_GMP
+        STATIC_GMP_INCLUDE_DIR=$PIC_GMP_INCLUDE_DIR
+        STATIC_GMP_HAS_PIC=yes
+        PIC_GMP_HAS_PIC=yes
+      fi
     fi
     ;;
   mingw* | cygwin*)
@@ -15513,13 +15553,44 @@ fi
 LIBS=$previous_libs
 
 STATIC_YICES_USES_SHARED_GMP=no
-if test $enable_static = yes -a "$HAS_STATIC_GMP" != yes; then
-  if test "$HAS_SHARED_GMP" != yes; then
-    as_fn_error $? "*** You have --enable-static but no static or shared libgmp found." "$LINENO" 5
-    as_fn_error $? "*** Try giving --with-static-gmp= or setting LDFLAGS." "$LINENO" 5
-  else
-    STATIC_LIBS+=" -lgmp"
-    STATIC_YICES_USES_SHARED_GMP=yes
+if test $enable_static = yes; then
+  if test $pic_mode != yes; then
+    # A) Normal static mode: libyices.a is built against either
+    #      1) a non-pic libgmp.a
+    #   or 2) a shared libgmp
+    if test "$HAS_STATIC_GMP" != yes; then
+      if test "$HAS_SHARED_GMP" != yes; then
+        as_fn_error $? "*** You have --enable-static but no static or shared libgmp found." "$LINENO" 5
+        as_fn_error $? "*** Try giving --with-static-gmp= or setting LDFLAGS." "$LINENO" 5
+      else
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: *** You have --enable-static and no static libgmp.a found." >&5
+$as_echo "$as_me: WARNING: *** You have --enable-static and no static libgmp.a found." >&2;}
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: *** You can give --with-static-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp." >&5
+$as_echo "$as_me: WARNING: *** You can give --with-static-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp." >&2;}
+        STATIC_LIBS+=" -lgmp"
+        STATIC_YICES_USES_SHARED_GMP=yes
+      fi
+    fi
+  else # $pic_mode = yes
+    # B) PIC static mode: libyices.a is built against either
+    #      1) a pic libgmp.a
+    #   or 2) a shared libgmp
+    if test "$HAS_PIC_GMP" != yes; then
+      if test "$HAS_SHARED_GMP" != yes; then
+        as_fn_error $? "*** You have --enable-static and --with-pic but no PIC libgmp.a or shared libgmp found." "$LINENO" 5
+        as_fn_error $? "*** Try giving --with-pic-gmp= or setting LDFLAGS." "$LINENO" 5
+      else
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: *** You have --enable-static and --with-pic and no static PIC libgmp.a found." >&5
+$as_echo "$as_me: WARNING: *** You have --enable-static and --with-pic and no static PIC libgmp.a found." >&2;}
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: *** You can give --with-pic-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp." >&5
+$as_echo "$as_me: WARNING: *** You can give --with-pic-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp." >&2;}
+        STATIC_LIBS+=" -lgmp"
+        STATIC_YICES_USES_SHARED_GMP=yes
+      fi
+    else
+      STATIC_GMP=$PIC_GMP
+      STATIC_GMP_INCLUDE_DIR=$PIC_GMP_INCLUDE_DIR
+    fi
   fi
 fi
 
@@ -17758,8 +17829,10 @@ For static library          $libyices_a:
   STATIC_LIBS:              $STATIC_LIBS
   Libgmp.a found:           $HAS_STATIC_GMP
   Libgmp.a path:            $STATIC_GMP
-  Libgmp.a is pic:          $STATIC_GMP_HAS_PIC (non-PIC is faster for the static library)
+  Libgmp.a is pic:          $STATIC_GMP_HAS_PIC     (non-PIC is faster for the static library)
+  PIC mode for libyices.a:  $pic_mode
   Use shared gmp instead of libgmp.a:  $STATIC_YICES_USES_SHARED_GMP
+  Embed gmp in libyices.a:  $GMP_EMBEDDED
 
 For shared library:
   Enable:                   $enable_shared

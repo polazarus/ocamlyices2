@@ -500,33 +500,42 @@ ifeq ($(enable_shared),yes)
 lib: $(builddir)/lib/libyices.la
 endif
 # Table of possibilities:
-# 1) static library
+# 1) static library with gmp embedded (= partially linked)
 #   a) if libgmp.a has been found, create a libyices.a with gmp statically
 #      linked. This uses partial linking offered by 'ld -r'.
 #      Note: I think PIC should be disabled on libgmp.a for embeding it.
 #   b) if libgmp.a has not been found, default to -lgmp. Most of the time,
 #      this means that the gmp library will be dynamically linked.
+# 1b) static library with gmp not embedded (with --without-gmp-embedded)
+#   a) and b) are the same except that 'ld -r' is not used.
 # 2) shared library
 #   a) if libgmp.a has been found and contains PIC (position-independant code),
 #      create a shared library that embeds the gmp library statically.
 #   b) if libgmp.a has not been found, default to using -lgmp which means that
 #      libyices.so (or .dylib or .dll) will also depend on the GMP shared library.
+
 #
-# Static library.
+# Static library with and without GMP embedded.
 #
 # Precondition: STATIC_GMP and -lgmp most not be set simultanously. This
 # precondition is enforced in configure.ac.
 $(builddir)/lib/$(libyices_a): $(base_obj)
 	$(MKDIR_P) $(dir $@)
+ifeq ($(GMP_EMBEDDED),yes)
+#   1) static library with gmp embedded (= partially linked)
 	$(LD) -r -o $(builddir)/obj/libyices.o $(^:%.lo=%.o) $(LDFLAGS) $(STATIC_GMP) $(STATIC_LIBS) $(LIBS)
 	$(AR) cru $@ $(builddir)/obj/libyices.o
+else
+#   1b) static library with gmp not embedded (with --without-gmp-embedded)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) -static -o $@ $^ $(STATIC_LIBS) $(LIBS)
+endif
 # NOTE: We use the variable libyices_a because on Windows, static and shared
 # both produce libyices.a. In this case, set libyices_a to something different
 # than libyices.a from the shared version.
 # NOTE: we cannot use libtool --mode=link instead of ld -r + ar cru because:
-# 1) for partially linking with 'ld -r', libtool --mode=link discards the arg
+# i) for partially linking with 'ld -r', libtool --mode=link discards the arg
 #    'libgmp.a' for some reason, even with the -Wl,libgmp.a trick.
-# 2) for archiving with 'ar cru', libtool --mode=link discards the *.o created
+# ii) for archiving with 'ar cru', libtool --mode=link discards the *.o created
 #    in the previous stage. Some answers on these linker flags stripped:
 # https://www.gnu.org/software/libtool/manual/html_node/Stripped-link-flags.html
 #
@@ -537,6 +546,7 @@ $(builddir)/lib/$(libyices_a): $(base_obj)
 # Precondition: PIC_GMP and -lgmp most not be set simultanously
 RPATH ?= $(libdir)
 $(builddir)/lib/libyices.la: $(base_obj)
+#   2) shared library
 	$(MKDIR_P) $(dir $@)
 	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) -shared -o $@ $^ -rpath $(RPATH) \
 	-version-number $(MAJOR):$(MINOR):$(PATCH_LEVEL) -no-undefined \

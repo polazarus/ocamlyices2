@@ -1,0 +1,127 @@
+name: ci
+
+# Maël Valais <mael.valais@gmail.com>
+#
+# This Travis-ci configuration file has been writen to automate the
+# building process and make deploying the application easy. for the
+# platforms Linux and Mac OS X.
+#
+# The travis-ci servers are going to run this script on any push to the
+# repo. Basically, it
+# - tells the author of a commit if his commit has broken the build,
+# - deploys two .zip containing the linux and osx apps, with the touist
+#   compiled in it
+#
+# To allow Travis-ci to know that something has been pushed to the repo the
+# owner of the project (Olivier Lezaud back then) had had to link the repo
+# to the Travis-ci website.
+#
+# Secrets:
+# - GH_TOKEN is a PAT that must have the public_repo scope and be in the
+#   touist org.
+
+on:
+  push:
+    branches: [master]
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.image }}
+    strategy:
+      matrix:
+        image:
+          # For now, we expect ubuntu-latest to be 18.04 bionic due to the
+          # fact that actions-ml/setup-ocaml relies on avsm's musl ppa. See
+          # https://github.com/actions-ml/setup-ocaml/issues/5.
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        ocaml-version:
+          - "4.08.1"
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@v2
+
+      - name: Try to restore opam cache
+        if: runner.os != 'Windows'
+        id: opam-cache
+        uses: actions/cache@v2
+        with:
+          path: "~/.opam"
+          key: ${{ matrix.image }}-${{ matrix.ocaml-version }}
+
+      - name: Try to restore opam cache (Windows)
+        if: runner.os == 'Windows'
+        id: opam-cache-windows
+        uses: actions/cache@v2
+        with:
+          path: c:\cygwin\home\runneradmin\.opam
+          key: ${{ matrix.image }}-${{ matrix.ocaml-version }}
+
+      - uses: actions-ml/setup-ocaml@master
+        with:
+          ocaml-version: ${{ matrix.ocaml-version }}
+
+      - if: runner.os == 'Windows'
+        run: c:\cygwin\setup-x86_64.exe --quiet-mode --root c:\cygwin --site http://cygwin.mirror.constant.com --packages binutils,rsync,patch,diffutils,curl,make,unzip,git,m4,perl,mingw64-x86_64-gcc-core,gperf,zip,gnupg,coreutils
+
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: .github/workflows/win-install-gmp.sh
+
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: .github/workflows/win-script.sh
+
+      - if: runner.os != 'Windows'
+        run: .github/workflows/unix-script.sh
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ocamlyices2
+          path: ocamlyices2-*.tar.gz*
+      - uses: actions/upload-artifact@v2
+        if: runner.os == 'Windows'
+        with:
+          name: gmp
+          path: gmp-*.tar.gz*
+      # - name: Setup tmate session
+      #   if: ${{ failure() }}
+      #   uses: mxschmitt/action-tmate@v3
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: ocamlyices2
+          path: ocamlyices2
+      - uses: actions/download-artifact@v2
+        with:
+          name: gmp
+          path: gmp
+
+      - uses: alexellis/upload-assets@0.2.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          asset_paths: '["./gmp/*", "./ocamlyices2/*"]'

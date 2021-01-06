@@ -1,4 +1,4 @@
-all: ext/lib/libyices.a build
+all: src/libyices.a build
 # Be helpful if not configured
 Makefile.config: configure
 	@echo Please run ./configure first; exit 1
@@ -71,15 +71,19 @@ ifdef HAVE_OUNIT
 endif
 
 ################################################################################
-src/libyices.a: ext/lib/libyices.a
-	cp $^ $@
 
+ifeq ($(EXTERNAL_LIBYICES),)
 MAKE_VARIABLES = \
 	$(if $(STATIC_GMP),STATIC_GMP=$(STATIC_GMP)) \
 	$(if $(FORCE_SHARED_GMP),FORCE_SHARED_GMP=$(FORCE_SHARED_GMP)) \
-	HOST=$(HOST)
-ext/lib/libyices.a:
+	HOST=$(HOST) GMP_EMBEDDED=$(GMP_EMBEDDED)
+src/libyices.a:
 	$(MAKE) -C ext $(MAKE_VARIABLES)
+	cp ext/lib/libyices.a $@
+else
+src/libyices.a: $(EXTERNAL_LIBYICES)
+	cp $^ $@
+endif
 
 debug: CFLAGS += -DDEBUG
 debug: build
@@ -127,7 +131,9 @@ endif
 # and thus you can link to a static libyices.a instead of libyices.dll.a/libyices.a.
 # -custom = only produce static libyices_stubs.a, not the shared dllyices_stubs.so.
 $(LIB_FILE) $(DLL_FILE): $(OBJECTS) | src/libyices.a
-	cd src && $(OCAMLFIND) ocamlmklib -o $(LIB_NAME)_stubs $(notdir $^) $(LDFLAGS) $(LIBS) -custom -lyices -L. -ccopt -DNOYICES_DLL
+	cd src && $(OCAMLFIND) ocamlmklib -o $(LIB_NAME)_stubs $(notdir $^) \
+	$(LDFLAGS) $(LIBS) -ccopt -DNOYICES_DLL -custom -lyices -L. \
+	$(if $(filter no,$(GMP_EMBEDDED)),-lgmp)
 
 src/%.cmi: src/%.mli
 	$(OCAMLFIND) ocamlc $(PACKAGES) -I src -annot $(BIN_ANNOT) -c -o $@ $<

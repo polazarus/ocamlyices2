@@ -334,6 +334,16 @@ AC_ARG_WITH([shared-gmp],[AS_HELP_STRING([--with-shared-gmp],
       [FORCE_SHARED_GMP=yes],
       [FORCE_SHARED_GMP=no])
 
+AC_ARG_WITH([gmp-embedded],[AS_HELP_STRING([--without-gmp-embedded],
+      [(Only when --enable-static) By default, the static library libyices.a
+      created will be partially linked (ld -r) so that the GMP library is not
+      needed afterwards (i.e., only -lyices is needed). If you want to disable
+      the partial linking (and thus -lgmp and -lyices will be needed), you
+      can use this flag.])],
+      [GMP_EMBEDDED=no],
+      [GMP_EMBEDDED=yes])
+AC_SUBST(GMP_EMBEDDED)
+
 #
 # CHECK LIBRARIES
 # ---------------
@@ -377,7 +387,7 @@ case $host_os,$FORCE_SHARED_GMP in
 
     # If shared library is enabled and --with-pic-gmp is given, test that
     # it is in fact PIC.
-    if test $enable_shared = yes -a "x$pic_libgmp" != x; then
+    if test "x$pic_libgmp" != x; then
       CSL_CHECK_HEADER([gmp.h],[$pic_includegmp "$(dirname $pic_libgmp)" "$(dirname $pic_libgmp)/../include"],--with-pic-gmp-include-dir)
       CSL_CHECK_LIB_PATH($pic_libgmp,--with-pic-gmp)
       CSL_CHECK_GMP($testlib,$testincludedir)
@@ -395,6 +405,14 @@ case $host_os,$FORCE_SHARED_GMP in
       fi
       PIC_GMP=$testlib
       PIC_GMP_INCLUDE_DIR=$testincludedir
+      # If the PIC mode is enabled, we want the produced libyices.a to be
+      # built against a PIC version of libgmp.a.
+      if test $pic_mode = yes; then
+        STATIC_GMP=$PIC_GMP
+        STATIC_GMP_INCLUDE_DIR=$PIC_GMP_INCLUDE_DIR
+        STATIC_GMP_HAS_PIC=yes
+        PIC_GMP_HAS_PIC=yes
+      fi
     fi
     ;;
   mingw* | cygwin*)
@@ -699,13 +717,40 @@ AC_SUBST(HAS_SHARED_GMP)
 LIBS=$previous_libs
 
 STATIC_YICES_USES_SHARED_GMP=no
-if test $enable_static = yes -a "$HAS_STATIC_GMP" != yes; then
-  if test "$HAS_SHARED_GMP" != yes; then
-    AC_MSG_ERROR([*** You have --enable-static but no static or shared libgmp found.])
-    AC_MSG_ERROR([*** Try giving --with-static-gmp= or setting LDFLAGS.])
-  else
-    STATIC_LIBS+=" -lgmp"
-    STATIC_YICES_USES_SHARED_GMP=yes
+if test $enable_static = yes; then
+  if test $pic_mode != yes; then
+    # A) Normal static mode: libyices.a is built against either
+    #      1) a non-pic libgmp.a
+    #   or 2) a shared libgmp
+    if test "$HAS_STATIC_GMP" != yes; then
+      if test "$HAS_SHARED_GMP" != yes; then
+        AC_MSG_ERROR([*** You have --enable-static but no static or shared libgmp found.])
+        AC_MSG_ERROR([*** Try giving --with-static-gmp= or setting LDFLAGS.])
+      else
+        AC_MSG_WARN([*** You have --enable-static and no static libgmp.a found.])
+        AC_MSG_WARN([*** You can give --with-static-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp.])
+        STATIC_LIBS+=" -lgmp"
+        STATIC_YICES_USES_SHARED_GMP=yes
+      fi
+    fi
+  else # $pic_mode = yes
+    # B) PIC static mode: libyices.a is built against either
+    #      1) a pic libgmp.a
+    #   or 2) a shared libgmp
+    if test "$HAS_PIC_GMP" != yes; then
+      if test "$HAS_SHARED_GMP" != yes; then
+        AC_MSG_ERROR([*** You have --enable-static and --with-pic but no PIC libgmp.a or shared libgmp found.])
+        AC_MSG_ERROR([*** Try giving --with-pic-gmp= or setting LDFLAGS.])
+      else
+        AC_MSG_WARN([*** You have --enable-static and --with-pic and no static PIC libgmp.a found.])
+        AC_MSG_WARN([*** You can give --with-pic-gmp= or pass LDFLAGS. Defaulting to shared gmp -lgmp.])
+        STATIC_LIBS+=" -lgmp"
+        STATIC_YICES_USES_SHARED_GMP=yes
+      fi
+    else
+      STATIC_GMP=$PIC_GMP
+      STATIC_GMP_INCLUDE_DIR=$PIC_GMP_INCLUDE_DIR
+    fi
   fi
 fi
 AC_SUBST(STATIC_LIBS)
@@ -852,8 +897,10 @@ For static library          $libyices_a:
   STATIC_LIBS:              $STATIC_LIBS
   Libgmp.a found:           $HAS_STATIC_GMP
   Libgmp.a path:            $STATIC_GMP
-  Libgmp.a is pic:          $STATIC_GMP_HAS_PIC (non-PIC is faster for the static library)
+  Libgmp.a is pic:          $STATIC_GMP_HAS_PIC     (non-PIC is faster for the static library)
+  PIC mode for libyices.a:  $pic_mode
   Use shared gmp instead of libgmp.a:  $STATIC_YICES_USES_SHARED_GMP
+  Embed gmp in libyices.a:  $GMP_EMBEDDED
 
 For shared library:
   Enable:                   $enable_shared
