@@ -34,7 +34,7 @@ jobs:
     strategy:
       matrix:
         image:
-          - ubuntu-20.04
+          - ubuntu-latest
           - windows-latest
           - macos-latest
         ocaml-version:
