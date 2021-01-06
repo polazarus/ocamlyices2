@@ -34,6 +34,9 @@ jobs:
     strategy:
       matrix:
         image:
+          # For now, we expect ubuntu-latest to be 18.04 bionic due to the
+          # fact that actions-ml/setup-ocaml relies on avsm's musl ppa. See
+          # https://github.com/actions-ml/setup-ocaml/issues/5.
           - ubuntu-latest
           - windows-latest
           - macos-latest
